@@ -3,7 +3,9 @@
 Dane z historii HA (statystyki godzinowe - trzymane bezterminowo):
 - zuzycie domu (sensor.<prefiks>_obciazenie_moc_suma), PV (pv1..pv4_moc), SOC, import/eksport (liczniki dzienne),
 - prefiksy: nowy datalogger (<dev>) i stary sniffer (OLD_PREFIX) - laczone w jedna ciagla historie.
-Bilans = przychod ze sprzedazy (RCE x mnoznik depozytu) - koszt zakupu (stawki G12).
+Bilans = przychod ze sprzedazy (RCE x mnoznik depozytu) - koszt zakupu (stawki G12) + zmiana energii w baterii.
+- bilansowanie godzinowe (jak u sprzedawcy): pobor i oddanie w tej samej godzinie zegarowej sie znosza,
+- bateria: (SOC koniec - SOC start) x pojemnosc x cena taniej strefy G12 - energia zostawiona na jutro nie jest strata.
 """
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ from . import prices
 from .const import DOMAIN, OLD_PREFIX
 from .diag import get_logger
 from .planner import plan
-from .tariff import buy_price, is_cheap
+from .tariff import PRICE, buy_price, is_cheap
 
 LOG = get_logger("wstecz")
 WAW = ZoneInfo("Europe/Warsaw")
@@ -63,14 +65,33 @@ async def first_day(hass, dev: str) -> date | None:
     return min(firsts).astimezone(WAW).date() if firsts else None
 
 
-def _money(imp_slots, exp_slots, p) -> dict:
-    t = sum(v for s, v in imp_slots.items() if is_cheap(s))
-    d = sum(v for s, v in imp_slots.items() if not is_cheap(s))
-    koszt = sum(v * buy_price(s) for s, v in imp_slots.items())
-    przych = sum(v * max(pr, 0) * p["depozyt_mnoznik"] for s, (v, pr) in exp_slots.items())
-    return {"kup_tanio_kwh": round(t, 2), "kup_drogo_kwh": round(d, 2), "koszt_zl": round(koszt, 2),
-            "sprzedaz_kwh": round(sum(v for v, _ in exp_slots.values()), 2), "przychod_zl": round(przych, 2),
-            "bilans_zl": round(przych - koszt, 2)}
+def _money(imp_slots, exp_slots, p, soc0=None, soc1=None) -> dict:
+    """Bilansowanie godzinowe: w kazdej godzinie liczy sie tylko nadwyzka poboru albo oddania."""
+    hr = lambda t: t.replace(minute=0, second=0, microsecond=0)   # noqa: E731
+    imp_h, exp_h, val_h = defaultdict(float), defaultdict(float), defaultdict(float)
+    for t, v in imp_slots.items():
+        imp_h[hr(t)] += v
+    for t, (v, pr) in exp_slots.items():
+        exp_h[hr(t)] += v
+        val_h[hr(t)] += v * max(pr, 0)
+    t_kwh = d_kwh = koszt = sprz = przych = 0.0
+    for h in set(imp_h) | set(exp_h):
+        net = imp_h[h] - exp_h[h]
+        if net > 0:
+            koszt += net * buy_price(h)
+            if is_cheap(h):
+                t_kwh += net
+            else:
+                d_kwh += net
+        elif net < 0:
+            sprz += -net
+            przych += -net * (val_h[h] / exp_h[h] if exp_h[h] else 0) * p["depozyt_mnoznik"]
+    bat = 0.0
+    if soc0 is not None and soc1 is not None:
+        bat = (soc1 - soc0) / 100 * p["pojemnosc_wh"] / 1000 * PRICE["cheap"]
+    return {"kup_tanio_kwh": round(t_kwh, 2), "kup_drogo_kwh": round(d_kwh, 2), "koszt_zl": round(koszt, 2),
+            "sprzedaz_kwh": round(sprz, 2), "przychod_zl": round(przych, 2), "bateria_zl": round(bat, 2),
+            "soc_start": round(soc0 or 0, 1), "soc_koniec": round(soc1 or 0, 1), "bilans_zl": round(przych - koszt + bat, 2)}
 
 
 async def run(hass, engine, d0: date, d1: date, detail: bool) -> dict:
@@ -101,16 +122,19 @@ async def run(hass, engine, d0: date, d1: date, detail: bool) -> dict:
             LOG.debug("  %s: brak %d godzin danych zuzycia (traktuje jako 0)", d, miss)
         res, _ = plan(slots, rce, pv, ld, {}, soc0, p, p["pojemnosc_wh"] / 1000, ch_w, sell_w)
         new = _money({datetime.fromisoformat(s.start): s.imp for s in res},
-                     {datetime.fromisoformat(s.start): (s.exp, s.price or 0) for s in res}, p)
+                     {datetime.fromisoformat(s.start): (s.exp, s.price or 0) for s in res}, p, soc0, res[-1].soc if res else soc0)
         avg = lambda x: sum(rce.get(x + timedelta(minutes=15 * i), 0) for i in range(4)) / 4  # noqa: E731
-        old = _money({x: h["imp"].get(x, 0) for x in hours}, {x: (h["exp"].get(x, 0), avg(x)) for x in hours}, p)
+        soc1 = next((h["soc"][x] for x in reversed(hours) if x in h["soc"]), soc0)
+        old = _money({x: h["imp"].get(x, 0) for x in hours}, {x: (h["exp"].get(x, 0), avg(x)) for x in hours}, p, soc0, soc1)
         row = {"dzien": d.isoformat(), "stary": old, "nowy": new, "roznica_zl": round(new["bilans_zl"] - old["bilans_zl"], 2),
                "rce_brak": not any(s in rce for s in slots)}
         days.append(row)
         for k, v in old.items():
-            tot_old[k] += v
+            if not k.startswith("soc_"):
+                tot_old[k] += v
         for k, v in new.items():
-            tot_new[k] += v
+            if not k.startswith("soc_"):
+                tot_new[k] += v
         LOG.info("  %s: stary %.2f zl, nowy %.2f zl, roznica %+.2f zl", d, old["bilans_zl"], new["bilans_zl"], row["roznica_zl"])
         if detail:
             det = {"sim": [{"start": s.start, "action": s.action, "grid_kwh": s.grid_kwh, "price": s.price, "soc": s.soc,

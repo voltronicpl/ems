@@ -1,6 +1,6 @@
 """Stale integracji EMS."""
 DOMAIN = "ems"
-VERSION = "0.4.1"
+VERSION = "0.5.0"
 CONF_DEVICE = "device"          # prefiks encji ESPHome, np. "ecobss"
 DEFAULT_DEVICE = "ecobss"
 POLL_NUMBER = "interwal_odczytu"
@@ -103,7 +103,19 @@ PARAMS = {
     "prog_bezcen_lato": ("Prog za bezcen lato", -1, 2, 0.01, "zl", 0.10),
     "prog_bezcen_zima": ("Prog za bezcen zima", -1, 2, 0.01, "zl", 0.10),
     "limit_sprzedazy_lato": ("Limit sprzedazy lato", 0, 5, 0.1, "x PV", 1.5),
-    "limit_sprzedazy_zima": ("Limit sprzedazy zima", 0, 5, 0.1, "x PV", 2.0),
+    "limit_sprzedazy_zima": ("Limit sprzedazy zima", 0, 5, 0.1, "x PV", 1.5),
+    "los_min_wh_lato": ("Dzien bez PV - sprzedaz min lato", 0, 30000, 1, "Wh", 2000),
+    "los_min_wh_zima": ("Dzien bez PV - sprzedaz min zima", 0, 30000, 1, "Wh", 2000),
+    "los_max_wh_lato": ("Dzien bez PV - sprzedaz max lato", 0, 30000, 1, "Wh", 4567),
+    "los_max_wh_zima": ("Dzien bez PV - sprzedaz max zima", 0, 30000, 1, "Wh", 4567),
+    "arbitraz_lato": ("Dokupienie pod sprzedaz lato (1 = wl.)", 0, 1, 1, "", 1),
+    "arbitraz_zima": ("Dokupienie pod sprzedaz zima (1 = wl.)", 0, 1, 1, "", 1),
+    "arbitraz_noc_lato": ("Sprzedaz w taniej strefie lato (1 = wl.)", 0, 1, 1, "", 1),
+    "arbitraz_noc_zima": ("Sprzedaz w taniej strefie zima (1 = wl.)", 0, 1, 1, "", 1),
+    "arbitraz_zysk_lato": ("Min. zysk z dokupienia lato", 0, 2, 0.01, "zl/kWh", 0.10),
+    "arbitraz_zysk_zima": ("Min. zysk z dokupienia zima", 0, 2, 0.01, "zl/kWh", 0.10),
+    "sprawnosc_baterii": ("Sprawnosc baterii (ladowanie + rozladowanie)", 50, 100, 1, "%", 87),
+    "koszt_cyklu_zl": ("Koszt zuzycia baterii", 0, 2, 0.01, "zl/kWh", 0.15),
     "mn_slonecznie_lato": ("Mnoznik PV slonecznie lato", 0, 2, 0.01, "x", 1.0),
     "mn_slonecznie_zima": ("Mnoznik PV slonecznie zima", 0, 2, 0.01, "x", 1.0),
     "mn_pochmurno_lato": ("Mnoznik PV pochmurno lato", 0, 2, 0.01, "x", 1.0),

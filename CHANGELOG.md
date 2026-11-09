@@ -1,5 +1,20 @@
 # Zmiany EMS
 
+## v0.5.0
+
+**Dodane**
+- Ustawienia → nowa rubryka „⚡ Planowanie energii – dokupienie pod sprzedaż” (☀ lato / ❄ zima): limit sprzedaży × PV, losowy limit dnia bez PV (od–do Wh), dokupienie pod sprzedaż wł./wył., sprzedaż w taniej strefie (noc) wł./wył., min. zysk; wspólne: sprawność baterii, koszt zużycia baterii. Pod spodem wyliczony próg RCE, od którego się opłaca.
+- Algorytm: dokupienie w taniej strefie pod sprzedaż w następnym drogim oknie, gdy RCE × depozyt − (0,61 / sprawność + zużycie) ≥ min. zysk. Liczy realną moc ładowania w taniej strefie.
+- Algorytm: sprzedaż z baterii w samej taniej strefie (noc / 13–15) w godzinach z najwyższym RCE, ładowanie w innych godzinach (bilansowanie godzinowe).
+- Wszystko mieści się w dziennym limicie sprzedaży (PV × mnożnik, dzień bez PV losowo od–do).
+- Symulacja wstecz: bilansowanie godzinowe (pobór i oddanie w tej samej godzinie się znoszą) i wycena energii w baterii na koniec dnia (kolumna „Bateria”, SOC start → koniec).
+- `docs/SESJA.md` aktualizowany przy każdej wersji – notatka dla nowej sesji.
+
+**Zmienione**
+- Dzień bez PV: losowy limit 1–4 kWh → 2000–4567 Wh (ustawiane).
+- Domyślny limit sprzedaży zimą 2,0× → 1,5× PV (zapisana już wartość w HA zostaje – przestaw ręcznie).
+- „Limit sprzedaży” przeniesiony z przeliczników do nowej rubryki.
+
 ## v0.4.1
 
 **Zmienione**

@@ -1,4 +1,4 @@
-# EMS – algorytm, moduły i encje (v0.4.0)
+# EMS – algorytm, moduły i encje (v0.5.0)
 
 ## Przepływ
 
@@ -19,10 +19,12 @@ Sloty 15 min, horyzont = do końca znanych cen RCE (min. 12 h).
 
 1. **Zapas SOC**: `soc_min`; przy burzy (kod pogody 95/96/99) `soc_burza` od `burza_wyprzedzenie_h` przed burzą do jej końca.
 2. **Okna**: doba dzielona na bloki taniej strefy G12 (czas licznika CET; zima 13–15, 22–6, lato 15–17, 22–6) i drogie okna między nimi.
-3. **Sprzedaż w drogim oknie** (najdroższe sloty RCE najpierw, max `limit_twardy_max_moc_sprzedazy` na slot, limit dzienny = `limit_sprzedazy_<sezon>` × prognoza PV dnia; dzień bez PV → losowo 1–4 kWh, ziarno = data):
+3. **Sprzedaż w drogim oknie** (najdroższe sloty RCE najpierw, max `limit_twardy_max_moc_sprzedazy` na slot, limit dzienny = `limit_sprzedazy_<sezon>` × prognoza PV dnia; dzień bez PV → losowo `los_min_wh_<sezon>`–`los_max_wh_<sezon>` (2000–4567 Wh), ziarno = data; w limicie mieści się wszystko – nadwyżka PV i dokupienie):
    - RCE ≥ `prog_droga` → sprzedaje nawet energię potrzebną domowi,
    - RCE ≥ `prog_tania` → sprzedaje nadwyżkę ponad potrzeby domu do następnej taniej strefy,
    - RCE ≥ `prog_bezcen` i po pojawieniu się nadwyżki PV → sprzedaje tylko nadwyżkę PV.
+   - **dokupienie pod sprzedaż** (`arbitraz_<sezon>` = 1): próg „tania” obniżony do progu opłacalności `(0,61 / sprawnosc_baterii + koszt_cyklu_zl + arbitraz_zysk_<sezon>) / depozyt_mnoznik` (domyślnie ≈ 0,77 zł); energia „ponad potrzeby domu” liczona z realnej mocy ładowania w poprzedniej taniej strefie (SOC startu + długość strefy × moc ładowania, max `soc_max`).
+3a. **Sprzedaż w taniej strefie** (`arbitraz_noc_<sezon>` = 1): w taniej strefie (≥ 2 h) wybiera pełne godziny zegarowe z RCE ≥ progu opłacalności, od najdroższej; godzinę bierze, jeśli symulacja (sprzedaż + dom z baterii w tej godzinie, ładowanie pełną mocą w pozostałych) nie zejdzie poniżej zapasu i na koniec strefy dojdzie do celu. W godzinie sprzedaży: dom z baterii, bez ładowania (bilansowanie godzinowe). Limit dzienny zjadają najpierw okna drogie, noc dostaje resztę.
 4. **Cel ładowania** na koniec taniej strefy = zapas + potrzeby domu w następnym oknie + zaplanowana sprzedaż − nadwyżka PV, ograniczony do `soc_max`.
 5. **Symulacja** slot po slocie: SOC, pobór/oddanie z sieci (`imp`/`exp`), akcja (`charge`/`sell`/`self`/`block`) i **powód** (`why`).
 6. **Blokada eksportu**: bateria pełna i RCE < `prog_bezcen` → `block`.
@@ -42,7 +44,7 @@ Kup/Sprzedaj teraz (Wh): od teraz przez max 4 h, koniec gdy licznik importu/eksp
 
 ## Symulacja wstecz (`backtest.py`, `GET /api/ems/backtest`)
 
-Statystyki godzinowe HA (bezterminowe) dla prefiksów `modbus_falownik` (stary sniffer) i `<datalogger>` (nowy ma pierwszeństwo). Zużycie, PV1–4, SOC (mean), import/eksport (change liczników dziennych). Ten sam `planner.plan` na prawdziwych danych. Bilans = eksport × RCE × `depozyt_mnoznik` − import × stawka G12 (0,61 / 1,25 zł).
+Statystyki godzinowe HA (bezterminowe) dla prefiksów `modbus_falownik` (stary sniffer) i `<datalogger>` (nowy ma pierwszeństwo). Zużycie, PV1–4, SOC (mean), import/eksport (change liczników dziennych). Ten sam `planner.plan` na prawdziwych danych. Bilans = eksport × RCE × `depozyt_mnoznik` − import × stawka G12 (0,61 / 1,25 zł) + (SOC koniec − SOC start) × pojemność × 0,61. **Bilansowanie godzinowe**: w każdej godzinie zegarowej liczy się tylko nadwyżka poboru albo oddania (jak u sprzedawcy), dla starego i nowego EMS.
 
 ## Diagnostyka (`diag.py`)
 

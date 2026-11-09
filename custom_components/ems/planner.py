@@ -8,7 +8,13 @@ Zasady (spec 7 / 7a):
    - energia kupiona tanio: RCE >= prog_tania,
    - nadwyzka PV: najdrozsze wolne okienka, nigdy ponizej progu "za bezcen",
    - powyzej prog_droga sprzedaje nawet energie potrzebna domowi (dom dobierze z sieci).
-4. Limit sprzedazy dziennie: lato 1,5x / zima 2x prognozy PV; dzien bez PV -> losowo 1-4 kWh.
+4. Limit sprzedazy dziennie: limit_sprzedazy_<sezon> x prognoza PV; dzien bez PV -> losowo los_min..los_max Wh.
+   Wszystko (nadwyzka PV + dokupienie pod sprzedaz) miesci sie w tym limicie.
+4a. Dokupienie pod sprzedaz (arbitraz_<sezon>): w taniej strefie laduje ponad potrzeby domu, jesli w nastepnym
+   drogim oknie RCE x depozyt - (cena taniej G12 / sprawnosc + koszt cyklu) >= arbitraz_zysk_<sezon>.
+4b. Sprzedaz w taniej strefie (arbitraz_noc_<sezon>): w taniej strefie sprzedaje z baterii w godzinach z najwyzszym
+   RCE (ten sam warunek), a laduje w INNYCH godzinach zegarowych (bilansowanie godzinowe: pobor i oddanie
+   w tej samej godzinie sie znosza). Na koniec strefy bateria i tak dochodzi do celu.
 5. Burza: zapas 50% od N godzin przed burza do konca burzy.
 6. RCE ponizej progu "za bezcen" -> blokada eksportu.
 """
@@ -20,7 +26,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .diag import get_logger
-from .tariff import is_cheap, season
+from .tariff import PRICE, is_cheap, season
 
 LOG = get_logger("plan")
 WAW = ZoneInfo("Europe/Warsaw")
@@ -44,11 +50,24 @@ class Slot:
     why: str = ""        # powod decyzji (dla panelu)
 
 
+def _sez(day) -> str:
+    return "lato" if 4 <= day.month <= 9 else "zima"
+
+
 def daily_cap(day, pv_day: float, p: dict) -> float:
+    z = _sez(day)
     if pv_day < 0.3:
-        rnd = random.Random(day.toordinal())
-        return round(rnd.uniform(1, 4), 3)
-    return pv_day * p[f"limit_sprzedazy_{'lato' if 4 <= day.month <= 9 else 'zima'}"]
+        lo, hi = sorted((p[f"los_min_wh_{z}"], p[f"los_max_wh_{z}"]))
+        return round(random.Random(day.toordinal()).uniform(lo, hi) / 1000, 3)
+    return pv_day * p[f"limit_sprzedazy_{z}"]
+
+
+def arb_price(p: dict, z: str, flag: str = "arbitraz") -> float | None:
+    """Minimalna RCE, przy ktorej oplaca sie kupic tanio i sprzedac (None = wylaczone przelacznikiem `flag`)."""
+    if not p.get(f"{flag}_{z}"):
+        return None
+    cost = PRICE["cheap"] / (p["sprawnosc_baterii"] / 100) + p["koszt_cyklu_zl"]
+    return (cost + p[f"arbitraz_zysk_{z}"]) / p["depozyt_mnoznik"]
 
 
 def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dict, soc_now: float,
@@ -104,14 +123,22 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
         need = sum(max(ld[k] - pvk[k], 0) for k in range(a, b))
         pv_in = sum(max(pvk[k] - ld[k], 0) for k in range(a, b))
         res_w = max(reserve[a:b]) if b > a else res_min
-        thr_t = p[f"prog_tania_{season(slots[a])}"]
+        z = season(slots[a])
+        thr_t = p[f"prog_tania_{z}"]
+        arb = arb_price(p, z) if bi > 0 and blocks[bi - 1][2] else None
+        if arb is not None and arb < thr_t:
+            thr_t = arb
         thr_d = p[f"prog_droga_{season(slots[a])}"]
         bezcen = p[f"prog_bezcen_{season(slots[a])}"]
         cand = sorted((k for k in range(a, b) if price[k] is not None), key=lambda k: -price[k])
         thr_of = {}
         # energia ponad potrzeby domu (z taniej strefy + nadwyzka PV)
         room_full = kwh(soc_max)
-        start_kwh = room_full if bi > 0 and blocks[bi - 1][2] else kwh(soc_start)
+        if bi > 0 and blocks[bi - 1][2]:            # ile realnie da sie naladowac w poprzedniej taniej strefie
+            pa, pb, _ = blocks[bi - 1]
+            start_kwh = min(room_full, kwh(soc_start) + (pb - pa) * ch_slot)
+        else:
+            start_kwh = kwh(soc_start)
         spare = max(0.0, start_kwh + pv_in - need - kwh(res_w))
         planned, planned_pv = 0.0, 0.0
         spare_pv = min(pv_in, spare)                 # nadwyzka PV (bez energii z taniej strefy)
@@ -125,7 +152,11 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                 thr_of[k] = f"RCE {price[k]:.2f} >= prog droga {thr_d:.2f}"
             elif price[k] >= thr_t:
                 amt = min(sell_slot, cap_left[d], spare - planned)
-                thr_of[k] = f"RCE {price[k]:.2f} >= prog tania {thr_t:.2f}, nadwyzka ponad potrzeby domu"
+                if arb is not None and thr_t == arb:
+                    gain = price[k] * p["depozyt_mnoznik"] - (arb * p["depozyt_mnoznik"] - p[f"arbitraz_zysk_{z}"])
+                    thr_of[k] = f"dokupione tanio pod sprzedaz: RCE {price[k]:.2f} x {p['depozyt_mnoznik']:.2f}, zysk ~{gain:.2f} zl/kWh"
+                else:
+                    thr_of[k] = f"RCE {price[k]:.2f} >= prog tania {thr_t:.2f}, nadwyzka ponad potrzeby domu"
             elif price[k] >= bezcen and k >= first_pv and spare_pv - planned_pv > 0.01:
                 amt = min(sell_slot, cap_left[d], spare_pv - planned_pv, spare - planned)
                 planned_pv += max(amt, 0)
@@ -144,17 +175,83 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
             target[bi - 1] = min(soc_max, max(res_w, pct(want)))
         soc_start = res_w
 
+    # --- sprzedaz w taniej strefie (w innych godzinach niz ladowanie) ------------------------------
+    sell_h: dict[int, set] = {}                       # blok tani -> godziny zegarowe sprzedazy
+    for bi, (a, b, is_ch) in enumerate(blocks):
+        if not is_ch or b - a < 8:
+            continue
+        z = season(slots[a])
+        arb = arb_price(p, z, "arbitraz_noc")
+        if arb is None:
+            continue
+        hour = lambda k: slots[k].astimezone(WAW).replace(minute=0, second=0, microsecond=0)   # noqa: E731
+        hours: dict = {}
+        for k in range(a, b):
+            hours.setdefault(hour(k), []).append(k)
+        e0 = kwh(soc_now) if bi == 0 else kwh(res_min)
+        tgt = target.get(bi, soc_max if bi == len(blocks) - 1 else res_min)
+
+        def feasible(sel: set, amt: dict) -> bool:
+            e = e0
+            for hh, ks in hours.items():
+                for k in ks:
+                    if hh in sel:
+                        e -= max(ld[k] - pvk[k], 0) + amt.get(k, 0)
+                        if e < kwh(reserve[k]) - 1e-6:
+                            return False
+                    else:
+                        e = min(kwh(soc_max), e + ch_slot + max(pvk[k] - ld[k], 0))
+            return e >= kwh(tgt) - 1e-6
+        ranked = sorted((hh for hh, ks in hours.items() if len(ks) == 4 and all(price[k] is not None and price[k] >= arb for k in ks)),
+                        key=lambda hh: -sum(price[k] for k in hours[hh]))
+        sel, amt = set(), {}
+        for hh in ranked:
+            d = hh.date()
+            new = {k: min(sell_slot, max(cap_left.get(d, 0), 0) / 4) for k in hours[hh]}
+            if sum(new.values()) < 0.05:
+                continue
+            if feasible(sel | {hh}, {**amt, **new}):
+                sel.add(hh)
+                amt.update(new)
+                cap_left[d] -= sum(new.values())
+        for k, v in amt.items():
+            sell[k] = v
+            gain = price[k] * p["depozyt_mnoznik"] - (arb * p["depozyt_mnoznik"] - p[f"arbitraz_zysk_{z}"])
+            why_sell[k] = f"tania strefa: sprzedaz z baterii (RCE {price[k]:.2f}), laduje w innych godzinach, zysk ~{gain:.2f} zl/kWh"
+        if sel:
+            sell_h[bi] = sel
+            LOG.info("Tania strefa od %s: sprzedaz w godzinach %s (%.2f kWh)", slots[a].astimezone(WAW).strftime("%d.%m %H:%M"),
+                     ", ".join(h.strftime("%H:00") for h in sorted(sel)), sum(amt.values()))
+
     # --- symulacja slot po slocie (z przeplywami sieci) ---------------------------------------------
     out: list[Slot] = []
     soc = soc_now
     for bi, (a, b, is_ch) in enumerate(blocks):
         tgt = target.get(bi, soc_max if is_ch and bi == len(blocks) - 1 else None)
+        sh = sell_h.get(bi, set())
+        in_sh = lambda k: slots[k].astimezone(WAW).replace(minute=0, second=0, microsecond=0) in sh   # noqa: E731
         for k in range(a, b):
             e = kwh(soc)
             act, grid, imp, exp, why = "self", 0.0, 0.0, 0.0, ""
             bezcen = p[f"prog_bezcen_{season(slots[k])}"]
             net = pvk[k] - ld[k]
-            if is_ch:
+            if is_ch and sh and in_sh(k):                              # godzina sprzedazy: dom z baterii, bez ladowania
+                e += net
+                if e < kwh(reserve[k]):
+                    imp += kwh(reserve[k]) - e
+                    e = kwh(reserve[k])
+            elif is_ch and sh:                                         # pozostale godziny: laduj pelna moca pod cel + sprzedaz
+                imp += max(-net, 0)
+                e += max(net, 0)
+                ahead = sum(sell[j] + max(ld[j] - pvk[j], 0) for j in range(k + 1, b) if in_sh(j))
+                want = min(kwh(soc_max), kwh(tgt if tgt is not None else res_min) + ahead)
+                if want - e > 0.005:
+                    grid = min(ch_slot, want - e)
+                    e += grid
+                    imp += grid
+                    act = "charge"
+                    why = f"tania strefa G12: laduje pod cel {tgt or res_min:.0f}% + sprzedaz w innej godzinie"
+            elif is_ch:
                 imp += max(-net, 0)                                    # dom z sieci w taniej strefie
                 e += max(net, 0)
                 if tgt is not None and soc < tgt - 0.5:

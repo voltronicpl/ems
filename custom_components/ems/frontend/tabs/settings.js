@@ -2,8 +2,12 @@ import { S, num, fmt, tip, esc } from "../core.js";
 import { T } from "../tips.js";
 import { GROUPS } from "../inverter_spec.js";
 export const title = "Ustawienia";
-const PAIRS = [["Limit sprzedaży", "limit_sprzedazy", "× PV"], ["Próg sprzedaży – tania", "prog_tania", "zł"], ["Próg sprzedaży – droga", "prog_droga", "zł"], ["Próg „za bezcen”", "prog_bezcen", "zł"],
+const PAIRS = [["Próg sprzedaży – tania", "prog_tania", "zł"], ["Próg sprzedaży – droga", "prog_droga", "zł"], ["Próg „za bezcen”", "prog_bezcen", "zł"],
   ["Mnożnik PV – słonecznie", "mn_slonecznie", "×"], ["Mnożnik PV – pochmurno", "mn_pochmurno", "×"], ["Mnożnik PV – deszcz", "mn_deszcz", "×"], ["Mnożnik PV – śnieg", "mn_snieg", "×"]];
+// Rubryka „Planowanie energii – dokupienie pod sprzedaż”: [nazwa, klucz, jednostka, przelacznik?]
+const ARB = [["Limit sprzedaży (z PV)", "limit_sprzedazy", "× PV"], ["Dzień bez PV – sprzedaż od", "los_min_wh", "Wh"], ["Dzień bez PV – sprzedaż do", "los_max_wh", "Wh"],
+  ["Dokupienie pod sprzedaż", "arbitraz", "", 1], ["Sprzedaż w taniej strefie (noc)", "arbitraz_noc", "", 1], ["Min. zysk z dokupienia", "arbitraz_zysk", "zł/kWh"]];
+const ARB1 = [["Sprawność baterii", "number.ems_sprawnosc_baterii", "%", "sprawnosc_baterii"], ["Koszt zużycia baterii", "number.ems_koszt_cyklu_zl", "zł/kWh", "koszt_cyklu_zl"]];
 const EMS = [
   ["⏱ Odpytywanie i przeliczanie", [["Odczyt falownika co", "number.ems_interwal", "s", "interwal"], ["Przeliczanie planu co", "number.ems_plan_co_min", "min", "plan_co_min"], ["Zapis do falownika co", "number.ems_zapis_co_s", "s", "zapis_co_s"]]],
   ["🔋 Bateria i burza", [["Pojemność baterii", "number.ems_pojemnosc_wh", "Wh", "pojemnosc_wh"], ["Burza – zapas od (h przed)", "number.ems_burza_wyprzedzenie_h", "h", "burza_wyprzedzenie_h"]]],
@@ -11,6 +15,9 @@ const EMS = [
   ["🏠 Prognoza zużycia i bilans", [["Współczynnik temp. (0 = auto)", "number.ems_wsp_temp", "kWh/°C", "wsp_temp"], ["Weekend od (piątek, godz.)", "number.ems_weekend_od_godz", "h", "weekend_od_godz"], ["Mnożnik depozytu", "number.ems_depozyt_mnoznik", "×", "depozyt_mnoznik"]]],
 ];
 const raw = { unlocked: 0, addr: "", val: "" };
+const arbMin = (c, z) => 0.61 / (num(c.hass, "number.ems_sprawnosc_baterii", 87) / 100) + num(c.hass, "number.ems_koszt_cyklu_zl", 0.15) + num(c.hass, `number.ems_arbitraz_zysk_${z}`, 0.1);
+// przelacznik na encji number 0/1 (parametry EMS sa liczbami)
+const ntog = (c, id) => { const on = num(c.hass, id, 0) >= 0.5; return `<div class="sw" data-ntog="${id}" title="${esc(id)}"><div class="tg ${on ? "on" : ""}"></div>${on ? "Włączone" : "Wyłączone"}</div>`; };
 export function render(c) {
   const winter = !c.zone.summer, d = c.dev;
   const f = (id, u, o) => c.field(id, u, o);
@@ -18,6 +25,11 @@ export function render(c) {
     ${c.group(`🔁 Przeliczniki lato / zima`, `<div style="overflow:auto"><table class="tbl"><tr><th>Parametr</th><th>☀ Lato (1.04–30.09)${winter ? "" : ' <span class="pill g">aktywne</span>'}</th><th>❄ Zima (1.10–31.03)${winter ? ' <span class="pill g">aktywne</span>' : ""}</th></tr>
       ${PAIRS.map(([n, k, u]) => `<tr><td>${n}${tip(T[k])}</td><td>${f(`number.ems_${k}_lato`, u, { act: !winter })}</td><td>${f(`number.ems_${k}_zima`, u, { act: winter })}</td></tr>`).join("")}</table></div>`,
       PAIRS.flatMap(([, k]) => [`number.ems_${k}_lato`, `number.ems_${k}_zima`]))}
+    ${c.group(`⚡ Planowanie energii – dokupienie pod sprzedaż${tip(T.arbitraz_box)}`, `<div style="overflow:auto"><table class="tbl"><tr><th>Parametr</th><th>☀ Lato${winter ? "" : ' <span class="pill g">aktywne</span>'}</th><th>❄ Zima${winter ? ' <span class="pill g">aktywne</span>' : ""}</th></tr>
+      ${ARB.map(([n, k, u, sw]) => `<tr><td>${n}${tip(T[k])}</td>${["lato", "zima"].map(z => `<td>${sw ? ntog(c, `number.ems_${k}_${z}`) : f(`number.ems_${k}_${z}`, u, { act: (z === "zima") === winter })}</td>`).join("")}</tr>`).join("")}</table></div>
+      <div class="g3" style="margin-top:12px">${ARB1.map(([n, id, u, k]) => `<div><label class="f">${n}${tip(T[k])}</label>${f(id, u)}</div>`).join("")}</div>
+      <div class="note">Opłaca się, gdy RCE × ${fmt(num(c.hass, "number.ems_depozyt_mnoznik", 1.23), 2)} ≥ ${fmt(arbMin(c, winter ? "zima" : "lato"), 2, "zł")} (tania G12 0,61 / sprawność + zużycie + min. zysk) → próg RCE teraz ≈ <b>${fmt(arbMin(c, winter ? "zima" : "lato") / num(c.hass, "number.ems_depozyt_mnoznik", 1.23), 2, "zł")}</b>.</div>`,
+      ARB.filter(x => !x[3]).flatMap(([, k]) => [`number.ems_${k}_lato`, `number.ems_${k}_zima`]).concat(ARB1.map(x => x[1])))}
     <div class="g2">${EMS.map(([t, fs]) => c.group(t, `<div class="g3">${fs.map(([n, id, u, k]) => `<div><label class="f">${n}${tip(T[k])}</label>${f(id, u)}</div>`).join("")}</div>`, fs.map(x => x[1]))).join("")}</div>`;
   const lim = [["Max prąd ładowania baterii", `number.${d}_limit_twardy_max_prad_ladowania_baterii`, "A"], ["Max prąd rozładowania baterii", `number.${d}_limit_twardy_max_prad_rozladowania_baterii`, "A"],
     ["Prąd ładowania z sieci", `number.${d}_limit_twardy_prad_ladowania_z_sieci`, "A"], ["Max moc sprzedaży", `number.${d}_limit_twardy_max_moc_sprzedazy`, "W"],
@@ -43,6 +55,7 @@ export function render(c) {
   return `<div class="anchor"><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div>${ems}${limits}${inv}${rawbox}`;
 }
 export function bind(c, r) {
+  r.querySelectorAll("[data-ntog]").forEach(el => el.onclick = () => { const id = el.dataset.ntog, v = num(c.hass, id, 0) >= 0.5 ? 0 : 1; c.call("number", "set_value", { entity_id: id, value: v }); c.log(`Zmiana ${id} = ${v}`); });
   r.querySelectorAll("[data-go]").forEach(b => b.onclick = () => r.getElementById(b.dataset.go)?.scrollIntoView({ behavior: "smooth" }));
   r.querySelector("[data-unlock]")?.addEventListener("click", () => { raw.unlocked = raw.unlocked > Date.now() ? 0 : Date.now() + 300000; c.log(`Surowy rejestr ${raw.unlocked ? "ODBLOKOWANY" : "zablokowany"}`); c.render(true); });
   r.querySelectorAll("[data-raw]").forEach(i => { i.oninput = () => { raw[i.dataset.raw] = i.value; }; i.onfocus = () => { c._hold = true; }; i.onblur = () => { c._hold = false; }; });
