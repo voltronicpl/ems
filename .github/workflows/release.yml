@@ -1,0 +1,27 @@
+name: Release EMS
+# Po kazdym pushu na main: jesli wersja z manifest.json nie ma jeszcze release'a,
+# tworzy release vX.Y.Z z opisem z CHANGELOG.md (HACS pokazuje go w HA jako "co nowego").
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Utworz release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(python3 -c "import json;print(json.load(open('custom_components/ems/manifest.json'))['version'])")
+          if gh release view "v$V" >/dev/null 2>&1; then echo "v$V juz jest"; exit 0; fi
+          python3 - "$V" > notes.md <<'PY'
+          import sys, re
+          v = sys.argv[1]; t = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## v{re.escape(v)}\b.*?$(.*?)(?=^## v|\Z)", t, re.S | re.M)
+          print(m.group(1).strip() if m else f"EMS v{v}")
+          PY
+          gh release create "v$V" --target "$GITHUB_SHA" --title "v$V" --notes-file notes.md --latest
