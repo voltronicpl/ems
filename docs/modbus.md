@@ -28,4 +28,4 @@ RS485, 9600 bps, 8N1, Modbus RTU, adres 1. Odczyt 03H, zapis 10H (holding). Adre
 
 ## Odczyty
 
-Pełna lista w `esphome/ecobss.yaml` (sekcja `sensor`). Uwagi: radiator 641 = (raw − 1000) / 10; liczniki „łącznie” 32-bit, młodsze słowo pierwsze; moce S16.
+Uwagi: radiator 641 = (raw − 1000) / 10; liczniki „łącznie” 32-bit, młodsze słowo pierwsze; moce S16.
