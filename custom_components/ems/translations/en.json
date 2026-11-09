@@ -1,0 +1,1 @@
+{"config":{"step":{"user":{"title":"EMS","description":"Podaj nazwę urządzenia ESPHome dataloggera (prefiks encji).","data":{"device":"Urządzenie ESPHome"}}},"error":{"no_device":"Nie znaleziono sensor.<urządzenie>_bateria_soc. Sprawdź nazwę i czy datalogger jest dodany do HA."},"abort":{"already_configured":"To urządzenie jest już skonfigurowane."}}}
