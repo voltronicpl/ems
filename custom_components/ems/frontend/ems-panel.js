@@ -49,7 +49,7 @@ class EmsDashboard extends HTMLElement {
       <div class="pf-head"><div class="pf-brand"><div class="logo">⚡</div><div><h1>EMS</h1><div class="pf-sub">datalogger ${esc(this.dev)} · ostatni odczyt ${last ? new Date(last).toLocaleTimeString("pl-PL") : "–"} · v${ver}</div></div></div>
       <div class="tabs">${TABS.map((t, i) => `<button class="tab ${i === this.tab ? "on" : ""}" data-tab="${i}">${t.title}</button>`).join("")}</div></div>${body}</div></main>`;
     this.bind();
-    bindCharts(this.shadowRoot);
+    bindCharts(this.shadowRoot, () => this.render(true));
     if (T.bind) T.bind(this, this.shadowRoot);
   }
 

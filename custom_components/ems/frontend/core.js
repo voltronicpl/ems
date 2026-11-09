@@ -48,7 +48,56 @@ export function chart({ rows, bars = [], lines = [], hlines = [], zones = true, 
   return `<div class="fc-plot" data-chart="${id}"><svg class="fc-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="none">${g}<line class="cl" x1="0" x2="0" y1="${P.t}" y2="${P.t + ih}" style="display:none"/></svg><div class="fc-tip" style="display:none"></div></div><div class="legend">${legend}</div>`;
 }
 const CHARTS = {};
-export function bindCharts(root) {
+
+// ---------- Wykres "Moc i bateria" 1:1 jak w PGE Net-Billing (pwSvg) ----------
+// rows: sloty 15 min [{t: Date, ...}]; wartosci energii w kWh/slot -> rysowane jako srednia moc kW (×4).
+// areas: schodki z wypelnieniem do zera, lines: schodki bez wypelnienia ({k, c, name, sign, f: r => wartosc}),
+// prices: neonowe schodki na prawej osi zl/kWh ({k|f, c, name, act: r => bool} – gruba swiecaca linia gdy act),
+// socs: linie na osi % ({k, c, name, w, fill}), hlines: progi cenowe ({v, c, name}). key: stan pigulek legendy.
+export const PINK = "#ff2bd6", CYAN = "#00f5ff";
+export const G12_ZL = { cheap: 0.61, expensive: 1.25 };   // jak tariff.py (brutto energia + dystrybucja)
+export const g12Price = t => cheapAt(t) ? G12_ZL.cheap : G12_ZL.expensive;
+const OFF = {};
+const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100].find(s => span / s <= n) || 200;
+export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf }) {
+  if (!rows.length) return `<div class="nohist">Brak danych</div>`;
+  const off = OFF[key] = OFF[key] || {};
+  const id = "c" + (++CH), W = 1000, L = 50, R = 60, T = 16, B = 34, n = rows.length, bw = (W - L - R) / n, ih = h - T - B;
+  const x = i => L + i * bw, val = (s, r) => { const v = s.f ? s.f(r) : r[s.k]; return v == null || isNaN(v) ? null : (s.sign || 1) * v * (s.raw ? 1 : 4); };
+  const kw = [...areas, ...lines].filter(s => !off[s.name]).flatMap(s => rows.map(r => val(s, r))).filter(v => v != null);
+  let lo = Math.min(0, ...kw), hi = Math.max(1, ...kw); const st = niceStep(hi - lo, 6); lo = Math.floor(lo / st) * st; hi = Math.ceil(hi / st) * st;
+  const Y = v => T + (hi - v) / (hi - lo) * ih, YS = p => T + (100 - p) / 100 * ih;
+  const pv = prices.filter(p => !off[p.name]).flatMap(p => rows.map(r => p.f ? p.f(r) : r[p.k])).concat(hlines.map(l => l.v)).filter(v => v != null && !isNaN(v));
+  const pTop = Math.max(3, Math.ceil(Math.max(0, ...pv) * 2) / 2), YP = v => T + (pTop - Math.max(0, v)) / pTop * ih;
+  let g = `<defs><filter id="gl${id}" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+  rows.forEach((r, i) => { if (cheapAt(r.t)) g += `<rect x="${x(i)}" y="${T}" width="${bw + 0.3}" height="${ih}" class="pw-night"/>`; });
+  for (let v = lo; v <= hi + st / 1e6; v += st) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="${Math.abs(v) < st / 1e6 ? "zero" : "grid"}"/><text x="${L - 7}" y="${Y(v) + 4}" text-anchor="end" class="ax">${String(+v.toFixed(2)).replace(".", ",")}</text>`;
+  const pst = pTop > 4 ? 1 : 0.5; for (let v = 0; v <= pTop + 1e-9; v += pst) g += `<text x="${W - R + 6}" y="${YP(v) + 4}" class="ax pw-pax">${fmt(v, 2)}</text>`;
+  g += `<text x="4" y="12" class="unit">kW</text><text x="${W - R + 4}" y="12" class="unit pw-pax">zł/kWh</text>`;
+  const span = rows[n - 1].t - rows[0].t, every = span > 26 * 36e5 ? 3 : 2;
+  rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % every === 0) g += `${d.getHours() === 0 ? `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${T + ih}" class="vgrid"/>` : ""}<text x="${x(i)}" y="${h - 12}" text-anchor="middle" class="xl">${d.getHours() === 0 && span > 26 * 36e5 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0") + ":00"}</text>`; });
+  // schodki: jeden poziom na slot, przerwa gdy brak wartosci
+  const steps = (f, y) => { let d = "", on = false; rows.forEach((r, i) => { const v = f(r); if (v == null) { on = false; return; } d += on ? `V${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}` : `M${x(i).toFixed(1)} ${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; on = true; }); return d; };
+  for (const s of areas) { if (off[s.name]) continue; const d = steps(r => val(s, r), Y); if (!d) continue;
+    g += d.split("M").filter(Boolean).map(p => { const x0 = p.split(" ")[0]; return `<path d="M${p}V${Y(0).toFixed(1)}H${x0}Z" fill="${s.c}" opacity=".14"/>`; }).join("") + `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="1.5" stroke-linejoin="round" opacity=".9"/>`; }
+  for (const s of lines) { if (off[s.name]) continue; const d = steps(r => val(s, r), Y); if (d) g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 1.5}" stroke-linejoin="round" opacity=".9" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""}/>`; }
+  hlines.forEach(l => g += `<line x1="${L}" x2="${W - R}" y1="${YP(l.v)}" y2="${YP(l.v)}" stroke="${l.c}" stroke-dasharray="6 5" stroke-width="1.2" opacity=".7"/><text x="${W - R - 4}" y="${YP(l.v) - 4}" text-anchor="end" style="fill:${l.c};font-size:11px">${l.name}</text>`);
+  // neonowe ceny: cienka = cena w kwadransie, gruba ze swieceniem = wtedy kupuje / sprzedaje
+  for (const p of prices) { if (off[p.name]) continue; let d = "", hh = ""; rows.forEach((r, i) => { const v = p.f ? p.f(r) : r[p.k]; if (v == null || isNaN(v)) return; const s = `M${x(i).toFixed(1)} ${YP(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; d += s; if (p.act && p.act(r)) hh += s; });
+    g += (d ? `<path d="${d}" fill="none" stroke="${p.c}" stroke-width="1.6" opacity=".55"/>` : "") + (hh ? `<path d="${hh}" fill="none" stroke="${p.c}" stroke-width="4" stroke-linecap="round" filter="url(#gl${id})"/>` : ""); }
+  // SOC na wierzchu: lekkie wypelnienie + gruba linia
+  for (const s of socs) { if (off[s.name]) continue; const d = steps(r => r[s.k] == null ? null : r[s.k], YS); if (!d) continue;
+    if (s.fill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${YS(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".08"/>`).join("");
+    g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 3}" stroke-linejoin="round"/>`; }
+  if (socs.some(s => !off[s.name])) for (let p = 0; p <= 100; p += 25) g += `<text x="${L + 4}" y="${YS(p) - 3}" class="ax pw-sax">${p}%</text>`;
+  if (now) { const t = Date.now(), i = rows.findIndex(r => r.t.getTime() > t); if (i > 0) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${T + ih}" class="nowl"/><text x="${x(i) + 5}" y="${T + 12}" class="nowt">teraz</text>`; }
+  CHARTS[id] = { rows, P: { l: L }, bw, W, tipf };
+  const legend = [...prices, ...socs, ...areas, ...lines].map(s => `<button class="pw-lg${off[s.name] ? " off" : ""}" data-lg="${esc(key)}|${esc(s.name)}"><i style="background:${s.c}"></i>${s.name}</button>`).join("");
+  return `<div class="pw-legend">${legend}</div><div class="fc-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T}" y2="${T + ih}" style="display:none"/></svg><div class="fc-tip" style="display:none"></div></div>`;
+}
+
+export function bindCharts(root, rerender) {
+  root.querySelectorAll("[data-lg]").forEach(b => b.onclick = () => { const [k, nm] = b.dataset.lg.split("|"); const o = OFF[k] = OFF[k] || {}; o[nm] = !o[nm]; if (rerender) rerender(); });
   root.querySelectorAll("[data-chart]").forEach(el => {
     const c = CHARTS[el.dataset.chart]; if (!c) return;
     const svg = el.querySelector("svg"), cl = svg.querySelector(".cl"), tp = el.querySelector(".fc-tip");
@@ -108,6 +157,9 @@ input[type=range]{width:100%;accent-color:#2a8cff}
 .fc-tip{position:absolute;top:-6px;transform:translateX(-50%);background:#0d1c2a;border:1px solid #2b4459;border-radius:9px;padding:9px 12px;font-size:12.5px;pointer-events:none;box-shadow:0 8px 20px #0007;min-width:220px;z-index:5}
 .fc-tip .tt2{font-weight:700;margin-bottom:5px}.fc-tip div{display:flex;justify-content:space-between;gap:12px;margin-top:2px}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-top:6px}.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.pw-legend{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px}.pw-lg{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:13px;color:var(--mut2);padding:4px 10px;border:1px solid #1d3a55;border-radius:20px;background:transparent;cursor:pointer}.pw-lg.off{opacity:.35}.pw-lg i{width:14px;height:4px;border-radius:2px}
+.pw-svg .grid{stroke:#1a3246}.pw-svg .vgrid{stroke:#14293a;stroke-dasharray:none}.pw-svg .zero{stroke:#3b5a73;stroke-width:1.2}.pw-svg .ax,.pw-svg .xl,.pw-svg .unit{fill:var(--mut);font-size:13px}.pw-svg .pw-pax{fill:#00f5ff;opacity:.85}.pw-svg .pw-sax{fill:#3b8cff;opacity:.55;font-size:11px}
+.pw-svg .pw-night{fill:#3b8cff;opacity:.05}.pw-svg .nowl{stroke:#c9d7e2;stroke-dasharray:3 3;opacity:.6}.pw-svg .nowt{fill:#c9d7e2;font-size:12px}
 .nohist{color:#58778c;text-align:center;padding:40px;font-size:13px}
 .ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .date{display:flex;align-items:center;gap:8px;height:38px;padding:0 10px;border:1px solid #2a4f70;border-radius:9px;background:#0c1f30}.date input{background:transparent;border:0;color:var(--txt);color-scheme:dark;font-size:13.5px}

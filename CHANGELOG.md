@@ -1,5 +1,12 @@
 # Zmiany EMS
 
+## v0.4.1
+
+**Zmienione**
+- Wykresy planu w stylu „Moc i bateria” z PGE Net-Billing: jeden duży wykres zamiast kilku – schodki mocy (kW) z wypełnieniem, neonowe ceny (turkus = RCE, róż = G12; gruba świecąca linia = wtedy kupuje / sprzedaje), SOC na osi %, tania strefa G12 jako niebieski pas, klikane pigułki legendy.
+- Plan „Teraz + 24 h”: ładowanie, sprzedaż, PV, dom, SOC planu, ceny i progi na jednym wykresie.
+- Plan „Wstecz”: nasz EMS (ładowanie, sprzedaż, SOC) i stary EMS (sieć, SOC) na jednym wykresie.
+
 ## v0.4.0
 
 **Dodane**
