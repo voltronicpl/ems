@@ -8,11 +8,14 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import CONF_DEVICE, DOMAIN, READINGS
+from .plan_sensor import EmsPlanSensor
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     dev = entry.data[CONF_DEVICE]
-    async_add_entities(EmsReading(entry, dev, key, name) for key, name in READINGS.items())
+    ents = [EmsReading(entry, dev, key, name) for key, name in READINGS.items()]
+    ents.append(EmsPlanSensor(hass.data[DOMAIN][entry.entry_id]))
+    async_add_entities(ents)
 
 
 class EmsReading(SensorEntity):

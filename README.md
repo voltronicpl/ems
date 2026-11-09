@@ -15,6 +15,14 @@ Własny EMS dla falownika **ECOBSS FLEX 3L** (Modbus RTU) i domu: prognoza zuży
 2. HACS → Repozytoria niestandardowe → `https://github.com/voltronicpl/ems` (Integracja) → zainstaluj → restart HA.
 3. Ustawienia → Urządzenia → Dodaj integrację → **EMS** → podaj nazwę urządzenia ESPHome (domyślnie `ecobss`).
 
+## v0.3.0
+
+- **algorytm** (spec 7/7a): prognoza zużycia (te same dni tygodnia + temperatura) i PV (Open-Meteo + mnożniki lato/zima + korekta w trakcie dnia), ceny RCE z PSE (dziś + jutro), ładowanie w taniej strefie G12 tylko tyle, ile trzeba, sprzedaż w najdroższych slotach (progi tania/droga, „za bezcen”, limit dzienny ×PV), zapas na burzę, blokada eksportu za bezcen
+- **wyłącznik algorytmu**: wyłączony = działają Twoje ustawienia (EMS robi ich zdjęcie przy włączeniu i przywraca przy wyłączeniu)
+- **Kup teraz / Sprzedaj teraz** z wpisaną ilością kWh (działa też przy wyłączonym algorytmie)
+- **zakładka Diagnostyka**: logi na żywo z filtrem + pobieranie pliku z całego dnia (`/config/ems_logs/`, 14 dni)
+- kod w modułach: `prices`, `tariff`, `weather`, `pv_forecast`, `load_forecast`, `planner`, `executor`, `manual`, `diag`, `engine`; panel: `frontend/tabs/*.js`
+
 ## v0.2.0
 
 - panel **EMS** w pasku bocznym HA: Przegląd (na żywo), Plan, Parametry EMS, Konfiguracja inwertera (odczyt/zapis jak w PowerWallet, harmonogram TOU, limity twarde 🔒)

@@ -1,6 +1,6 @@
 """Stale integracji EMS."""
 DOMAIN = "ems"
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 CONF_DEVICE = "device"          # prefiks encji ESPHome, np. "ecobss"
 DEFAULT_DEVICE = "ecobss"
 POLL_NUMBER = "interwal_odczytu"
@@ -92,4 +92,39 @@ READINGS = {
     "bms_soh": "BMS SOH",
     "bms_napiecie_baterii": "BMS Napiecie Baterii",
     "pv_moc_suma": "PV Moc Suma",
+}
+
+# Parametry EMS: klucz -> (nazwa, min, max, krok, jednostka, domyslna). Edytowalne w panelu (Parametry EMS).
+PARAMS = {
+    "prog_tania_lato": ("Prog sprzedazy tania lato", 0, 5, 0.01, "zl", 1.10),
+    "prog_tania_zima": ("Prog sprzedazy tania zima", 0, 5, 0.01, "zl", 1.10),
+    "prog_droga_lato": ("Prog sprzedazy droga lato", 0, 5, 0.01, "zl", 2.40),
+    "prog_droga_zima": ("Prog sprzedazy droga zima", 0, 5, 0.01, "zl", 2.40),
+    "prog_bezcen_lato": ("Prog za bezcen lato", -1, 2, 0.01, "zl", 0.10),
+    "prog_bezcen_zima": ("Prog za bezcen zima", -1, 2, 0.01, "zl", 0.10),
+    "limit_sprzedazy_lato": ("Limit sprzedazy lato", 0, 5, 0.1, "x PV", 1.5),
+    "limit_sprzedazy_zima": ("Limit sprzedazy zima", 0, 5, 0.1, "x PV", 2.0),
+    "mn_slonecznie_lato": ("Mnoznik PV slonecznie lato", 0, 2, 0.01, "x", 1.0),
+    "mn_slonecznie_zima": ("Mnoznik PV slonecznie zima", 0, 2, 0.01, "x", 1.0),
+    "mn_pochmurno_lato": ("Mnoznik PV pochmurno lato", 0, 2, 0.01, "x", 1.0),
+    "mn_pochmurno_zima": ("Mnoznik PV pochmurno zima", 0, 2, 0.01, "x", 1.0),
+    "mn_deszcz_lato": ("Mnoznik PV deszcz lato", 0, 2, 0.01, "x", 1.0),
+    "mn_deszcz_zima": ("Mnoznik PV deszcz zima", 0, 2, 0.01, "x", 1.0),
+    "mn_snieg_lato": ("Mnoznik PV snieg lato", 0, 2, 0.01, "x", 1.0),
+    "mn_snieg_zima": ("Mnoznik PV snieg zima", 0, 2, 0.01, "x", 0.3),
+    "wsp_temp": ("Wspolczynnik temperatury (0 = auto)", 0, 10, 0.01, "kWh/°C", 0.0),
+    "soc_min": ("SOC minimalny", 5, 80, 1, "%", 25),
+    "soc_burza": ("SOC przy burzy", 10, 100, 1, "%", 50),
+    "soc_max": ("SOC maksymalny", 50, 100, 1, "%", 98),
+    "burza_wyprzedzenie_h": ("Burza - zapas od (h przed)", 0, 12, 0.5, "h", 3),
+    "pojemnosc_kwh": ("Pojemnosc baterii", 1, 100, 0.1, "kWh", 15.0),
+    "pv_kwp": ("Moc PV", 0, 50, 0.1, "kWp", 3.3),
+    "pv_sprawnosc": ("Sprawnosc instalacji PV", 30, 100, 1, "%", 80),
+    "pv_nachylenie": ("Nachylenie paneli", 0, 90, 1, "°", 35),
+    "pv_azymut": ("Azymut paneli (0 = poludnie)", -180, 180, 1, "°", 0),
+    "weekend_od_godz": ("Weekend od (piatek, godz.)", 0, 24, 0.5, "h", 15),
+}
+MANUAL = {
+    "kup_kwh": ("Kup energie teraz", 0, 30, 0.1, "kWh", 2.0),
+    "sprzedaj_kwh": ("Sprzedaj energie teraz", 0, 30, 0.1, "kWh", 2.0),
 }

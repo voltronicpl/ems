@@ -9,9 +9,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
+from . import diag
 from .const import CONF_DEVICE, DOMAIN, VERSION
+from .engine import Engine
 
-PLATFORMS = [Platform.SENSOR, Platform.NUMBER]
+PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SWITCH, Platform.BUTTON]
 STATIC = "/ems_static"
 PANEL_URL = f"{STATIC}/ems-panel.js?v={VERSION}"   # ?v= wymusza nowa wersje w przegladarce
 PANEL_PATH = "ems"
@@ -21,13 +23,18 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(STATIC, str(Path(__file__).parent / "frontend"), False)]
     )
+    diag.setup(hass)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data = hass.data.setdefault(DOMAIN, {})
-    data[entry.entry_id] = entry.data
+    engine = Engine(hass, entry.data[CONF_DEVICE], entry.entry_id)
+    data[entry.entry_id] = engine
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    engine.start()
+    entry.async_on_unload(engine.stop)
+    diag.get_logger("start").info("EMS %s uruchomiony (datalogger: %s)", VERSION, entry.data[CONF_DEVICE])
     if not data.get("_panel"):
         await panel_custom.async_register_panel(
             hass,
