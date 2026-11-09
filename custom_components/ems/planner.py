@@ -39,6 +39,9 @@ class Slot:
     cheap: bool
     storm: bool
     reserve: float
+    imp: float = 0.0     # pobor z sieci w slocie [kWh]
+    exp: float = 0.0     # oddanie do sieci w slocie [kWh]
+    why: str = ""        # powod decyzji (dla panelu)
 
 
 def daily_cap(day, pv_day: float, p: dict) -> float:
@@ -91,6 +94,7 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
     cap_left = {d: daily_cap(d, v, p) for d, v in pv_day.items()}
 
     sell = [0.0] * n
+    why_sell = [""] * n
     target = {}                                      # indeks bloku taniego -> docelowy SOC [%]
     soc_start = soc_now
     for bi, (a, b, is_ch) in enumerate(blocks):
@@ -104,6 +108,7 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
         thr_d = p[f"prog_droga_{season(slots[a])}"]
         bezcen = p[f"prog_bezcen_{season(slots[a])}"]
         cand = sorted((k for k in range(a, b) if price[k] is not None), key=lambda k: -price[k])
+        thr_of = {}
         # energia ponad potrzeby domu (z taniej strefy + nadwyzka PV)
         room_full = kwh(soc_max)
         start_kwh = room_full if bi > 0 and blocks[bi - 1][2] else kwh(soc_start)
@@ -117,16 +122,20 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                 continue
             if price[k] >= thr_d:
                 amt = min(sell_slot, cap_left[d])                       # drogo: sprzedaj nawet energie domu
+                thr_of[k] = f"RCE {price[k]:.2f} >= prog droga {thr_d:.2f}"
             elif price[k] >= thr_t:
                 amt = min(sell_slot, cap_left[d], spare - planned)
+                thr_of[k] = f"RCE {price[k]:.2f} >= prog tania {thr_t:.2f}, nadwyzka ponad potrzeby domu"
             elif price[k] >= bezcen and k >= first_pv and spare_pv - planned_pv > 0.01:
                 amt = min(sell_slot, cap_left[d], spare_pv - planned_pv, spare - planned)
                 planned_pv += max(amt, 0)
+                thr_of[k] = f"nadwyzka PV w jednym z najdrozszych okienek (RCE {price[k]:.2f})"
             else:
                 continue
             if amt <= 0.01:
                 continue
             sell[k] = amt
+            why_sell[k] = thr_of.get(k, "")
             planned += amt
             cap_left[d] -= amt
         # docelowy SOC na koniec poprzedniej taniej strefy
@@ -135,36 +144,52 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
             target[bi - 1] = min(soc_max, max(res_w, pct(want)))
         soc_start = res_w
 
-    # --- symulacja slot po slocie ----------------------------------------------------------------
+    # --- symulacja slot po slocie (z przeplywami sieci) ---------------------------------------------
     out: list[Slot] = []
     soc = soc_now
     for bi, (a, b, is_ch) in enumerate(blocks):
         tgt = target.get(bi, soc_max if is_ch and bi == len(blocks) - 1 else None)
         for k in range(a, b):
             e = kwh(soc)
-            act, grid = "self", 0.0
-            if is_ch and tgt is not None and soc < tgt - 0.5:
-                left = b - k
-                grid = min(ch_slot, (kwh(tgt) - e) / max(left, 1) * 2, kwh(tgt) - e)
-                e += grid
-                act = "charge"
+            act, grid, imp, exp, why = "self", 0.0, 0.0, 0.0, ""
+            bezcen = p[f"prog_bezcen_{season(slots[k])}"]
             net = pvk[k] - ld[k]
             if is_ch:
-                e += max(net, 0)                                   # dom z sieci, nadwyzka PV do baterii
+                imp += max(-net, 0)                                    # dom z sieci w taniej strefie
+                e += max(net, 0)
+                if tgt is not None and soc < tgt - 0.5:
+                    left = b - k
+                    grid = min(ch_slot, (kwh(tgt) - e) / max(left, 1) * 2, kwh(tgt) - e)
+                    if grid > 0.005:
+                        e += grid
+                        imp += grid
+                        act = "charge"
+                        why = f"tania strefa G12, cel {tgt:.0f}% (dom + sprzedaz do nastepnej taniej strefy, miejsce na PV)"
             else:
                 e += net
+                floor = kwh(reserve[k])
+                if e < floor:                                          # brak w baterii -> dom z sieci
+                    imp += floor - e
+                    e = floor
             if sell[k] > 0:
                 s_amt = min(sell[k], e - kwh(reserve[k]))
                 if s_amt > 0.01:
                     e -= s_amt
-                    act, grid = "sell", s_amt
-            bezcen = p[f"prog_bezcen_{season(slots[k])}"]
-            if act == "self" and price[k] is not None and price[k] < bezcen and e >= kwh(soc_max):
-                act = "block"
-            e = max(min(e, cap_kwh), kwh(min(reserve[k], soc)) if not is_ch else 0)
+                    exp += s_amt
+                    act, grid, why = "sell", s_amt, why_sell[k]
+            if e > cap_kwh:                                            # bateria pelna -> nadmiar PV
+                over = e - cap_kwh
+                e = cap_kwh
+                if price[k] is not None and price[k] < bezcen:
+                    act, why = "block", f"RCE {price[k]:.2f} < prog za bezcen {bezcen:.2f}, eksport zablokowany"
+                else:
+                    exp += over
+            if act == "self":
+                why = "zapas na burze" if reserve[k] > res_min else "autokonsumpcja"
             soc = pct(e)
             out.append(Slot(slots[k].isoformat(), act, round(grid, 3), price[k], round(soc, 1),
-                            round(pvk[k], 3), round(ld[k], 3), cheap[k], reserve[k] > res_min, reserve[k]))
+                            round(pvk[k], 3), round(ld[k], 3), cheap[k], reserve[k] > res_min, reserve[k],
+                            round(imp, 3), round(exp, 3), why))
 
     summ = {
         "ladowanie_kwh": round(sum(s.grid_kwh for s in out if s.action == "charge"), 2),
@@ -172,6 +197,8 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
         "przychod_zl": round(sum(s.grid_kwh * (s.price or 0) for s in out if s.action == "sell"), 2),
         "pv_kwh": round(sum(pvk), 2),
         "zuzycie_kwh": round(sum(ld), 2),
+        "import_kwh": round(sum(s.imp for s in out), 2),
+        "eksport_kwh": round(sum(s.exp for s in out), 2),
         "burza": bool(storm_slots),
         "horyzont_do": slots[-1].astimezone(WAW).strftime("%d.%m %H:%M"),
     }

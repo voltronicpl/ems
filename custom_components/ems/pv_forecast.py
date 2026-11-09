@@ -19,7 +19,7 @@ def forecast(slots: list[datetime], weather: dict, p: dict, intraday: float = 1.
             out[s] = 0.0
             continue
         mult = p[f"mn_{w['cat']}_{season(s)}"]
-        kw = w["gti"] / 1000 * p["pv_kwp"] * p["pv_sprawnosc"] / 100 * mult
+        kw = w["gti"] / 1000 * p["pv_moc_w"] / 1000 * p["pv_sprawnosc"] / 100 * mult
         out[s] = max(kw, 0) * 0.25 * (intraday if s.date() == slots[0].date() else 1.0)
     total = sum(out.values())
     LOG.info("PV prognoza: %.2f kWh w horyzoncie (korekta dnia x%.2f)", total, intraday)

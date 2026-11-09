@@ -42,6 +42,8 @@ class Engine:
         self._weather: dict = {}
         self._hist: dict = {}
         self._hist_at: datetime | None = None
+        self._busy = False
+        self._last_exec: datetime | None = None
 
     # --- odczyty z dataloggera -----------------------------------------------------------------
     def r(self, key: str, default=None):
@@ -69,8 +71,7 @@ class Engine:
 
     # --- cykle --------------------------------------------------------------------------------
     def start(self) -> None:
-        self._unsubs.append(async_track_time_interval(self.hass, self._tick_plan, timedelta(minutes=15)))
-        self._unsubs.append(async_track_time_interval(self.hass, self._tick_exec, timedelta(minutes=1)))
+        self._unsubs.append(async_track_time_interval(self.hass, self._tick, timedelta(seconds=10)))
         self.hass.async_create_task(self.replan("start"))
 
     def stop(self) -> None:
@@ -79,12 +80,21 @@ class Engine:
         self._unsubs.clear()
 
     @callback
-    def _tick_plan(self, _now) -> None:
-        self.hass.async_create_task(self.replan("co 15 min"))
+    def _tick(self, _now) -> None:
+        now = datetime.now(timezone.utc)
+        if self._busy:
+            return
+        if not self.last_plan or now - self.last_plan >= timedelta(minutes=self.p["plan_co_min"]):
+            self.hass.async_create_task(self._guard(self.replan(f"co {int(self.p['plan_co_min'])} min")))
+        elif not self._last_exec or now - self._last_exec >= timedelta(seconds=self.p["zapis_co_s"]):
+            self.hass.async_create_task(self._guard(self.execute()))
 
-    @callback
-    def _tick_exec(self, _now) -> None:
-        self.hass.async_create_task(self.execute())
+    async def _guard(self, coro) -> None:
+        self._busy = True
+        try:
+            await coro
+        finally:
+            self._busy = False
 
     def push(self) -> None:
         async_dispatcher_send(self.hass, SIGNAL)
@@ -94,7 +104,7 @@ class Engine:
             LOG.info("=== Przeliczanie planu (%s) ===", why)
             now = datetime.now(timezone.utc)
             today = now.astimezone(WAW).date()
-            if not self._prices or now.astimezone(WAW).minute < 15 or why != "co 15 min":
+            if not self._prices or now.astimezone(WAW).minute < 15 or not why.startswith("co "):
                 self._prices = await prices.fetch(self.hass, [today, today + timedelta(days=1)])
             lat, lon = self.hass.config.latitude, self.hass.config.longitude
             self._weather = await weather.fetch(self.hass, lat, lon, self.p["pv_nachylenie"], self.p["pv_azymut"]) or self._weather
@@ -125,18 +135,20 @@ class Engine:
             LOG.info("SOC %.0f%%, max ladowanie %.0f W, max sprzedaz %.0f W, ceny do %s",
                      soc, ch_w, sell_w, last.astimezone(WAW).strftime("%d.%m %H:%M"))
             res, summ = plan(slots, self._prices, pvk, ldk, self._weather, soc, self.p,
-                             self.p["pojemnosc_kwh"], ch_w, sell_w)
+                             self.p["pojemnosc_wh"] / 1000, ch_w, sell_w)
             self.plan = as_dicts(res)
             self.summary = {**summ, "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2)}
             self.last_plan = now
             self.error = None
         except Exception as err:  # noqa: BLE001
             self.error = str(err)
+            self.last_plan = datetime.now(timezone.utc)          # nie powtarzaj co 10 s - nastepna proba w kolejnym cyklu
             LOG.exception("Blad przeliczania planu: %s", err)
         self.push()
         await self.execute()
 
     async def execute(self) -> None:
+        self._last_exec = datetime.now(timezone.utc)
         try:
             ch_w, sell_w = self.limits()
             if self.manual:
@@ -179,7 +191,7 @@ class Engine:
         self.push()
 
     async def start_manual(self, kind: str) -> None:
-        kwh = self.p["kup_kwh" if kind == "buy" else "sprzedaj_kwh"]
+        kwh = self.p["kup_wh" if kind == "buy" else "sprzedaj_wh"] / 1000
         if kwh <= 0:
             LOG.warning("Reczne %s: ilosc 0 kWh - pomijam", kind)
             return

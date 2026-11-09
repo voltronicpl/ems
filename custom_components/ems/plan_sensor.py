@@ -28,7 +28,7 @@ class EmsPlanSensor(EmsEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         e = self.engine
         return {
-            "plan": [{k: s[k] for k in ("start", "action", "grid_kwh", "price", "soc", "pv", "load", "cheap", "storm")} for s in e.plan],
+            "plan": [{k: s[k] for k in ("start", "action", "grid_kwh", "price", "soc", "pv", "load", "cheap", "storm", "imp", "exp", "why")} for s in e.plan],
             "podsumowanie": e.summary,
             "reczne": e.manual.info() if e.manual else None,
             "algorytm": e.enabled,

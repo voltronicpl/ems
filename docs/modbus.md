@@ -29,3 +29,7 @@ RS485, 9600 bps, 8N1, Modbus RTU, adres 1. Odczyt 03H, zapis 10H (holding). Adre
 ## Odczyty
 
 Uwagi: radiator 641 = (raw − 1000) / 10; liczniki „łącznie” 32-bit, młodsze słowo pierwsze; moce S16.
+
+## Rejestry w grupach panelu (Ustawienia → Inwerter)
+
+Pełna lista z adresami: `custom_components/ems/frontend/inverter_spec.js` (pole `r`). Dodatkowo: 162–164 czas systemowy (rok−2000<<8|miesiąc, dzień<<8|godzina, minuta<<8|sekunda) – przycisk „Ustaw czas z HA”; surowy odczyt/zapis dowolnego rejestru po odblokowaniu.

@@ -15,6 +15,16 @@ Własny EMS dla falownika **ECOBSS FLEX 3L** (Modbus RTU) i domu: prognoza zuży
 2. HACS → Repozytoria niestandardowe → `https://github.com/voltronicpl/ems` (Integracja) → zainstaluj → restart HA.
 3. Ustawienia → Urządzenia → Dodaj integrację → **EMS** → podaj nazwę urządzenia ESPHome (domyślnie `ecobss`).
 
+## v0.4.0
+
+- panel w stylu PGE Net-Billing; zakładki: **Przegląd | Plan | Ustawienia | Diagnostyka**
+- **Plan**: wykres 15 min jak w PGE (ładowanie/sprzedaż/PV/dom, cena RCE z progami, strefy G12, kursor z powodem decyzji), SOC, kafelki, tabela akcji z kolumną „dlaczego”, osobne wykresy prognozy PV i zużycia (z faktem), harmonogram TOU falownika
+- **Wstecz**: symulacja naszego EMS na prawdziwej historii (od pierwszego dnia danych, stary sniffer + datalogger) i bilans w zł vs poprzedni EMS: dzień po dniu, miesiące, razem
+- **Ustawienia** = część EMS (lato | zima, odpytywanie i przeliczanie, bateria, PV w Wp, prognozy) + 🔒 limity twarde (edytowalne wszędzie) + część Inwerter (cały Modbus w grupach jak w PowerWallet) + surowy rejestr po odblokowaniu
+- dymki ⓘ przy wszystkim: co to / jak działa / ➕ / ➖
+- wartości wpisywane w jednostkach bazowych (W, Wh, A, V); sumy w kWh
+- opis algorytmu i encji: `docs/ALGORYTM.md`
+
 ## v0.3.0
 
 - **algorytm** (spec 7/7a): prognoza zużycia (te same dni tygodnia + temperatura) i PV (Open-Meteo + mnożniki lato/zima + korekta w trakcie dnia), ceny RCE z PSE (dziś + jutro), ładowanie w taniej strefie G12 tylko tyle, ile trzeba, sprzedaż w najdroższych slotach (progi tania/droga, „za bezcen”, limit dzienny ×PV), zapas na burzę, blokada eksportu za bezcen

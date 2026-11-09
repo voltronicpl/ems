@@ -72,6 +72,7 @@ def setup(hass: HomeAssistant) -> None:
     root.setLevel(logging.DEBUG)
     hass.http.register_view(LogsView)
     hass.http.register_view(LogDownloadView)
+    hass.http.register_view(LogPostView)
 
 
 class LogsView(HomeAssistantView):
@@ -105,3 +106,20 @@ class LogDownloadView(HomeAssistantView):
         if not f or not f.exists():
             return self.json_message("brak logu z tego dnia", 404)
         return web.FileResponse(f, headers={"Content-Disposition": f'attachment; filename="ems-{day}.log"'})
+
+
+class LogPostView(HomeAssistantView):
+    """POST /api/ems/log {"msg": "..."} - akcje z panelu (np. surowy zapis) trafiaja do logu dnia."""
+
+    url = "/api/ems/log"
+    name = "api:ems:log"
+    requires_auth = True
+
+    async def post(self, request):
+        try:
+            msg = str((await request.json()).get("msg", ""))[:500]
+        except ValueError:
+            return self.json_message("zly JSON", 400)
+        user = request.get("hass_user")
+        get_logger("panel").info("%s (%s)", msg, user.name if user else "?")
+        return self.json({"ok": True})

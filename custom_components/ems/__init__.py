@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 
 from . import diag
 from .const import CONF_DEVICE, DOMAIN, VERSION
+from .backtest import BacktestView
 from .engine import Engine
 
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SWITCH, Platform.BUTTON]
@@ -24,6 +25,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         [StaticPathConfig(STATIC, str(Path(__file__).parent / "frontend"), False)]
     )
     diag.setup(hass)
+    hass.http.register_view(BacktestView)
     return True
 
 

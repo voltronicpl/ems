@@ -1,6 +1,6 @@
 """Stale integracji EMS."""
 DOMAIN = "ems"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 CONF_DEVICE = "device"          # prefiks encji ESPHome, np. "ecobss"
 DEFAULT_DEVICE = "ecobss"
 POLL_NUMBER = "interwal_odczytu"
@@ -117,14 +117,20 @@ PARAMS = {
     "soc_burza": ("SOC przy burzy", 10, 100, 1, "%", 50),
     "soc_max": ("SOC maksymalny", 50, 100, 1, "%", 98),
     "burza_wyprzedzenie_h": ("Burza - zapas od (h przed)", 0, 12, 0.5, "h", 3),
-    "pojemnosc_kwh": ("Pojemnosc baterii", 1, 100, 0.1, "kWh", 15.0),
-    "pv_kwp": ("Moc PV", 0, 50, 0.1, "kWp", 3.3),
+    "pojemnosc_wh": ("Pojemnosc baterii", 1000, 100000, 100, "Wh", 15000),
+    "pv_moc_w": ("Moc PV", 0, 50000, 10, "Wp", 3300),
     "pv_sprawnosc": ("Sprawnosc instalacji PV", 30, 100, 1, "%", 80),
     "pv_nachylenie": ("Nachylenie paneli", 0, 90, 1, "°", 35),
     "pv_azymut": ("Azymut paneli (0 = poludnie)", -180, 180, 1, "°", 0),
+    "depozyt_mnoznik": ("Mnoznik depozytu prosumenckiego", 1, 2, 0.01, "x", 1.23),
+    "plan_co_min": ("Przeliczanie planu co", 1, 60, 1, "min", 15),
+    "zapis_co_s": ("Zapis do falownika co", 10, 600, 5, "s", 60),
     "weekend_od_godz": ("Weekend od (piatek, godz.)", 0, 24, 0.5, "h", 15),
 }
 MANUAL = {
-    "kup_kwh": ("Kup energie teraz", 0, 30, 0.1, "kWh", 2.0),
-    "sprzedaj_kwh": ("Sprzedaj energie teraz", 0, 30, 0.1, "kWh", 2.0),
+    "kup_wh": ("Kup energie teraz", 0, 30000, 100, "Wh", 2000),
+    "sprzedaj_wh": ("Sprzedaj energie teraz", 0, 30000, 100, "Wh", 2000),
 }
+
+# Stary sniffer (historia sprzed dataloggera ESPHome) - prefiks encji w HA
+OLD_PREFIX = "modbus_falownik"
