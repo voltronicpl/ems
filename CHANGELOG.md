@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.24
+- Nowy parametr „Max pobór z sieci (przyłącze)” (domyślnie 10 000 W, Ustawienia → Limity): przy ładowaniu z sieci moc ładowania = limit − dom − 300 W, kroki 500 W, zmiana najwyżej co 60 s. Algorytm i ręczne Kup.
+
 ## 0.6.23
 - Przegląd: kafle PGE i depozyt zaraz pod kaflami, potem Energia + Profil mocy, Sterowanie pod wykresem.
 

@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+import time
+
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -162,7 +164,26 @@ class Executor:
         pts = sorted(((t.hour * 100 + (t.minute // 5) * 5, m) for t, m in segs), key=lambda x: x[0])
         return pts
 
+    def _grid_cap(self, p: dict) -> float | None:
+        """Max pobor z sieci: moc ladowania baterii = limit - aktualny dom - 300 W zapasu (straty), w krokach 500 W.
+        Zmiana dopiero o >= 500 W i nie czesciej niz co 60 s (falownik zapisywany tylko przy zmianie)."""
+        lim = float(p.get("max_pobor_w", 10000) or 0)
+        dom = self.val(self.eid("sensor", "obciazenie_moc_suma"))
+        if lim <= 0 or dom is None:
+            return getattr(self, "_cap_w", None)
+        new = max(0.0, (lim - float(dom) - 300) // 500 * 500)
+        old, at = getattr(self, "_cap_w", None), getattr(self, "_cap_at", 0.0)
+        now = time.monotonic()
+        if old is None or (abs(new - old) >= 500 and now - at >= 60):
+            if old is not None:
+                LOG.info("Max pobór z sieci %d W: dom %d W -> moc ładowania baterii %d W (było %d W)", lim, float(dom), new, old)
+            self._cap_w, self._cap_at = new, now
+        return self._cap_w
+
     async def apply(self, plan: list[dict], p: dict, max_charge_w: float, max_sell_w: float, current: dict | None) -> None:
+        cap = self._grid_cap(p)
+        if cap is not None and cap < max_charge_w:
+            max_charge_w = cap                                # ladowanie z sieci (algorytm i reczne) w granicy przylacza
         pts = self.points(plan, p, max_charge_w, max_sell_w)
         if not pts:
             LOG.warning("Brak planu na najblizsze 24 h - nic nie zapisuje")
