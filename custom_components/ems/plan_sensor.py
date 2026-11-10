@@ -36,6 +36,7 @@ class EmsPlanSensor(EmsEntity, SensorEntity):
             "blad": e.error,
             "ostatni_zapis_tou": e.exec.last_write.isoformat() if e.exec.last_write else None,
             "pmax_zakupu": e.exec.peak.status or None,
+            "sprzedaz_ostrzezenie": e.exec.sell_warn,
         }
 
 

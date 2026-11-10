@@ -32,6 +32,9 @@ class Executor:
         self.last_points: list | None = None
         self.last_write: datetime | None = None       # ostatni zapis EMS do TOU
         self._pmax_saved: float | None = None          # Twoja wartosc "Pmax sprzedazy" sprzed slotu sprzedazy
+        self._exp_rej = 0                                # ile razy falownik sam cofnal tryb sprzedazy w biezacej sprzedazy
+        self._exp_set = False
+        self.sell_warn: str | None = None
         self.peak = PeakShave(hass, dev, entry_id)      # "Pmax zakupu" (Grid Peak Shaving) – TYLKO odczyt, nigdy zapis
 
     # --- encje -------------------------------------------------------------------------------
@@ -45,7 +48,14 @@ class Executor:
                     self.eid("number", f"tou_{p}_soc"), self.eid("switch", f"tou_{p}_ladowanie_z_sieci"),
                     self.eid("number", f"tou_{p}_autokonsumpcja_do"), self.eid("number", f"tou_{p}_sprzedaj_do")]
         return out + [self.eid("switch", "harmonogram_tou"), self.eid("switch", "ladowanie_z_sieci_dozwolone"),
-                      self.eid("select", "tryb_limitu_eksportu"), self.eid("switch", "sprzedaj_nadwyzke_pv")]
+                      self.eid("select", "tryb_limitu_eksportu"), self.eid("switch", "sprzedaj_nadwyzke_pv"),
+                      self.eid("select", "priorytet_energii")]
+
+    def _opt(self, entity: str, *keys: str) -> str | None:
+        st = self.hass.states.get(entity)
+        opts = (st.attributes.get("options") if st else None) or []
+        norm = lambda x: x.lower().translate(str.maketrans("ąćęłńóśźż", "acelnoszz")).replace(" ", "")  # noqa: E731
+        return next((o for o in opts if all(k in norm(o) for k in keys)), None)
 
     def export_option(self, want: str) -> str | None:
         """Nazwa opcji trybu eksportu taka, jaka jest w ESPHome (bez polskich znakow / wielkosci liter); None + blad w logu, gdy brak."""
@@ -183,7 +193,22 @@ class Executor:
         elif self._pmax_saved is not None:
             await self.set(pmax, self._pmax_saved, "koniec sprzedazy: przywracam Twoja wartosc")
             self._pmax_saved = None
+        # priorytet energii: zawsze "Najpierw bateria" (decyzja uzytkownika)
+        pr = self._opt(self.eid("select", "priorytet_energii"), "bater")
+        if pr:
+            await self.set(self.eid("select", "priorytet_energii"), pr, "EMS: najpierw bateria")
+        mode_e = self.eid("select", "tryb_limitu_eksportu")
         opt = self.export_option(EXPORT_ON if act == "sell" else EXPORT_OFF)
-        if opt:
-            await self.set(self.eid("select", "tryb_limitu_eksportu"), opt, f"biezacy slot: {act}")
+        if act != "sell":
+            self._exp_rej, self._exp_set, self.sell_warn = 0, False, None
+        elif self._exp_set and self.val(mode_e) != opt:
+            self._exp_rej += 1                                  # zapisalismy "sprzedaz", a falownik sam wrocil
+            LOG.warning("Falownik sam cofnal tryb eksportu na '%s' (%d. raz w tej sprzedazy)", self.val(mode_e), self._exp_rej)
+        if act == "sell" and self._exp_rej >= 2:
+            if not self.sell_warn:
+                self.sell_warn = "Falownik odrzuca sprzedaż (sam wraca na „Limit wbudowany”). EMS przestał go przestawiać – sprawdź na LCD Tryb pracy (Pmax zakupu i inne blokady)."
+                LOG.error("%s", self.sell_warn)
+        elif opt:
+            await self.set(mode_e, opt, f"biezacy slot: {act}")
+            self._exp_set = act == "sell"
         self.last_points = pts

@@ -1,5 +1,12 @@
 # Zmiany EMS
 
+## v0.6.16
+
+**Zmienione**
+- **Priorytet energii zawsze „Najpierw bateria”** (decyzja użytkownika) – EMS ustawia go przy każdym wykonaniu planu / zlecenia (zapis tylko przy zmianie), jest w snapshocie.
+- Koniec „przepychanki” o tryb eksportu: gdy w trakcie sprzedaży falownik **dwa razy sam cofnie** „Sprzedaż włączona” na „Limit wbudowany”, EMS przestaje go przestawiać co minutę i pokazuje ⚠ w Przeglądzie („Falownik odrzuca sprzedaż – sprawdź na LCD Tryb pracy”). Nowe zlecenie / następna sprzedaż próbuje od nowa.
+- Sprawdzenie „Pmax zakupu” (tylko odczyt 278) zawsze w logu: wartość i stan.
+
 ## v0.6.15
 
 **Zmienione (decyzja użytkownika)**

@@ -74,6 +74,7 @@ class PeakShave:
         if v is None:
             self._state(None, "Brak odczytu Pmax zakupu (rejestr 278) – nie wiem, czy blokuje sprzedaż")
             return
+        LOG.info("Sprawdzenie Pmax zakupu: 278 = 0x%04X -> %s", v, "WLACZONY" if (v & MASK) == ON else "wylaczony")
         if (v & MASK) == ON:
             msg = "Pmax zakupu jest WŁĄCZONY – blokuje sprzedaż. Wyłącz go na LCD (Tryb pracy); EMS go nie zmienia."
             if not (self.status or {}).get("wlaczony"):
