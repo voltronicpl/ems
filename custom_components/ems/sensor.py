@@ -16,6 +16,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     ents = [EmsReading(entry, dev, key, name) for key, name in READINGS.items()]
     eng = hass.data[DOMAIN][entry.entry_id]
     ents += [EmsPlanSensor(eng), EmsManualSensor(eng, "kup"), EmsManualSensor(eng, "sprzedaj")]
+    ents += [PgeSensor(eng, entry, *spec) for spec in PGE_SENSORS]
     async_add_entities(ents)
 
 
@@ -57,3 +58,65 @@ class EmsReading(SensorEntity):
             self._attr_native_value = float(st.state)
         except ValueError:
             self._attr_native_value = st.state
+
+
+# ---------- Rozliczenie PGE (dawna integracja PGE Net-Billing) ----------
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass  # noqa: E402
+
+PGE_SENSORS = [
+    ("import_s1", "Pobór S1", "kWh"), ("import_s2", "Pobór S2", "kWh"),
+    ("export_kwh", "Eksport", "kWh"), ("energy_cost", "Koszt energii netto", "PLN"),
+    ("distribution_cost", "Koszt dystrybucji zmiennej netto", "PLN"),
+    ("export_value", "Wartość eksportu (szacunek)", "PLN"),
+    ("unpriced_export_kwh", "Eksport bez ceny RCE", "kWh"),
+    ("deposit_estimate", "Saldo depozytu (prognoza)", "PLN"),
+    ("deposit_available", "Depozyt dostępny teraz", "PLN"),
+    ("deposit_pending", "Depozyt naliczany w tym miesiącu", "PLN"),
+    ("deposit_next_month", "Depozyt dostępny od przyszłego miesiąca", "PLN"),
+    ("deposit_previous_month", "Depozyt na koniec poprzedniego miesiąca", "PLN"),
+    ("deposit_added", "Depozyt naliczony łącznie", "PLN"),
+    ("deposit_used", "Depozyt wykorzystany łącznie", "PLN"),
+    ("deposit_expired", "Depozyt wygasły łącznie", "PLN"),
+    ("variable_cost_gross", "Koszt zmienny brutto", "PLN"),
+    ("net_energy_estimate", "Energia po depozycie (miesiąc)", "PLN"),
+    ("fixed_monthly", "Opłaty stałe miesięcznie brutto", "PLN"),
+    ("rce_current", "Aktualna RCE brutto", "PLN/kWh"),
+    ("pending_export_kwh", "Eksport oczekujący na RCE", "kWh"),
+    ("data_gaps", "Niekompletne pomiary", ""),
+    ("invoice_forecast", "Prognoza rachunku za bieżący miesiąc", "PLN"),
+]
+PGE_CUMULATIVE = {"energy_cost", "distribution_cost", "export_value"}
+PGE_SNAPSHOT = {"invoice_forecast", "deposit_estimate", "rce_current", "deposit_available", "deposit_next_month", "deposit_previous_month", "deposit_pending"}
+
+
+class PgeSensor(SensorEntity):
+    """Szacunek rozliczenia PGE; translation_key = pge_<klucz> (po nim zakladka PGE znajduje encje)."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(self, eng, entry: ConfigEntry, key: str, label: str, unit: str) -> None:
+        self.eng, self.key = eng, key
+        self._attr_name = label
+        self._attr_unique_id = f"{entry.entry_id}_pge_{key}"
+        self._attr_translation_key = f"pge_{key}"
+        self._attr_native_unit_of_measurement = unit or None
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, f"{entry.entry_id}_pge")}, name="EMS – rozliczenie PGE", manufacturer="EMS")
+        if unit == "kWh":
+            self._attr_state_class = SensorStateClass.TOTAL
+        elif key in PGE_CUMULATIVE:
+            self._attr_device_class = SensorDeviceClass.MONETARY
+            self._attr_state_class = SensorStateClass.TOTAL
+        elif key in PGE_SNAPSHOT:
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def extra_state_attributes(self):
+        return {"note": "Szacunek lokalny, nie oficjalne rozliczenie PGE", **self.eng.pge.attributes(self.key)}
+
+    @property
+    def native_value(self):
+        return self.eng.pge.value(self.key)
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(self.eng.pge.subscribe(self.async_write_ha_state))

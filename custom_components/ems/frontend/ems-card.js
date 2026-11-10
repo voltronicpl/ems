@@ -33,6 +33,8 @@ ha-card{overflow:hidden;background:#05080e;border-radius:var(--ha-card-border-ra
 .bat{flex:none;position:relative;width:6.2cqw;height:13cqw;border:.5cqw solid #4fd1ff;border-radius:1.2cqw;box-shadow:0 0 1.6cqw #4fd1ff88;display:flex;flex-direction:column-reverse;gap:.5cqw;padding:.6cqw}
 .bat::before{content:"";position:absolute;top:-1.6cqw;left:50%;transform:translateX(-50%);width:2.4cqw;height:1cqw;background:#4fd1ff;border-radius:.4cqw .4cqw 0 0}
 .bat i{flex:1;border-radius:.5cqw;background:#1b2a36}.bat i.on{background:currentColor;box-shadow:0 0 1.2cqw currentColor}
+.pge{display:flex;justify-content:space-around;gap:8px;padding:8px 12px 10px;font-family:var(--paper-font-body1_-_font-family,Roboto,system-ui,sans-serif);color:#cbd5e1;font-size:13px;border-top:1px solid #1d3347;background:#081420}
+.pge b{display:block;color:#fff;font-size:16px;font-variant-numeric:tabular-nums}.pge .rd{color:#ff5d6c}.pge .gr{color:#3ee07a}
 ${FLOW_CSS}`;
 
 class EmsCard extends HTMLElement {
@@ -41,7 +43,7 @@ class EmsCard extends HTMLElement {
   static getStubConfig() { return { device: "ecobss" }; }
   _init() {
     this._root = this.attachShadow({ mode: "open" });
-    this._root.innerHTML = `<style>${CSS}</style><ha-card><div class="c"><img src="${BG}" alt="EMS"><div id="f"></div><div id="t"></div></div></ha-card>`;
+    this._root.innerHTML = `<style>${CSS}</style><ha-card><div class="c"><img src="${BG}" alt="EMS"><div id="f"></div><div id="t"></div></div><div id="pge"></div></ha-card>`;
     this._root.querySelector("ha-card").onclick = () => { history.pushState(null, "", this._c.navigate); window.dispatchEvent(new CustomEvent("location-changed")); };
   }
   set hass(h) { this._h = h; const n = Date.now(); if (!this._t || n - this._t > 2000) { this._t = n; this._draw(); } }
@@ -61,6 +63,10 @@ class EmsCard extends HTMLElement {
       box("dom", `<div class="lab"><span style="color:#60c8ff;display:flex">${icR("home", 24)}</span>Dom</div><div class="val">${W(dom)}</div><div class="sub">Dziś: ${fmt(v("energia_zuzycie_dom_dzisiaj"), 1, "kWh")}</div>`, "dom") +
       box("grid", `<div class="ic">${icR("tower", 40)}</div><div class="tx"><div class="lab">Sieć</div><div class="val">${W(grid)}</div><div class="sub ${grid > 20 ? "rd" : grid < -20 ? "bl" : ""}">${grid > 20 ? "Pobór" : grid < -20 ? "Oddawanie" : "–"}</div>
         <div class="sub">Import <span class="rd">${fmt(v("energia_siec_import_dzisiaj"), 1, "kWh")}</span></div><div class="sub">Eksport <span class="bl">${fmt(v("energia_siec_export_dzisiaj"), 1, "kWh")}</span></div></div>`);
+    // wiersz rozliczenia PGE (encje EMS z translation_key pge_*)
+    const reg = Object.values(h.entities || {}), pid = k => reg.find(x => x.platform === "ems" && x.translation_key === "pge_" + k)?.entity_id;
+    const inv = num(h, pid("invoice_forecast")), dep = num(h, pid("deposit_estimate")), mies = new Date().toLocaleDateString("pl-PL", { month: "long" });
+    this._root.getElementById("pge").innerHTML = pid("invoice_forecast") ? `<div class="pge"><div>Rachunek PGE – ${mies}<b class="${inv > 0 ? "rd" : "gr"}">${fmt(inv, 2, "zł")}</b></div><div>Depozyt<b class="gr">${fmt(dep, 2, "zł")}</b></div></div>` : "";
   }
 }
 if (!customElements.get("ems-card")) customElements.define("ems-card", EmsCard);

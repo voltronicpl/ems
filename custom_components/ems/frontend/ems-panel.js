@@ -2,7 +2,7 @@
 import { S, num, g12, CSS, esc, bindCharts, ui } from "./core.js";
 const V = new URL(import.meta.url).search;
 const LOGO = new URL("./logo.png", import.meta.url).href, BG = new URL("./bg.jpg", import.meta.url).href;   // logo w naglowku (sciezka z wersja -> bez starego cache)             // ?v=wersja -> takze dla modulow zakladek
-const NAMES = ["overview", "plan", "settings", "diag"];
+const NAMES = ["overview", "pge", "plan", "settings", "diag"];
 const TABS = await Promise.all(NAMES.map(n => import(`./tabs/${n}.js${V}`)));
 
 class EmsDashboard extends HTMLElement {

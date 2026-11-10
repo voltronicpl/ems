@@ -16,6 +16,26 @@ function srcBox(c) {
   return `<div class="box" id="s-src"><div class="h"><span>📚 Historia do nauki (stare encje)${tip({ co: "Liczniki narastające kWh (lub moc W) z HA sprzed dataloggera. EMS uczy się z nich: konsumpcja domu → prognoza zużycia (do 365 dni), pompa ciepła → osobny model wg temperatury, produkcja PV → kalibracja prognozy PV. Dane z dataloggera mają pierwszeństwo." })}</span><span class="lab">${esc(SRC.msg)}</span></div>
     ${opts}<div class="g3">${rows}</div><div class="btns"><button class="btn pri" data-srcsave>Zapisz</button></div></div>`;
 }
+
+// Rozliczenie PGE (dawna integracja PGE Net-Billing) – /api/ems/pge
+const PGE = { d: null, busy: false, edit: {}, msg: "" };
+const PGE_LAB = { start_date: ["Początek rozliczenia", "RRRR-MM-DD"], initial_deposit: ["Depozyt startowy", "zł"], buy_s1: ["Energia – strefa dzienna (S1)", "zł/kWh netto"], buy_s2: ["Energia – strefa nocna (S2)", "zł/kWh netto"],
+  distribution_s1: ["Dystrybucja zmienna S1", "zł/kWh netto"], distribution_s2: ["Dystrybucja zmienna S2", "zł/kWh netto"], quality: ["Opłata jakościowa", "zł/kWh"], cogen: ["Opłata kogeneracyjna", "zł/kWh"], oze: ["Opłata OZE", "zł/kWh"],
+  fixed_trade: ["Opłata handlowa", "zł/mies."], fixed_power: ["Opłata mocowa", "zł/mies."], fixed_network: ["Opłata sieciowa stała", "zł/mies."], fixed_subscription: ["Opłata abonamentowa", "zł/mies."],
+  vat: ["VAT", "ułamek"], rce_price: ["Stała cena RCE (0 = z PSE)", "zł/kWh"], rce_multiplier: ["Mnożnik depozytu RCE", "×"] };
+const PGE_ENT = { import_entity: "Licznik importu z sieci (kWh)", export_entity: "Licznik eksportu do sieci (kWh)", pv_power_entity: "Moc PV", battery_power_entity: "Moc baterii", battery_soc_entity: "SOC baterii",
+  load_power_entity: "Moc domu", grid_power_entity: "Moc sieci", grid_import_total_entity: "Import łącznie (falownik)", grid_export_total_entity: "Eksport łącznie (falownik)", pv_total_entity: "PV łącznie",
+  battery_charge_total_entity: "Bateria ładowanie łącznie", battery_discharge_total_entity: "Bateria rozładowanie łącznie", load_total_entity: "Dom łącznie" };
+function pgeBox(c) {
+  if (!PGE.d && !PGE.busy) { PGE.busy = true; c.hass.callApi("GET", "ems/pge").then(r => { PGE.d = r; PGE.edit = { ...r.ustawienia }; }).catch(e => { PGE.msg = "Błąd: " + (e.message || e); }).finally(() => { PGE.busy = false; c.render(true); }); }
+  const d = PGE.d; if (!d) return `<div class="box" id="s-pge"><div class="h"><span>🧾 Rozliczenie PGE</span></div><div class="lab">${PGE.msg || "Wczytuję…"}</div></div>`;
+  const val = Object.entries(PGE_LAB).map(([k, [n, u]]) => `<div><label class="f">${esc(n)} <span class="lab">${esc(u)}</span></label><div class="inp"><input type="text" data-pge="${k}" value="${esc(PGE.edit[k] ?? "")}" style="width:100%"></div></div>`).join("");
+  const ents = Object.entries(PGE_ENT).map(([k, n]) => `<div><label class="f">${esc(n)}</label><div class="inp"><input type="text" list="src-ents" data-pge="${k}" value="${esc(PGE.edit[k] || "")}" placeholder="${esc(d.auto[k] || "sensor.…")}" style="width:100%"></div></div>`).join("");
+  const flags = (d.flagi || []).map(k => `<label class="lab" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-pgeflag="${k}" ${PGE.edit[k] ? "checked" : ""}>${k === "battery_invert" ? "Odwróć znak mocy baterii" : "Odwróć znak mocy sieci"}</label>`).join("");
+  return `<div class="sec" id="s-pge"><div class="ic ic-v">🧾</div>Rozliczenie PGE</div><div class="box"><div class="h"><span>🧾 Stawki i opłaty (zakładka PGE, rachunek w Przeglądzie)${tip({ co: "Ustawienia dawnej integracji PGE Net-Billing – przejęte przy pierwszym starcie. Kwoty z faktury PGE / taryfy. Zapis przelicza rozliczenie." })}</span><span class="lab">${esc(PGE.msg)}</span></div>
+    <div class="g3">${val}</div><div class="h" style="margin-top:12px"><span>Liczniki i moce (puste = automatycznie z falownika)</span></div><div class="g3">${ents}</div><div style="display:flex;gap:18px;margin-top:8px">${flags}</div>
+    <div class="btns"><button class="btn pri" data-pgesave>Zapisz</button></div></div>`;
+}
 export const title = "Ustawienia";
 const PAIRS = [["Próg sprzedaży – tania", "prog_tania", "zł"], ["Próg sprzedaży – droga", "prog_droga", "zł"], ["Próg „za bezcen”", "prog_bezcen", "zł"],
   ["Mnożnik PV – słonecznie", "mn_slonecznie", "×"], ["Mnożnik PV – pochmurno", "mn_pochmurno", "×"], ["Mnożnik PV – deszcz", "mn_deszcz", "×"], ["Mnożnik PV – śnieg", "mn_snieg", "×"]];
@@ -84,9 +104,18 @@ export function render(c) {
       <button class="btn" data-rawread style="align-self:flex-end">Odczytaj</button><button class="btn off" data-rawwrite style="align-self:flex-end">Zapisz do falownika</button>
       <span class="pill b" style="align-self:flex-end">Wynik: ${esc(res || "–")}</span></div>
       <p class="note">Każdy surowy zapis jest logowany w ESP i w Diagnostyce. Blokada wraca sama po 5 min.</p>` : `<p class="note">Zablokowane. Wszystkie znane rejestry mają swoje pola wyżej.</p>`}</div>`;
-  return `<div class="anchor"><button class="btn" data-go="s-tou">🗓 Harmonogram</button><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-src">📚 Historia</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div><div id="s-tou">${tou(c)}</div>${ems}${srcBox(c)}${limits}${pmaxBox(c)}${inv}${rawbox}`;
+  return `<div class="anchor"><button class="btn" data-go="s-tou">🗓 Harmonogram</button><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-src">📚 Historia</button><button class="btn" data-go="s-pge">🧾 PGE</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div><div id="s-tou">${tou(c)}</div>${ems}${srcBox(c)}${pgeBox(c)}${limits}${pmaxBox(c)}${inv}${rawbox}`;
 }
 export function bind(c, r) {
+  r.querySelectorAll("[data-pge]").forEach(el => { el.onfocus = () => { c._hold = true; }; el.onblur = () => { c._hold = false; }; el.onchange = () => { PGE.edit[el.dataset.pge] = el.value.trim(); }; });
+  r.querySelectorAll("[data-pgeflag]").forEach(el => { el.onchange = () => { PGE.edit[el.dataset.pgeflag] = el.checked; }; });
+  r.querySelector("[data-pgesave]")?.addEventListener("click", async () => {
+    r.querySelectorAll("[data-pge]").forEach(el => { PGE.edit[el.dataset.pge] = el.value.trim(); });
+    PGE.msg = "Zapisuję…"; c.render(true);
+    try { await c.hass.callApi("POST", "ems/pge", { ustawienia: PGE.edit }); PGE.msg = "✔ Zapisano – rozliczenie przeliczone"; PGE.d = null; }
+    catch (e) { PGE.msg = "❌ " + (e.body?.message || e.message || e); }
+    c.render(true);
+  });
   r.querySelectorAll("[data-src]").forEach(el => { el.onfocus = () => { c._hold = true; }; el.onblur = () => { c._hold = false; }; el.onchange = () => { SRC.edit[el.dataset.src] = el.value.trim(); }; });
   r.querySelector("[data-srcsave]")?.addEventListener("click", async () => {
     r.querySelectorAll("[data-src]").forEach(el => { SRC.edit[el.dataset.src] = el.value.trim(); });

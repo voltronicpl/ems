@@ -29,6 +29,7 @@ SIGNAL = "ems_update"
 
 class Engine:
     def __init__(self, hass: HomeAssistant, dev: str, entry_id: str) -> None:
+        self.pge = None                                # rozliczenie PGE (pge_link.start)
         self.hass, self.dev, self.entry_id = hass, dev, entry_id
         self.p = {k: v[5] for k, v in {**PARAMS, **MANUAL}.items()}
         self.enabled = False
@@ -144,6 +145,17 @@ class Engine:
         return out
 
     # --- cykle --------------------------------------------------------------------------------
+    async def reload_pge(self, settings: dict) -> None:
+        """Nowe ustawienia rozliczenia PGE: nowy PGELedger na tych samych danych, sensory zostaja podpiete."""
+        from .pge.coordinator import PGELedger
+        old = self.pge
+        await old.async_shutdown()
+        new = PGELedger(self.hass, settings, old.store.key)
+        new.cfg_store, new.listeners = old.cfg_store, old.listeners
+        await new.async_load()
+        self.pge = new
+        new._notify()
+
     def start(self) -> None:
         self.hass.async_create_task(self._load_log())
         self._unsubs.append(async_track_time_interval(self.hass, self._tick, timedelta(seconds=10)))

@@ -1,5 +1,13 @@
 # Zmiany EMS
 
+## 0.6.20 – PGE w EMS
+- Wcielona integracja PGE Net-Billing v1.8.1: rozliczenie G12, depozyt RCE, sensory „EMS – rozliczenie PGE” (pge_*).
+- Nowa zakładka **PGE** (między Przegląd a Plan) – cały dawny panel PGE.
+- Przegląd: ramka „Rachunek PGE – ten miesiąc” (prognoza faktury, import dzień/noc, eksport, depozyt, opłaty stałe), obok dotychczasowy rachunek EMS.
+- Karta ems-card: wiersz z rachunkiem PGE i depozytem.
+- Ustawienia → Rozliczenie PGE: stawki, opłaty, liczniki. Przy pierwszym starcie przejmuje ustawienia i dane ze starej integracji (jej nie usuwa).
+- API: /api/ems/pge, /api/ems/pge_rce.
+
 ## 0.6.19
 - Wykres planu: uproszczona legenda – jeden przycisk na wielkość (Dom, PV, Sieć, Bateria, SOC, Ładowanie / sprzedaż (plan), Ceny RCE / G12), włącza pomiar i prognozę naraz; ikonka: ciągła = pomiar, przerywana = prognoza / plan.
 - Ładowanie z sieci i sprzedaż z planu jako linie przerywane zamiast słupków.

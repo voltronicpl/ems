@@ -35,6 +35,27 @@ function billBox(c) {
     <div class="ov-mut" style="margin-top:6px">Zakup wg G12 godzinowo, depozyt = RCE × ${fmt(num(c.hass, "number.ems_depozyt_mnoznik", 1.23), 2)}, bilansowanie godzinowe. Bez opłat stałych i mocowej.</div></div>`;
 }
 
+// Rachunek PGE za ten miesiac – z encji rozliczenia PGE (dawna integracja PGE Net-Billing, teraz w EMS)
+export function pgeIds(h) {
+  const reg = Object.values(h?.entities || {}), o = {};
+  for (const k of ["invoice_forecast", "deposit_estimate", "deposit_available", "import_s1", "import_s2", "export_kwh", "export_value", "variable_cost_gross", "fixed_monthly"])
+    o[k] = reg.find(e => e.platform === "ems" && e.translation_key === "pge_" + k)?.entity_id;
+  return o;
+}
+function pgeBox(c) {
+  const h = c.hass, ids = pgeIds(h), v = k => { const s = ids[k] && h.states[ids[k]]; const n = s ? parseFloat(s.state) : NaN; return isNaN(n) ? null : n; };
+  const mies = new Date().toLocaleDateString("pl-PL", { month: "long" });
+  if (!ids.invoice_forecast) return `<div class="ov-box"><div class="ov-h">${ic("coins", 20)} Rachunek PGE – ${mies}</div><div class="ov-mut">Brak encji rozliczenia PGE (uruchom ponownie HA po aktualizacji EMS).</div></div>`;
+  const row = (a, b, cl = "") => `<div class="ov-row"><span>${a}</span><b ${cl ? `style="color:${cl}"` : ""}>${b}</b></div>`;
+  const inv = v("invoice_forecast"), imp = (v("import_s1") || 0) + (v("import_s2") || 0);
+  return `<div class="ov-box" data-go-pge style="cursor:pointer" title="Kliknij: zakładka PGE"><div class="ov-h">${ic("coins", 20)} Rachunek PGE – ${mies} <span class="ov-mut">(prognoza faktury)</span></div>
+    ${row("Prognoza rachunku", fmt(inv, 2, "zł"), inv > 0 ? "#ff6b6b" : "#3ee07a")}
+    ${row("Pobrano z sieci", `${fmt(imp, 1, "kWh")} · dzień ${fmt(v("import_s1"), 1, "kWh")} / noc ${fmt(v("import_s2"), 1, "kWh")}`, "#ff6b6b")}
+    ${row("Oddano do sieci", `${fmt(v("export_kwh"), 1, "kWh")} · ${fmt(v("export_value"), 2, "zł")}`, "#3ee07a")}
+    ${row("Depozyt (saldo)", fmt(v("deposit_estimate"), 2, "zł"), "#3ee07a")}${row("Opłaty stałe", fmt(v("fixed_monthly"), 2, "zł"))}
+    <div class="ov-mut" style="margin-top:6px">Szacunek z rozliczenia PGE (stawki z Ustawień → Rozliczenie PGE), nie faktura PGE.</div></div>`;
+}
+
 export function render(c) {
   const h = c.hass, v = (k, d) => c.v(k, d);
   loadManual(c);
@@ -91,9 +112,10 @@ export function render(c) {
     <div class="ov-box"><div class="ov-h">${ic("tower", 20)} Sieć (3F, ${fmt(v("siec_czestotliwosc"), 1, "Hz")})</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("siec_napiecie_" + l), 1, "V")} · ${kw(v("siec_moc_" + l))}`)).join("")}</div>
     <div class="ov-box"><div class="ov-h">${ic("cpu", 20)} Przetwornica</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("przetwornica_napiecie_" + l), 1, "V")} · ${kw(v("przetwornica_moc_" + l))}`)).join("")}${row("Temp. radiatora", `${fmt(v("temperatura_przetwornicy"), 1)} °C / ${fmt(v("temperatura_radiatora"), 1, "°C")}`)}</div>
     <div class="ov-box"><div class="ov-h">${ic("panel", 20)} PV (stringi)</div>${[1, 2, 3, 4].map(i => row("PV" + i, kw(v("pv" + i + "_moc")))).join("")}</div></div>`;
-  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}${ster}<div style="margin-bottom:14px">${billBox(c)}</div>${mid}${bot}${modal()}${accuracyModal(c)}`;
+  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}${ster}<div style="margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">${pgeBox(c)}${billBox(c)}</div>${mid}${bot}${modal()}${accuracyModal(c)}`;
 }
 export function bind(c, r) {
+  r.querySelector("[data-go-pge]")?.addEventListener("click", () => { c.tab = 1; c.render(); });
   bindManual(c, r);
   bindProfile(c, r);
   r.querySelectorAll("[data-odczyt]").forEach(b => b.onclick = () => c.odczyt([c.rid(c.e("ostatni_odczyt_ustawien"), "Ostatni odczyt ustawien")]));
