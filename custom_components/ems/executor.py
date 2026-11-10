@@ -30,6 +30,7 @@ class Executor:
         self.store = Store(hass, 1, f"ems_snapshot_{entry_id}")
         self.last_points: list | None = None
         self.last_write: datetime | None = None       # ostatni zapis EMS do TOU
+        self._pmax_saved: float | None = None          # Twoja wartosc "Pmax sprzedazy" sprzed slotu sprzedazy
 
     # --- encje -------------------------------------------------------------------------------
     def eid(self, dom: str, key: str) -> str:
@@ -163,8 +164,16 @@ class Executor:
         await self.set(self.eid("switch", "harmonogram_tou"), True, "EMS")
         await self.set(self.eid("switch", "ladowanie_z_sieci_dozwolone"), True, "EMS")
         act = (current or {}).get("action", "self")
+        pmax = self.eid("number", "max_moc_sprzedazy_z_pv")   # w panelu "Pmax sprzedazy (eksport)" – ogranicza CALY eksport (Deye "Max Sell Power")
         if act == "sell":                                   # glowny wlacznik eksportu (jak "Solar Sell" w Deye) – bez niego nic nie idzie do sieci
             await self.set(self.eid("switch", "sprzedaj_nadwyzke_pv"), True, "sprzedaz: eksport musi byc wlaczony")
+            if self._pmax_saved is None:
+                cur = self.val(pmax)
+                self._pmax_saved = float(cur) if cur is not None else None
+            await self.set(pmax, int(max_sell_w // 100 * 100), "sprzedaz: Pmax eksportu = moc sprzedazy")
+        elif self._pmax_saved is not None:
+            await self.set(pmax, self._pmax_saved, "koniec sprzedazy: przywracam Twoja wartosc")
+            self._pmax_saved = None
         opt = self.export_option(EXPORT_ON if act == "sell" else EXPORT_OFF)
         if opt:
             await self.set(self.eid("select", "tryb_limitu_eksportu"), opt, f"biezacy slot: {act}")

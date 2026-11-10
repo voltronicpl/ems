@@ -327,7 +327,7 @@ export const GROUPS = [
    {
     "t": "n",
     "id": "number.ecobss_max_moc_sprzedazy_z_pv",
-    "l": "Max moc sprzedazy z PV",
+    "l": "Pmax sprzedazy (eksport)",
     "lock": false,
     "u": "W"
    },

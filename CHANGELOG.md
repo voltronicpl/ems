@@ -1,5 +1,11 @@
 # Zmiany EMS
 
+## v0.6.10
+
+**Poprawione (sprzedaż)**
+- Pole „Max moc sprzedazy z PV” było źle nazwane – ogranicza cały eksport (Deye „Max Sell Power”). Nowa nazwa w panelu: **„Pmax sprzedazy (eksport)”**, poprawiony dymek.
+- W slocie sprzedaży (plan i ręczna) EMS ustawia Pmax sprzedaży = moc sprzedaży (max do limitu 🔒 „Max moc sprzedaży”), po sprzedaży przywraca Twoją wartość.
+
 ## v0.6.9
 
 **Poprawione (sprzedaż nie szła do sieci)**
