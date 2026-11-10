@@ -160,7 +160,11 @@ export const CSS = `
 label.f{display:flex;align-items:center;font-size:12.5px;color:var(--mut);margin-bottom:5px;min-height:22px}
 .inp{display:flex;border:1px solid #1d3a54;border-radius:9px;overflow:hidden;background:#091826}
 .inp input{flex:1;min-width:0;border:0;background:transparent;color:var(--txt);padding:8px 10px;font-size:14px}.inp span{padding:8px 10px;border-left:1px solid #1d3a54;color:var(--mut);font-size:12px;background:#0c1f30}
-.inp.chg{border-color:#2a8cff;box-shadow:0 0 8px #2a8cff44}.inp.act{border-color:#1fe090}.inp.lk{border-color:#a8323f}
+.inp.chg{border-color:#2a8cff;box-shadow:0 0 8px #2a8cff44}.inp.pend,select.pend{border-color:#ffaa22;box-shadow:0 0 8px #ffaa2255}.inp.bad,select.bad{border-color:#ff4757;box-shadow:0 0 8px #ff475766}.sw.pend{color:var(--o)}.sw.bad{color:#ff8c97}
+.toasts{position:fixed;right:16px;bottom:16px;z-index:200;display:flex;flex-direction:column;gap:8px;max-width:420px}
+.toast{position:relative;padding:12px 34px 12px 14px;border-radius:12px;font-size:13px;line-height:1.45;cursor:pointer;box-shadow:0 10px 30px #000b;border:1px solid}
+.toast b{display:block;font-size:14px;margin-bottom:3px}.toast div{color:#d7e4ee}.toast .x{position:absolute;top:8px;right:12px;opacity:.6}
+.toast.ok{background:#0b2a20;border-color:#14533c;color:#1fe090}.toast.err{background:#2a1218;border-color:#6b2a36;color:#ff8c97}.inp.act{border-color:#1fe090}.inp.lk{border-color:#a8323f}
 select{width:100%;padding:8px;border-radius:9px;background:#091826;color:var(--txt);border:1px solid #1d3a54}
 input[type=range]{width:100%;accent-color:#2a8cff}
 .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
@@ -221,5 +225,6 @@ input[type=range]{width:100%;accent-color:#2a8cff}
   .rt td.hd{font-weight:700;justify-content:flex-start;text-align:left;border-bottom:1px solid #17304a;margin-bottom:2px}
   .scroll-hint{display:block}.tbl td a{white-space:nowrap}
   .log{font-size:11px;max-height:55vh}
+  .toasts{left:8px;right:8px;bottom:8px;max-width:none}
 }
 `;

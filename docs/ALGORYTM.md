@@ -46,9 +46,13 @@ Kup/Sprzedaj teraz (Wh): od teraz przez max 4 h, koniec gdy licznik importu/eksp
 
 Statystyki godzinowe HA (bezterminowe) dla prefiksów `modbus_falownik` (stary sniffer) i `<datalogger>` (nowy ma pierwszeństwo). Zużycie, PV1–4, SOC (mean), import/eksport (change liczników dziennych). Ten sam `planner.plan` na prawdziwych danych. Bilans = eksport × RCE × `depozyt_mnoznik` − import × stawka G12 (0,61 / 1,25 zł) + (SOC koniec − SOC start) × pojemność × 0,61. **Bilansowanie godzinowe**: w każdej godzinie zegarowej liczy się tylko nadwyżka poboru albo oddania (jak u sprzedawcy), dla starego i nowego EMS.
 
+## Zapis z panelu (`verify.py`, `POST /api/ems/zapis`)
+
+Panel (Zapisz, przełączniki, listy) → EMS zapisuje po kolei → czeka na pełny cykl odczytu dataloggera po zapisie → porównuje (liczby z tolerancją pół kroku encji). Wynik per encja: ok / „falownik ma X” / „nie potwierdzono” + linia `[zapis]` w logu. Licznik cykli `sensor.<dev>_licznik_odczytow` (opcjonalny) przyspiesza; bez niego 2 × interwał + 3 s. Parametry `number.ems_*` sprawdzane od razu.
+
 ## Diagnostyka (`diag.py`)
 
-`/config/ems_logs/ems-RRRR-MM-DD.log` (14 dni), bufor 1000 linii na żywo. API: `GET /api/ems/logs?tail=`, `GET /api/ems/logs/download?day=`, `POST /api/ems/log`. Znaczniki: `[ceny] [pogoda] [pv] [zuzycie] [plan] [wykonanie] [reczne] [wstecz] [parametry] [panel] [silnik] [start]`.
+`/config/ems_logs/ems-RRRR-MM-DD.log` (14 dni), bufor 1000 linii na żywo. API: `GET /api/ems/logs?tail=`, `GET /api/ems/logs/download?day=`, `POST /api/ems/log`. Znaczniki: `[ceny] [pogoda] [pv] [zuzycie] [plan] [wykonanie] [reczne] [wstecz] [parametry] [panel] [zapis] [silnik] [start]`.
 
 ## Encje integracji (stałe ID)
 

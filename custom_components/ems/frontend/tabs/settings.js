@@ -55,7 +55,7 @@ export function render(c) {
   return `<div class="anchor"><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div>${ems}${limits}${inv}${rawbox}`;
 }
 export function bind(c, r) {
-  r.querySelectorAll("[data-ntog]").forEach(el => el.onclick = () => { const id = el.dataset.ntog, v = num(c.hass, id, 0) >= 0.5 ? 0 : 1; c.call("number", "set_value", { entity_id: id, value: v }); c.log(`Zmiana ${id} = ${v}`); });
+  r.querySelectorAll("[data-ntog]").forEach(el => el.onclick = () => { const id = el.dataset.ntog; c.zapisz([{ entity_id: id, value: num(c.hass, id, 0) >= 0.5 ? 0 : 1 }]); });
   r.querySelectorAll("[data-go]").forEach(b => b.onclick = () => r.getElementById(b.dataset.go)?.scrollIntoView({ behavior: "smooth" }));
   r.querySelector("[data-unlock]")?.addEventListener("click", () => { raw.unlocked = raw.unlocked > Date.now() ? 0 : Date.now() + 300000; c.log(`Surowy rejestr ${raw.unlocked ? "ODBLOKOWANY" : "zablokowany"}`); c.render(true); });
   r.querySelectorAll("[data-raw]").forEach(i => { i.oninput = () => { raw[i.dataset.raw] = i.value; }; i.onfocus = () => { c._hold = true; }; i.onblur = () => { c._hold = false; }; });

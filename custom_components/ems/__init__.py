@@ -13,6 +13,7 @@ from . import diag
 from .const import CONF_DEVICE, DOMAIN, VERSION
 from .backtest import BacktestView
 from .engine import Engine
+from .verify import WriteView
 
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SWITCH, Platform.BUTTON]
 STATIC = "/ems_static"
@@ -26,6 +27,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     )
     diag.setup(hass)
     hass.http.register_view(BacktestView)
+    hass.http.register_view(WriteView)
     return True
 
 

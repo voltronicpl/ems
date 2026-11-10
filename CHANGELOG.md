@@ -1,5 +1,18 @@
 # Zmiany EMS
 
+## v0.5.2
+
+**Dodane**
+- Zapis ze sprawdzeniem w falowniku: „Zapisz”, przełączniki i listy wyboru w panelu idą przez `POST /api/ems/zapis` – EMS zapisuje, czeka na pełny cykl odczytu dataloggera **po** zapisie i porównuje z tym, co wysłałeś.
+  - pole w trakcie: żółte, „⏳ sprawdzam w falowniku…”, przycisk „Sprawdzam…”,
+  - potwierdzone: komunikat „✅ Zapisano – falownik potwierdził” z listą wartości,
+  - nie przyjęte: pole czerwone, komunikat „❌ falownik ma X, a nie Y” albo „brak nowego odczytu – nie potwierdzono”; wpisana wartość zostaje do poprawki,
+  - każdy wynik w logu dnia (znacznik `[zapis]`: ZAPISANO / NIE ZAPISANO).
+- Szybsze potwierdzanie, jeśli ESP ma licznik cykli odczytu `sensor.<datalogger>_licznik_odczytow` (2 cykle po zapisie). Bez niego: 2 × interwał odczytu + 3 s.
+
+**Zmienione**
+- Przełączniki „dokupienie pod sprzedaż” / „sprzedaż w taniej strefie” też z komunikatem „Zapisano”.
+
 ## v0.5.1
 
 **Dodane**
