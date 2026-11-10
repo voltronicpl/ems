@@ -20,34 +20,7 @@ const sp = n => n == null || isNaN(n) ? "–" : Math.round(n).toString().replace
 const box = (k, html, cls = "") => { const [l, t, w, h] = POS[k]; return `<div class="sc-card ${cls}" style="left:${l}%;top:${t}%;width:${w}%;height:${h}%">${html}</div>`; };
 const tile = (ic, cls, lab, val, sub, subc, t) => `<div class="ov-tile"><div class="ov-ic ${cls}">${ic}</div><div><div class="ov-lab">${lab}${tip(t)}</div><div class="ov-val">${val}</div><div class="ov-sub" ${subc ? `style="color:${subc}"` : ""}>${sub}</div></div></div>`;
 
-// Profil mocy z historii HA – rozdzielczosc 1 min (wartosc z ostatniego odczytu przed dana minuta).
-// Odswiezany, gdy datalogger zglosi nowy odczyt pomiarow (dociagany tylko kawalek od ostatniego punktu).
-const PK = { pv: "pv_moc_suma", bat: "bateria_moc", grid: "siec_moc_suma", dom: "obciazenie_moc_suma", soc: "bateria_soc" };
-let hist = { day: "", pts: {}, last: 0, sig: "", busy: false, hover: null };
-async function loadHist(c) {
-  const d0 = new Date(); d0.setHours(0, 0, 0, 0); const day = d0.toDateString();
-  const sig = S(c.hass, c.rid(c.e("ostatni_odczyt_pomiarow"), "Ostatni odczyt pomiarow"))?.state || S(c.hass, c.e("bateria_soc"))?.last_updated || "";
-  if (hist.busy || (day === hist.day && sig === hist.sig)) return;
-  if (day !== hist.day) hist = { ...hist, day, pts: {}, last: 0 };
-  hist.busy = true; hist.sig = sig;
-  const from = hist.last ? new Date(hist.last - 60000) : d0, ids = Object.fromEntries(Object.entries(PK).map(([k, v]) => [c.e(v), k]));
-  try {
-    const res = await c.hass.callApi("GET", `history/period/${from.toISOString()}?filter_entity_id=${Object.keys(ids).join(",")}&minimal_response&no_attributes`);
-    res.forEach(ser => { const k = ids[ser[0]?.entity_id]; if (!k) return; const a = hist.pts[k] = hist.pts[k] || [];
-      ser.forEach(p => { const v = parseFloat(p.state), t = Date.parse(p.last_changed || p.last_updated) || (p.lu * 1000); if (isNaN(v) || !t) return;
-        if (!a.length || t > a[a.length - 1][0]) a.push([t, v]); hist.last = Math.max(hist.last, t); }); });
-  } catch (e) { /* zostaje to, co bylo */ }
-  hist.busy = false; c.render(true);
-}
-// tablica 1-min: m -> {pv, bat, grid, dom, soc} (kW / %)
-function minutes() {
-  const d0 = new Date(); d0.setHours(0, 0, 0, 0); const t0 = d0.getTime(), nowM = Math.min(1439, Math.floor((Date.now() - t0) / 6e4)), out = [];
-  const idx = Object.fromEntries(Object.keys(PK).map(k => [k, 0]));
-  for (let m = 0; m <= nowM; m++) { const te = t0 + (m + 1) * 6e4, r = { m };
-    for (const k in PK) { const a = hist.pts[k] || []; while (idx[k] < a.length && a[idx[k]][0] < te) idx[k]++; const p = a[idx[k] - 1]; r[k] = p ? (k === "soc" ? p[1] : p[1] / 1000) : null; }
-    out.push(r); }
-  return { t0, rows: out };
-}
+import { hist, loadHist, minutes } from "../minute.js";
 const PW = 640, PH = 190, PL = 30, PB = 22, PT = 16;
 const PS = [["pv", "#facc15", "PV"], ["bat", "#22e07a", "Bateria"], ["grid", "#ff4d5e", "Sieć"], ["dom", "#2f8cff", "Dom"]];
 let prof = null;

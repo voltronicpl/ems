@@ -1,5 +1,11 @@
 # Zmiany EMS
 
+## v0.6.2
+
+**Zmienione**
+- Plan „Teraz + 24 h” → „Dziś + jutro” na osi minutowej: od 00:00 do teraz pomiary z dataloggera co 1 min (PV, dom, bateria + ładowanie, sieć + pobór, SOC), dalej plan (sloty 15 min rozłożone na minuty). Kursor / dotyk co 1 minutę na całym wykresie; w dymku przed „teraz” pomiar z tej minuty i ręczne kupno / sprzedaż, jeśli trwało. Odświeżane po każdym odczycie pomiarów dataloggera.
+- Dane minutowe wspólne dla Profilu mocy i Planu (`frontend/minute.js`) – historia pobierana raz.
+
 ## v0.6.1
 
 **Dodane**
