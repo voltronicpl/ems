@@ -32,21 +32,23 @@ class PeakShave:
             self._loaded = True
 
     async def _read(self) -> int | None:
+        """raw_read 278 -> wynik w text_sensorze 'Surowy odczyt' w formacie '278=10298 (0x283A)'.
+        HA nie zmienia stanu, gdy tekst jest taki sam jak poprzednio, wiec patrzymy tez na last_reported
+        i po 2 s akceptujemy aktualny tekst, jesli dotyczy rejestru 278."""
         sid = dev_entity(self.hass, self.dev, "sensor", "surowy_odczyt")
         before = self.hass.states.get(sid)
-        t0 = before.last_updated if before else None
+        mark = (before.last_updated, getattr(before, "last_reported", None)) if before else None
         await self.hass.services.async_call("esphome", f"{self.dev}_raw_read", {"address": REG}, blocking=True)
-        for _ in range(40):                                   # max 10 s
+        for i in range(40):                                   # max 10 s
             await asyncio.sleep(0.25)
             st = self.hass.states.get(sid)
-            if st and st.last_updated != t0 and st.state not in ("unknown", "unavailable", ""):
-                txt = st.state
-                m = re.search(r"=\s*(0x[0-9a-fA-F]+|\d+)", txt) or re.search(r"(0x[0-9a-fA-F]+|\d+)\s*$", txt)
-                if m and (str(REG) in txt or "=" not in txt):
-                    return int(m.group(1), 0)
-                if m:
-                    return int(m.group(1), 0)
-        LOG.warning("Pmax zakupu: brak odczytu rejestru %d (sensor %s)", REG, sid)
+            if not st:
+                continue
+            fresh = (st.last_updated, getattr(st, "last_reported", None)) != mark or i >= 8
+            m = re.match(rf"\s*{REG}\s*=\s*(\d+)", st.state or "")
+            if fresh and m:
+                return int(m.group(1))
+        LOG.warning("Pmax zakupu: brak odczytu rejestru %d (sensor %s = '%s')", REG, sid, self.hass.states.get(sid).state if self.hass.states.get(sid) else "?")
         return None
 
     async def _write(self, v: int, why: str) -> None:
@@ -56,13 +58,14 @@ class PeakShave:
     async def off_for_sell(self) -> None:
         """Sprzedaz: wylacz Pmax zakupu (zapamietaj Twoja wartosc)."""
         await self._load()
-        if self.saved is not None:
-            return                                            # juz wylaczone przez EMS
+        if self.saved is not None or getattr(self, "_off_ok", False):
+            return                                            # juz wylaczone (przez EMS albo bylo wylaczone) – nie czytamy co cykl
         v = await self._read()
         if v is None:
             return
         if v & MASK != ON:
             LOG.info("Pmax zakupu juz wylaczony (278 = 0x%04X) – nic nie zmieniam", v)
+            self._off_ok = True
             return
         self.saved = v
         await self.store.async_save({"r278": v})
@@ -71,6 +74,7 @@ class PeakShave:
     async def restore(self) -> None:
         """Po sprzedazy: przywroc Twoja wartosc 278."""
         await self._load()
+        self._off_ok = False
         if self.saved is None:
             return
         v, self.saved = self.saved, None

@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## v0.6.12
+
+**Poprawione**
+- „Pmax zakupu”: odczyt rejestru 278 nie działał, gdy wynik był taki sam jak poprzednio (HA nie zmienia stanu przy identycznym tekście `278=10298 (0x283A)`), więc EMS nie wyłączał checkboxa. Teraz akceptuje aktualny wynik po 2 s; gdy checkbox już wyłączony, nie czyta rejestru co cykl.
+
 ## v0.6.11
 
 **Poprawione (sprzedaż – znaleziona przyczyna)**
