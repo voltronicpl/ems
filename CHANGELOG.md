@@ -1,5 +1,11 @@
 # Zmiany EMS
 
+## 0.6.26
+- Panel nie podjeżdża sam do góry: przy przerysowaniu trzyma poprzednią wysokość i przywraca przewinięcie.
+- Koszt energii w baterii (batcost.py): średni zł/kWh ważony źródłem ładowania (PV 0 zł / tania / droga G12), zapis w Store.
+- Algorytm: energia już w baterii nie jest sprzedawana poniżej (koszt / sprawność + koszt cyklu + min. zysk) / depozyt (próg „drogo” i nadwyżka PV bez zmian).
+- Plan: kafelek „Koszt kWh w baterii” z udziałem PV / tanio / drogo i progiem sprzedaży.
+
 ## 0.6.25
 - Plan: kolumny kupno / sprzedaż mocniej (28 %) z paskiem na górnej krawędzi.
 - Przegląd: wykresy „Produkcja PV” i „Zużycie domu” – prognoza i pomiar (teraz ±12 h) pod Energia + Profil mocy.

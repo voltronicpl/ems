@@ -12,6 +12,7 @@ Zasady (spec 7 / 7a):
    Wszystko (nadwyzka PV + dokupienie pod sprzedaz) miesci sie w tym limicie.
 4a. Dokupienie pod sprzedaz (arbitraz_<sezon>): w taniej strefie laduje ponad potrzeby domu, jesli w nastepnym
    drogim oknie RCE x depozyt - (cena taniej G12 / (spr. ladowania x rozladowania) + koszt cyklu) >= arbitraz_zysk_<sezon>.
+4c. Koszt energii w baterii (batcost.py): w biezacym oknie prog „tania” >= (koszt kWh w baterii / spr. rozl. + koszt cyklu + min. zysk) / depozyt.
 4b. Sprzedaz w taniej strefie (arbitraz_noc_<sezon>): w taniej strefie sprzedaje z baterii w godzinach z najwyzszym
    RCE (ten sam warunek), a laduje w INNYCH godzinach zegarowych (bilansowanie godzinowe: pobor i oddanie
    w tej samej godzinie sie znosza). Na koniec strefy bateria i tak dochodzi do celu.
@@ -138,6 +139,12 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
         arb = arb_price(p, z) if bi > 0 and blocks[bi - 1][2] else None
         if arb is not None and arb < thr_t:
             thr_t = arb
+        # energia, ktora JUZ jest w baterii (okno biezace): nie sprzedawaj ponizej jej kosztu (koszt kWh / sprawnosc + cykl + min. zysk)
+        kb = p.get("koszt_baterii_zl")
+        if bi == 0 and kb is not None:
+            thr_k = (kb / ed + p["koszt_cyklu_zl"] + p[f"arbitraz_zysk_{z}"]) / p["depozyt_mnoznik"]
+            if thr_k > thr_t:
+                thr_t = thr_k
         thr_d = p[f"prog_droga_{season(slots[a])}"]
         bezcen = p[f"prog_bezcen_{season(slots[a])}"]
         cand = sorted((k for k in range(a, b) if price[k] is not None), key=lambda k: -price[k])

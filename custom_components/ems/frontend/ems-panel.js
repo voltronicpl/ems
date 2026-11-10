@@ -100,6 +100,12 @@ class EmsDashboard extends HTMLElement {
       ${ids.length ? `<div class="btns"><button class="btn" data-read="${ids.join(",")}" ${p || rd ? "disabled" : ""}>${rd ? "Odczytuję…" : "Odczyt"}</button><button class="btn pri" data-save="${ids.join(",")}" ${k && !p ? "" : "disabled"}>${p ? "Sprawdzam…" : "Zapisz"}</button></div>` : ""}</div>`;
   }
 
+  // najblizszy przewijany przodek (HA: kontener panelu albo okno)
+  _scroller() {
+    if (this._sc && this._sc.isConnected) return this._sc;
+    let n = this; while (n) { n = n.parentNode || n.host; if (n && n.nodeType === 1) { const o = getComputedStyle(n).overflowY; if ((o === "auto" || o === "scroll") && n.scrollHeight > n.clientHeight) { this._sc = n; return n; } } }
+    return null;
+  }
   render(force) {
     if (!this._hass) return;
     this._t = Date.now();
@@ -109,11 +115,16 @@ class EmsDashboard extends HTMLElement {
     try { body = T.render(this); } catch (e) { body = `<div class="box err">Błąd zakładki „${T.title}”: ${esc(e.message)}</div>`; console.error("[EMS]", e); }
     const last = S(this._hass, this.e("bateria_soc"))?.last_updated;
     const tx = this.shadowRoot.querySelector(".tabs")?.scrollLeft || 0;
+    // bez podjezdzania strony: trzymaj poprzednia wysokosc w trakcie przerysowania i przywroc przewiniecie
+    const oldH = this.shadowRoot.querySelector("main")?.offsetHeight || 0, sc = this._scroller(), sy = sc ? sc.scrollTop : window.scrollY;
+    if (oldH) this.style.minHeight = oldH + "px";
     this.shadowRoot.innerHTML = `<style>${CSS}</style><main class="pf"><div class="pf-bg" style="background-image:url(${BG})"></div><div class="wrap">
       <div class="pf-head ${this._narrow ? "mob" : ""}"><div class="pf-brand"><button class="menu" data-menu title="Menu Home Assistant">☰</button><img class="brand" src="${LOGO}" alt="EMS – Energy Management System"><div><div class="pf-sub">datalogger ${esc(this.dev)} · ostatni odczyt ${last ? new Date(last).toLocaleTimeString("pl-PL") : "–"} <button class="hd-rd ${this.rd.__hd ? "spin" : ""}" data-hdodczyt title="Odczytaj falownik (ustawienia)">⟳</button>${(() => { const z = S(this._hass, this.rid(this.e("ostatni_zapis"), "Ostatni zapis"))?.state; return z ? ` <span class="hd-z" title="Ostatni zapis do falownika: ${esc(z)}">· zapis: ${esc(z)}</span>` : ""; })()} · v${ver}</div></div></div>
       <div class="tabs">${TABS.map((t, i) => `<button class="tab ${i === this.tab ? "on" : ""}" data-tab="${i}">${t.title}</button>`).join("")}</div>${(() => { const ps = S(this._hass, "sensor.ems_plan")?.state; const M = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", block: "Blokada eksportu", wylaczony: "Algorytm wyłączony", brak_planu: "Brak planu", reczne_buy: "Ręczne kupno", reczne_sell: "Ręczna sprzedaż" }; return ps ? `<span class="pf-mode">🍃 Tryb: <b>${esc(M[ps] || ps)}</b></span>` : ""; })()}</div>${body}</div></main>
       <div class="toasts">${this.toasts.map(t => `<div class="toast ${t.kind}" data-toast="${t.id}"><b>${esc(t.title)}</b>${t.lines.slice(0, 8).map(l => `<div>${esc(l)}</div>`).join("")}${t.lines.length > 8 ? `<div>… i ${t.lines.length - 8} więcej</div>` : ""}<span class="x">✕</span></div>`).join("")}</div>`;
     const tb = this.shadowRoot.querySelector(".tabs"); if (tb) tb.scrollLeft = tx;
+    if (sc ? sc.scrollTop !== sy : window.scrollY !== sy) { if (sc) sc.scrollTop = sy; else window.scrollTo(0, sy); }
+    clearTimeout(this._mhT); this._mhT = setTimeout(() => { this.style.minHeight = ""; }, 2500);
     this.bind();
     bindCharts(this.shadowRoot, () => this.render(true));
     if (T.bind) T.bind(this, this.shadowRoot);

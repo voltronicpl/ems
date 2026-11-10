@@ -20,6 +20,7 @@ from .diag import get_logger
 from .executor import Executor
 from .manual import ManualJob
 from .sources import Sources
+from .batcost import BatCost
 from .planner import as_dicts, plan
 
 LOG = get_logger("silnik")
@@ -49,6 +50,7 @@ class Engine:
         self._last_exec: datetime | None = None
         self.manual_log: list[dict] = []             # historia recznych zadan (14 dni)
         self._mstore = Store(hass, 1, f"ems_reczne_{entry_id}")
+        self.bat = BatCost(hass, entry_id)                 # koszt energii w baterii
         self.src = Sources(hass, entry_id)                 # stare encje z HA do nauki
         self._pump: dict = {}
         self._pv_cal = 1.0
@@ -85,6 +87,7 @@ class Engine:
         self.manual_log = (await self._mstore.async_load() or {}).get("wpisy", [])
         self.fc_log = (await self._fstore.async_load() or {}).get("sloty", {})
         await self.src.load()
+        await self.bat.load()
         self.push()
 
     def _price_now(self, kind: str) -> float | None:
@@ -169,6 +172,11 @@ class Engine:
     @callback
     def _tick(self, _now) -> None:
         now = datetime.now(timezone.utc)
+        try:
+            self.bat.tick(self.r("bateria_soc"), self.p["pojemnosc_wh"] / 1000, self.r("bateria_moc"), self.r("pv_moc_suma", 0.0) or 0.0,
+                          self.r("obciazenie_moc_suma", 0.0) or 0.0, self.p.get("sprawnosc_ladowania", 93) / 100)
+        except Exception as err:  # noqa: BLE001
+            LOG.debug("koszt baterii: %s", err)
         if self._busy:
             return
         if not self.last_plan or now - self.last_plan >= timedelta(minutes=self.p["plan_co_min"]):
@@ -240,11 +248,12 @@ class Engine:
             ch_w, sell_w = self.limits()
             LOG.info("SOC %.0f%%, max ladowanie %.0f W, max sprzedaz %.0f W, ceny do %s",
                      soc, ch_w, sell_w, last.astimezone(WAW).strftime("%d.%m %H:%M"))
-            res, summ = plan(slots, self._prices, pvk, ldk, self._weather, soc, self.p,
+            bc = self.bat.avg()
+            res, summ = plan(slots, self._prices, pvk, ldk, self._weather, soc, {**self.p, "koszt_baterii_zl": bc},
                              self.p["pojemnosc_wh"] / 1000, ch_w, sell_w)
             self.plan = as_dicts(res)
             self._log_forecast(now)
-            self.summary = {**summ, "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2), "kalibracja_pv": round(self._pv_cal, 2),
+            self.summary = {**summ, "koszt_baterii": self.bat.info(), "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2), "kalibracja_pv": round(self._pv_cal, 2),
                             "pompa_model": [round(x, 3) for x in pump_model] if pump_model else None}
             self.last_plan = now
             self.error = None
