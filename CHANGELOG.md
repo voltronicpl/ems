@@ -1,5 +1,12 @@
 # Zmiany EMS
 
+## v0.6.15
+
+**Zmienione (decyzja użytkownika)**
+- **EMS nigdy nie zapisuje „Pmax zakupu”** (rejestr 278) – ani algorytm, ani ręczne zlecenia. Wycofane wyłączanie / przywracanie z v0.6.11–0.6.14.
+- Zostaje tylko sprawdzanie: przy sprzedaży EMS czyta 278 (co 5 min) i gdy Pmax zakupu jest włączony – ostrzeżenie w logu, w Przeglądzie i w Ustawieniach („wyłącz na LCD, Tryb pracy”).
+- Jeśli wcześniejsza wersja zmieniła 278, w logu pojawi się jednorazowo Twoja poprzednia wartość (bez zapisu).
+
 ## v0.6.14
 
 **Poprawione**

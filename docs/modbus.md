@@ -17,7 +17,7 @@ RS485, 9600 bps, 8N1, Modbus RTU, adres 1. Odczyt 03H, zapis 10H (holding). Adre
 | 243 | max moc sprzedaży | W |
 | 245 | sprzedaj nadwyżkę PV | 0/1 |
 | 246 | harmonogram TOU + dni (bity) | – |
-| 278 | bity 5:4 „Pmax zakupu” (Grid Peak Shaving, LCD: Tryb pracy): 11 wł., 10 wył. – zaznaczony blokuje sprzedaż | – |
+| 278 | bity 5:4 „Pmax zakupu” (Grid Peak Shaving, LCD: Tryb pracy): 11 wł., 10 wył. – zaznaczony blokuje sprzedaż; EMS tylko czyta, NIGDY nie zapisuje | – |
 | 291 | wartość „Pmax zakupu” (moc szczytowa sieci) | W |
 | 248–253 | start punktów TOU | HHMM |
 | 254–259 | moc punktów TOU | W |

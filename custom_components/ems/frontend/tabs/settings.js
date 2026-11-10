@@ -35,8 +35,8 @@ const arbMin = (c, z) => 0.61 / (num(c.hass, "number.ems_sprawnosc_ladowania", 9
 const ntog = (c, id) => { const on = num(c.hass, id, 0) >= 0.5; return `<div class="sw" data-ntog="${id}" title="${esc(id)}"><div class="tg ${on ? "on" : ""}"></div>${on ? "Włączone" : "Wyłączone"}</div>`; };
 function pmaxBox(c) {
   const p = S(c.hass, "sensor.ems_plan")?.attributes?.pmax_zakupu;
-  const st = !p || p.wlaczony == null ? "nieodczytany (EMS czyta rejestr 278 przy sprzedaży)" : p.wlaczony ? "<b class=\"t-o\">włączony</b>" : `<b class="t-g">wyłączony</b>${p.przez_ems ? " – przez EMS na czas sprzedaży" : ""}`;
-  return `<div class="box"><div class="h"><span>⚡ Pmax zakupu (Tryb pracy na LCD)${tip({ co: "Grid Peak Shaving – rejestr 278 bity 5:4, wartość w „Moc szczytowa sieci” (291). Zaznaczony blokuje sprzedaż.", jak: "EMS wyłącza go na czas każdej sprzedaży (ręcznej i z planu) i przywraca po sprzedaży, ze sprawdzeniem odczytem. W trakcie sprzedaży sprawdza co 5 min." })}</span></div>
+  const st = !p || p.wlaczony == null ? "nieodczytany (EMS czyta rejestr 278 przy sprzedaży)" : p.wlaczony ? "<b class=\"t-o\">włączony</b>" : `<b class="t-g">wyłączony</b>`;
+  return `<div class="box"><div class="h"><span>⚡ Pmax zakupu (Tryb pracy na LCD)${tip({ co: "Grid Peak Shaving – rejestr 278 bity 5:4, wartość w „Moc szczytowa sieci” (291). Zaznaczony blokuje sprzedaż.", jak: "EMS go NIGDY nie zmienia – tylko sprawdza przy sprzedaży (co 5 min) i ostrzega, gdy jest włączony. Wyłączasz go sam na LCD (Tryb pracy)." })}</span></div>
     <div>Stan: ${st}${p?.r278 ? ` <span class="lab">(278 = ${esc(p.r278)}, odczyt ${esc((p.odczyt || "").slice(11))})</span>` : ""}</div>${p?.ostrzezenie ? `<div class="box err" style="margin:8px 0 0">⚠ ${esc(p.ostrzezenie)}</div>` : ""}</div>`;
 }
 export function render(c) {
