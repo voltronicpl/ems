@@ -1,5 +1,12 @@
 # Zmiany EMS
 
+## v0.6.9
+
+**Poprawione (sprzedaż nie szła do sieci)**
+- W slocie sprzedaży (plan i ręczna) EMS włącza też **„Sprzedaj nadwyżkę PV”** – główny włącznik eksportu (jak „Solar Sell” w Deye); bez niego falownik nic nie oddaje, także z baterii. Zostaje włączony; jest w snapshocie (przywracany po wyłączeniu algorytmu).
+- Tryb limitu eksportu: nazwa opcji dopasowywana do tej z falownika (bez polskich znaków / wielkości liter); gdy brak pasującej – błąd w logu z listą dostępnych opcji (wcześniej zapis cicho się wywalał).
+- Ostrzeżenie „SPRZEDAZ nie idzie” w logu zawiera też: Sprzedaj nadwyżkę PV, Max moc sprzedaży, Max moc sprzedaży z PV, Priorytet energii.
+
 ## v0.6.8
 
 **Dodane**

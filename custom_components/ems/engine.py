@@ -304,8 +304,11 @@ class Engine:
         g = lambda dom, k: (self.hass.states.get(f"{dom}.{self.dev}_{k}") or type("x", (), {"state": "?"})).state  # noqa: E731
         pts = [f"p{i}: start {g('number', f'tou_{i}_start_hhmm')} moc {g('number', f'tou_{i}_moc')} SOC {g('number', f'tou_{i}_soc')} "
                f"sieć {g('switch', f'tou_{i}_ladowanie_z_sieci')} autokons.do {g('number', f'tou_{i}_autokonsumpcja_do')} sprzedaj.do {g('number', f'tou_{i}_sprzedaj_do')}" for i in range(1, 7)]
-        LOG.warning("SPRZEDAZ nie idzie: slot %s, siec %s W, bateria %s W, SOC %s%%, tryb eksportu '%s', harmonogram %s | %s",
-                    cur["start"], grid, self.r("bateria_moc"), self.r("bateria_soc"), g("select", "tryb_limitu_eksportu"), g("switch", "harmonogram_tou"), " | ".join(pts))
+        LOG.warning("SPRZEDAZ nie idzie: slot %s, siec %s W, bateria %s W, SOC %s%%, tryb eksportu '%s', sprzedaj nadwyzke PV %s, max moc sprzedazy %s W, "
+                    "max moc sprzedazy z PV %s W, priorytet '%s', harmonogram %s | %s",
+                    cur["start"], grid, self.r("bateria_moc"), self.r("bateria_soc"), g("select", "tryb_limitu_eksportu"), g("switch", "sprzedaj_nadwyzke_pv"),
+                    g("number", "limit_twardy_max_moc_sprzedazy"), g("number", "max_moc_sprzedazy_z_pv"), g("select", "priorytet_energii"),
+                    g("switch", "harmonogram_tou"), " | ".join(pts))
 
     def current(self) -> dict | None:
         now = datetime.now(timezone.utc)

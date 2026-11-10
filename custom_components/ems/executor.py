@@ -42,7 +42,22 @@ class Executor:
                     self.eid("number", f"tou_{p}_soc"), self.eid("switch", f"tou_{p}_ladowanie_z_sieci"),
                     self.eid("number", f"tou_{p}_autokonsumpcja_do"), self.eid("number", f"tou_{p}_sprzedaj_do")]
         return out + [self.eid("switch", "harmonogram_tou"), self.eid("switch", "ladowanie_z_sieci_dozwolone"),
-                      self.eid("select", "tryb_limitu_eksportu")]
+                      self.eid("select", "tryb_limitu_eksportu"), self.eid("switch", "sprzedaj_nadwyzke_pv")]
+
+    def export_option(self, want: str) -> str | None:
+        """Nazwa opcji trybu eksportu taka, jaka jest w ESPHome (bez polskich znakow / wielkosci liter); None + blad w logu, gdy brak."""
+        st = self.hass.states.get(self.eid("select", "tryb_limitu_eksportu"))
+        opts = (st.attributes.get("options") if st else None) or []
+        norm = lambda x: x.lower().translate(str.maketrans("ąćęłńóśźż", "acelnoszz")).replace(" ", "")  # noqa: E731
+        hit = next((o for o in opts if norm(o) == norm(want)), None)
+        if hit is None and want == EXPORT_ON:
+            hit = next((o for o in opts if "sprzeda" in norm(o) or "sell" in norm(o)), None)
+        if hit is None and want == EXPORT_OFF:
+            hit = next((o for o in opts if "wbudow" in norm(o) or "zero" in norm(o)), None)
+        if hit is None and getattr(self, "_opt_warned", None) != want:
+            self._opt_warned = want
+            LOG.error("Tryb limitu eksportu: brak opcji '%s' w falowniku – dostepne: %s", want, opts or "(brak encji)")
+        return hit
 
     def val(self, entity: str):
         st = self.hass.states.get(entity)
@@ -148,5 +163,9 @@ class Executor:
         await self.set(self.eid("switch", "harmonogram_tou"), True, "EMS")
         await self.set(self.eid("switch", "ladowanie_z_sieci_dozwolone"), True, "EMS")
         act = (current or {}).get("action", "self")
-        await self.set(self.eid("select", "tryb_limitu_eksportu"), EXPORT_ON if act == "sell" else EXPORT_OFF, f"biezacy slot: {act}")
+        if act == "sell":                                   # glowny wlacznik eksportu (jak "Solar Sell" w Deye) – bez niego nic nie idzie do sieci
+            await self.set(self.eid("switch", "sprzedaj_nadwyzke_pv"), True, "sprzedaz: eksport musi byc wlaczony")
+        opt = self.export_option(EXPORT_ON if act == "sell" else EXPORT_OFF)
+        if opt:
+            await self.set(self.eid("select", "tryb_limitu_eksportu"), opt, f"biezacy slot: {act}")
         self.last_points = pts
