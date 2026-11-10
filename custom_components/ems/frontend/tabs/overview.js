@@ -21,6 +21,20 @@ const box = (k, html, cls = "") => { const [l, t, w, h] = POS[k]; return `<div c
 const tile = (ic, cls, lab, val, sub, subc, t) => `<div class="ov-tile"><div class="ov-ic ${cls}">${ic}</div><div><div class="ov-lab">${lab}${tip(t)}</div><div class="ov-val">${val}</div><div class="ov-sub" ${subc ? `style="color:${subc}"` : ""}>${sub}</div></div></div>`;
 
 import { profile, bindProfile, accuracyModal, PROFILE_CSS } from "../profile.js";
+// Rachunek za energie w biezacym miesiacu (/api/ems/rachunek), odswiezany co 10 min
+const bill = { at: 0, busy: false, d: null };
+function billBox(c) {
+  if (!bill.busy && Date.now() - bill.at > 600000) { bill.busy = true; c.hass.callApi("GET", "ems/rachunek").then(r => { bill.d = r; }).catch(e => { bill.d = { err: e.message || String(e) }; }).finally(() => { bill.at = Date.now(); bill.busy = false; c.render(true); }); }
+  const d = bill.d, mies = new Date().toLocaleDateString("pl-PL", { month: "long" });
+  if (!d) return `<div class="ov-box"><div class="ov-h">${ic("coins", 20)} Rachunek – ${mies}</div><div class="ov-mut">Liczę…</div></div>`;
+  if (d.err) return `<div class="ov-box"><div class="ov-h">${ic("coins", 20)} Rachunek – ${mies}</div><div class="ov-mut">Nie udało się policzyć: ${esc(d.err)}</div></div>`;
+  const r = d.razem || {}, row = (a, b, cl = "") => `<div class="ov-row"><span>${a}</span><b ${cl ? `style="color:${cl}"` : ""}>${b}</b></div>`;
+  return `<div class="ov-box"><div class="ov-h">${ic("coins", 20)} Rachunek – ${mies} <span class="ov-mut">(energia, od 1.)</span></div>
+    ${row("Zakup z sieci", `${fmt(r.kup_kwh, 1, "kWh")} · ${fmt(r.kup_zl, 2, "zł")}`, "#ff6b6b")}${row("Sprzedaż (depozyt)", `${fmt(r.sprz_kwh, 1, "kWh")} · ${fmt(r.depozyt_zl, 2, "zł")}`, "#3ee07a")}
+    ${row("Rachunek do teraz", fmt(d.rachunek_zl, 2, "zł"), d.rachunek_zl > 0 ? "#ff6b6b" : "#3ee07a")}${row("Prognoza na koniec miesiąca", d.prognoza_koniec_zl == null ? "–" : `~${fmt(d.prognoza_koniec_zl, 2, "zł")}`)}
+    <div class="ov-mut" style="margin-top:6px">Zakup wg G12 godzinowo, depozyt = RCE × ${fmt(num(c.hass, "number.ems_depozyt_mnoznik", 1.23), 2)}, bilansowanie godzinowe. Bez opłat stałych i mocowej.</div></div>`;
+}
+
 export function render(c) {
   const h = c.hass, v = (k, d) => c.v(k, d);
   loadManual(c);
@@ -76,7 +90,7 @@ export function render(c) {
     <div class="ov-box"><div class="ov-h">${ic("tower", 20)} Sieć (3F, ${fmt(v("siec_czestotliwosc"), 1, "Hz")})</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("siec_napiecie_" + l), 1, "V")} · ${kw(v("siec_moc_" + l))}`)).join("")}</div>
     <div class="ov-box"><div class="ov-h">${ic("cpu", 20)} Przetwornica</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("przetwornica_napiecie_" + l), 1, "V")} · ${kw(v("przetwornica_moc_" + l))}`)).join("")}${row("Temp. radiatora", `${fmt(v("temperatura_przetwornicy"), 1)} °C / ${fmt(v("temperatura_radiatora"), 1, "°C")}`)}</div>
     <div class="ov-box"><div class="ov-h">${ic("panel", 20)} PV (stringi)</div>${[1, 2, 3, 4].map(i => row("PV" + i, kw(v("pv" + i + "_moc")))).join("")}</div></div>`;
-  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}${ster}${mid}${bot}${modal()}${accuracyModal(c)}`;
+  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}${ster}<div style="margin-bottom:14px">${billBox(c)}</div>${mid}${bot}${modal()}${accuracyModal(c)}`;
 }
 export function bind(c, r) {
   bindManual(c, r);

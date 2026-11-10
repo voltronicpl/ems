@@ -70,7 +70,7 @@ function fwd(c) {
   }
   const thr = [["prog_tania", "#facc15", "tania"], ["prog_droga", "#ff4757", "droga"], ["prog_bezcen", "#cbd5e1", "za bezcen"]].map(([k, col, nm]) => ({ v: num(c.hass, `number.ems_${k}_${sez}`, 0), c: col, name: `${nm} ${fmt(num(c.hass, `number.ems_${k}_${sez}`), 2)}` }));
   setSocMin(num(c.hass, "number.ems_soc_min", null));
-  const main = pwChart({ key: "fwd", rows: mrows, h: 560, order: "msp", tipf: tipRow, hlines: thr, bands: MB(),
+  const main = pwChart({ key: "fwd", rows: mrows, h: 420, order: "msp", tipf: tipRow, hlines: thr, bands: MB(),
     prices: [{ k: "price", c: CYAN, name: "Cena sprzedaży (RCE)", act: r => r.sl > 0 }, { f: r => g12Price(r.t), c: PINK, name: "Cena kupna (G12)", act: r => r.ch > 0 }],
     socs: [{ k: "soc", c: "#a78bfa", name: "SOC (pomiar / plan)", fill: true }],
     areas: [{ k: "ch", c: "#3d8dff", name: "Ładowanie z sieci" }, { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż" }],
@@ -128,6 +128,40 @@ function back(c) {
     ${d.dni.map(x => `<tr><td rowspan="2"><a href="#" data-day="${x.dzien}" style="color:#7fb3ff">${x.dzien}</a>${x.rce_brak ? ' <span class="pill r">brak RCE</span>' : ""}</td><td class="lab">stary</td>${money(x.stary)}<td class="r" rowspan="2"><b class="${x.roznica_zl >= 0 ? "t-g" : "t-r"}">${x.roznica_zl >= 0 ? "+" : ""}${fmt(x.roznica_zl, 2, "zł")}</b></td></tr><tr><td class="lab">nasz</td>${money(x.nowy, "t-b")}</tr>`).join("")}</table></div></div>` : ""}`;
 }
 
+// Kafelki pieniedzy dzis: do teraz (pomiar) i na koniec dnia (pomiar + plan). Bilansowanie godzinowe, zakup G12, sprzedaz RCE x depozyt.
+// "Bez EMS" = dom z sieci po G12, PV zuzyte na biezaco, nadwyzka PV sprzedana (bez magazynu).
+function moneyTiles(c) {
+  const dw = dayWindow(new Date()), now = Date.now(), meas = range(c, dw.t0, dw.t1), sm = slots(c, dw.t0, dw.t1);
+  const dep = num(c.hass, "number.ems_depozyt_mnoznik", 1.23), cap = num(c.hass, "number.ems_pojemnosc_wh", 15000) / 1000;
+  const z = () => ({ kup: 0, kupZl: 0, spr: 0, sprZl: 0, kupB: 0, kupBZl: 0, sprB: 0, sprBZl: 0 }), A = z(), E = z();
+  for (let h = 0; h < 24; h++) {
+    const a = dw.t0 + h * 36e5, b = a + 36e5, ss = [0, 1, 2, 3].map(i => sm.get(a + i * 9e5));
+    const pr = ss.map(x => x?.price).filter(v => v != null), rce = pr.length ? pr.reduce((x, y) => x + y, 0) / pr.length : 0, g12 = g12Price(new Date(a + 18e5));
+    // pomiar (do teraz) + plan (reszta godziny / dnia)
+    let imp = 0, exp = 0, dom = 0, pv = 0, impN = 0, expN = 0, domN = 0, pvN = 0;
+    meas.forEach(r => { if (r.t < a || r.t >= b) return; const gr = r.grid || 0; imp += Math.max(gr, 0) / 60; exp += Math.max(-gr, 0) / 60; dom += (r.dom || 0) / 60; pv += (r.pv || 0) / 60; });
+    impN = imp; expN = exp; domN = dom; pvN = pv;
+    ss.forEach((x, i) => { const t = a + i * 9e5; if (!x || t + 9e5 <= now) return; const f = t < now ? (t + 9e5 - now) / 9e5 : 1;
+      impN += (x.imp || 0) * f; expN += (x.exp || 0) * f; domN += (x.load || 0) * f; pvN += (x.pv || 0) * f; });
+    const add = (o, i, e, d, p) => { const n = i - e, nb = d - p;
+      if (n > 0) { o.kup += n; o.kupZl += n * g12; } else { o.spr -= n; o.sprZl += -n * Math.max(rce, 0) * dep; }
+      if (nb > 0) { o.kupB += nb; o.kupBZl += nb * g12; } else { o.sprB -= nb; o.sprBZl += -nb * Math.max(rce, 0) * dep; } };
+    if (a < now) add(A, imp, exp, dom, pv);
+    add(E, impN, expN, domN, pvN);
+  }
+  const soc0 = meas.find(r => r.soc != null)?.soc, socN = [...meas].reverse().find(r => r.soc != null)?.soc;
+  const lastSlot = [...sm.entries()].filter(([t, x]) => t < dw.t1 && x?.soc != null).sort((x, y) => x[0] - y[0]).pop()?.[1]?.soc;
+  const batA = soc0 != null && socN != null ? (socN - soc0) / 100 * cap * 0.61 : 0, batE = soc0 != null && lastSlot != null ? (lastSlot - soc0) / 100 * cap * 0.61 : batA;
+  const bil = (o, bat) => o.sprZl - o.kupZl + bat, bilB = o => o.sprBZl - o.kupBZl;
+  const zA = bil(A, batA) - bilB(A), zE = bil(E, batE) - bilB(E), col = v => v >= 0 ? "t-g" : "t-r", sg = v => (v >= 0 ? "+" : "") + fmt(v, 2, "zł");
+  const t = (icn, cls, lab, val, sub) => `<div class="tile"><div class="ic ${cls}">${icn}</div><div><div class="lab">${lab}</div><div class="val">${val}</div><div class="sub">${sub}</div></div></div>`;
+  return `<div class="tiles" style="margin-bottom:14px">
+    ${t("🔌", "ic-r", "Zakup prądu dziś", `<span class="t-r">${fmt(A.kupZl, 2, "zł")}</span>`, `${fmt(A.kup, 1, "kWh")} do teraz · koniec dnia ~${fmt(E.kupZl, 2, "zł")} (${fmt(E.kup, 1, "kWh")})`)}
+    ${t("💰", "ic-g", "Sprzedaż dziś", `<span class="t-g">${fmt(A.sprZl, 2, "zł")}</span>`, `${fmt(A.spr, 1, "kWh")} do teraz · koniec dnia ~${fmt(E.sprZl, 2, "zł")} (${fmt(E.spr, 1, "kWh")})`)}
+    ${t("⚖", bil(A, batA) >= 0 ? "ic-g" : "ic-r", "Bilans dnia", `<span class="${col(bil(A, batA))}">${sg(bil(A, batA))}</span>`, `w tym bateria ${sg(batA)} · koniec dnia ~${sg(bil(E, batE))}`)}
+    ${t("🤖", zA >= 0 ? "ic-g" : "ic-r", "Zysk dzięki EMS dziś", `<span class="${col(zA)}">${sg(zA)}</span>`, `vs dom bez magazynu na G12 (${sg(bilB(A))}) · koniec dnia ~${sg(zE)}`)}</div>`;
+}
+
 export function render(c) {
   const a = S(c.hass, "sensor.ems_plan")?.attributes || {}, hz = a.podsumowanie?.horyzont_do;
   if ((c.tabAt || 0) > (st.seen || 0)) st.sel = null;     // wejscie w zakladke -> zawsze "Teraz"
@@ -139,7 +173,7 @@ export function render(c) {
     + `<button class="btn ${st.sel === "week" ? "on" : ""}" data-pday="week">Tydzień</button><button class="btn ${st.sel === "month" ? "on" : ""}" data-pday="month">Miesiąc</button>`;
   return `<div class="ctrl" style="margin-bottom:14px;flex-wrap:nowrap"><div class="pday" data-pdays>${bar}</div><span class="ctrl" style="margin-left:auto;flex:none"><span class="lab">przeliczono ${a.przeliczono ? hm(a.przeliczono) : "–"} · do ${hz || "–"}</span><button class="btn" data-svc="button.press" data-ent="button.ems_przelicz">↻ Przelicz</button></span></div>
   <style>.pday{display:flex;gap:6px;overflow-x:auto;scrollbar-width:thin;padding-bottom:4px;min-width:0;flex:1}.pday .btn{flex:none;white-space:nowrap}</style>`
-    + fwd(c) + back(c) + tou(c);
+    + moneyTiles(c) + fwd(c) + back(c) + tou(c);
 }
 export function bind(c, r) {
   r.querySelectorAll("[data-pday]").forEach(b => b.onclick = () => { st.sel = b.dataset.pday || null; c.render(true); });

@@ -226,9 +226,28 @@ class Engine:
                 self.push()
                 return
             if self.enabled and self.plan:
-                await self.exec.apply(self.plan, self.p, ch_w, sell_w, self.current())
+                cur = self.current()
+                await self.exec.apply(self.plan, self.p, ch_w, sell_w, cur)
+                self._check_sell(cur)
         except Exception as err:  # noqa: BLE001
             LOG.exception("Blad wykonania: %s", err)
+
+    def _check_sell(self, cur: dict | None) -> None:
+        """Slot sprzedazy z planu: po 3 min sprawdza, czy cos faktycznie idzie do sieci; jesli nie - jeden wpis w logu ze stanem TOU."""
+        if not cur or cur.get("action") != "sell":
+            return
+        t = datetime.fromisoformat(cur["start"])
+        if datetime.now(timezone.utc) - t < timedelta(minutes=3) or getattr(self, "_sell_warned", None) == cur["start"]:
+            return
+        grid = self.r("siec_moc_suma")
+        if grid is not None and grid < -50:
+            return
+        self._sell_warned = cur["start"]
+        g = lambda dom, k: (self.hass.states.get(f"{dom}.{self.dev}_{k}") or type("x", (), {"state": "?"})).state  # noqa: E731
+        pts = [f"p{i}: start {g('number', f'tou_{i}_start_hhmm')} moc {g('number', f'tou_{i}_moc')} SOC {g('number', f'tou_{i}_soc')} "
+               f"sieć {g('switch', f'tou_{i}_ladowanie_z_sieci')} autokons.do {g('number', f'tou_{i}_autokonsumpcja_do')} sprzedaj.do {g('number', f'tou_{i}_sprzedaj_do')}" for i in range(1, 7)]
+        LOG.warning("SPRZEDAZ nie idzie: slot %s, siec %s W, bateria %s W, SOC %s%%, tryb eksportu '%s', harmonogram %s | %s",
+                    cur["start"], grid, self.r("bateria_moc"), self.r("bateria_soc"), g("select", "tryb_limitu_eksportu"), g("switch", "harmonogram_tou"), " | ".join(pts))
 
     def current(self) -> dict | None:
         now = datetime.now(timezone.utc)

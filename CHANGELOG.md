@@ -1,5 +1,16 @@
 # Zmiany EMS
 
+## v0.6.6
+
+**Dodane**
+- Plan: kafelki „Zakup prądu dziś”, „Sprzedaż dziś”, „Bilans dnia” (z wartością energii w baterii) i „Zysk dzięki EMS dziś” (vs dom bez magazynu na G12: PV na bieżąco, reszta z sieci) – „do teraz” z pomiarów i „koniec dnia” z planu, bilansowanie godzinowe.
+- Przegląd: ramka „Rachunek – <miesiąc>” (energia od 1. dnia miesiąca: zakup wg G12 godzinowo, depozyt = RCE × mnożnik, rachunek do teraz i prognoza na koniec miesiąca). API `GET /api/ems/rachunek`.
+- Log: gdy plan sprzedaje, a po 3 min nic nie idzie do sieci – jeden wpis `[silnik] SPRZEDAZ nie idzie` ze stanem wszystkich punktów TOU i trybu eksportu (do diagnozy). Brak cen RCE dla wykresu też trafia do logu.
+
+**Zmienione**
+- Dymek wykresu Planu idzie za myszką w pionie.
+- Wykres Planu niższy (420 px).
+
 ## v0.6.5
 
 **Zmienione**

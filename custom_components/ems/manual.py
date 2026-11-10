@@ -135,7 +135,10 @@ class DayView(HomeAssistantView):
         slots = {k: v for k, v in eng.fc_log.items() if t0 <= datetime.fromisoformat(k) < t1}
         try:
             rce = await prices.fetch_days(hass, d, d)
-        except Exception:  # noqa: BLE001
+        except Exception as err:  # noqa: BLE001
+            LOG.warning("Ceny RCE %s dla wykresu: blad %s", d, err)
             rce = {}
+        if not rce:
+            LOG.warning("Ceny RCE %s dla wykresu: brak danych z PSE", d)
         ceny = {k.isoformat(): v for k, v in rce.items() if t0 <= k < t1}
         return self.json({"dzien": d.isoformat(), "prognozy": slots, "ceny": ceny})

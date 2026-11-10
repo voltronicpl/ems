@@ -177,3 +177,55 @@ class BacktestView(HomeAssistantView):
         except Exception as err:  # noqa: BLE001
             LOG.exception("Blad symulacji wstecz: %s", err)
             return self.json_message(f"blad: {err}", 500)
+
+
+class BillView(HomeAssistantView):
+    """GET /api/ems/rachunek -> rachunek za energie w biezacym miesiacu (od 1. do teraz): zakup wg G12 godzinowo,
+    sprzedaz (depozyt) = RCE x mnoznik, bilansowanie godzinowe; prognoza na koniec miesiaca ze sredniej pelnych dni."""
+
+    url = "/api/ems/rachunek"
+    name = "api:ems:rachunek"
+    requires_auth = True
+
+    async def get(self, request):
+        hass = request.app["hass"]
+        engines = [e for k, e in hass.data.get(DOMAIN, {}).items() if not k.startswith("_")]
+        if not engines:
+            return self.json_message("EMS nie jest skonfigurowany", 404)
+        eng = engines[0]
+        try:
+            now = datetime.now(WAW)
+            m0 = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            ids = {f"sensor.{eng.dev}_{KEYS['imp']}", f"sensor.{eng.dev}_{KEYS['exp']}"}
+            chg = await _stats(hass, ids, m0.astimezone(timezone.utc), now.astimezone(timezone.utc), {"change"})
+            imp = {_ts(r["start"]): max(float(r["change"]), 0.0) for r in chg.get(f"sensor.{eng.dev}_{KEYS['imp']}", []) if r.get("change") is not None}
+            exp = {_ts(r["start"]): max(float(r["change"]), 0.0) for r in chg.get(f"sensor.{eng.dev}_{KEYS['exp']}", []) if r.get("change") is not None}
+            rce = await prices.fetch_days(hass, m0.date(), now.date())
+            dep = eng.p.get("depozyt_mnoznik", 1.23)
+            days: dict = {}
+            tot = {"kup_kwh": 0.0, "kup_zl": 0.0, "sprz_kwh": 0.0, "depozyt_zl": 0.0}
+            for h in sorted(set(imp) | set(exp)):
+                net = imp.get(h, 0.0) - exp.get(h, 0.0)
+                q = [rce.get(h + timedelta(minutes=15 * i)) for i in range(4)]
+                q = [v for v in q if v is not None]
+                r = sum(q) / len(q) if q else 0.0
+                d = days.setdefault(h.astimezone(WAW).date().isoformat(), {"kup_kwh": 0.0, "kup_zl": 0.0, "sprz_kwh": 0.0, "depozyt_zl": 0.0})
+                for o in (d, tot):
+                    if net > 0:
+                        o["kup_kwh"] += net
+                        o["kup_zl"] += net * buy_price(h)
+                    else:
+                        o["sprz_kwh"] += -net
+                        o["depozyt_zl"] += -net * max(r, 0.0) * dep
+            full = [v for k, v in days.items() if k < now.date().isoformat()]
+            import calendar
+            ndays = calendar.monthrange(now.year, now.month)[1]
+            avg = (sum(v["kup_zl"] - v["depozyt_zl"] for v in full) / len(full)) if full else None
+            left = ndays - now.day + (1 - (now.hour * 60 + now.minute) / 1440)
+            rach = tot["kup_zl"] - tot["depozyt_zl"]
+            r2 = lambda o: {k: round(v, 2) for k, v in o.items()}  # noqa: E731
+            return self.json({"miesiac": m0.strftime("%Y-%m"), "dni_w_miesiacu": ndays, "razem": r2(tot), "rachunek_zl": round(rach, 2),
+                              "prognoza_koniec_zl": round(rach + avg * left, 2) if avg is not None else None, "dni": {k: r2(v) for k, v in days.items()}})
+        except Exception as err:  # noqa: BLE001
+            LOG.exception("Rachunek: %s", err)
+            return self.json_message(f"blad: {err}", 500)

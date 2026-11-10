@@ -150,16 +150,17 @@ export function bindCharts(root, rerender) {
     const c = CHARTS[el.dataset.chart]; if (!c) return;
     const svg = el.querySelector("svg"), cl = svg.querySelector(".cl"), tp = el.querySelector(".fc-tip");
     const hide = () => { cl.style.display = "none"; const cd = svg.querySelector(".cd"); if (cd) cd.innerHTML = ""; if (!ui.mob) tp.style.display = "none"; if (c.key) delete SEL[c.key]; };
+    let my = null;   // pozycja myszy w pionie (px w ramce wykresu) – dymek idzie za nia
     const show = i => {
       if (i < 0 || i >= c.rows.length) { hide(); return; }
       const cx = c.P.l + (i + 0.5) * c.bw; cl.setAttribute("x1", cx); cl.setAttribute("x2", cx); cl.style.display = "";
       const cd = svg.querySelector(".cd"); if (cd && c.dots) cd.innerHTML = (c.dots[i] || []).map(d => `<circle cx="${cx}" cy="${d.y}" r="6" fill="${d.c}" stroke="#0b1828" stroke-width="2.5"/>`).join("");
       tp.innerHTML = c.tipf ? c.tipf(c.rows[i]) : ""; tp.style.display = "";
-      if (!ui.mob) { const pc = cx / c.W * 100; if (c.dots) { tp.style.left = pc + "%"; tp.style.top = "56px"; tp.style.transform = pc > 60 ? "translateX(calc(-100% - 14px))" : "translateX(14px)"; } else tp.style.left = Math.min(Math.max(pc, 12), 88) + "%"; }
+      if (!ui.mob) { const pc = cx / c.W * 100; if (c.dots) { tp.style.left = pc + "%"; tp.style.top = my == null ? "56px" : Math.max(0, Math.min(my - tp.offsetHeight / 2, el.clientHeight - tp.offsetHeight)) + "px"; tp.style.transform = pc > 60 ? "translateX(calc(-100% - 14px))" : "translateX(14px)"; } else tp.style.left = Math.min(Math.max(pc, 12), 88) + "%"; }
       if (c.key) SEL[c.key] = i;
     };
     const at = e => { const b = svg.getBoundingClientRect(); return Math.floor(((e.clientX - b.left) / b.width * c.W - c.P.l) / c.bw); };
-    svg.onpointermove = svg.onpointerdown = e => show(at(e));
+    svg.onpointermove = svg.onpointerdown = e => { my = e.pointerType === "mouse" ? e.clientY - el.getBoundingClientRect().top : null; show(at(e)); };
     svg.onpointerleave = e => { if (e.pointerType === "mouse") hide(); };   // palec: dymek zostaje po puszczeniu
     if (c.key && SEL[c.key] != null) show(SEL[c.key]);
   });
