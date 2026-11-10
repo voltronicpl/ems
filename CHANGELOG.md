@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## v0.5.4
+
+**Poprawione**
+- Biały ekran panelu po aktualizacji (`core.js doesn't provide an export named 'ui'`): przeglądarka brała stare `core.js` / `tips.js` / zakładki z pamięci podręcznej. Pliki panelu są teraz pod `/ems_static/<wersja>/`, więc każda nowa wersja ładuje się cała od nowa, bez czyszczenia cache.
+
 ## v0.5.3
 
 **Dodane**
