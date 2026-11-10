@@ -51,6 +51,17 @@ class EmsDashboard extends HTMLElement {
   }
 
   // --- pola wspolne: zmiany zbierane w grupie, zapis przyciskiem "Zapisz" ---
+  // ID encji dataloggera: dokladne, a jak go nie ma - ta sama encja pod innym ID (HA nadal np. sufiks _2 albo prefiks urzadzenia),
+  // szukana po koncowce ID albo po nazwie z rejestru. Wynik zapamietany do przeladowania panelu.
+  rid(id, label) {
+    const h = this._hass; if (!h || h.states[id]) return id;
+    const memo = this._rid = this._rid || {}; if (memo[id] && h.states[memo[id]]) return memo[id];
+    const [dom, obj] = id.split("."), base = obj.replace(/^[^_]+_/, ""), norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l").replace(/[^a-z0-9]+/g, " ").trim();
+    const want = norm(label);
+    const hit = Object.keys(h.states).filter(e => e.startsWith(dom + ".")).find(e => { const o = e.split(".")[1]; return o === base || o.endsWith("_" + base) || o.startsWith(obj + "_") || (want && norm(h.states[e].attributes?.friendly_name).endsWith(want)); });
+    if (hit) memo[id] = hit;
+    return hit || id;
+  }
   input(id) { const v = num(this._hass, id); return `<input type="number" step="any" data-num="${id}" data-now="1" value="${v ?? ""}">`; }
   field(id, unit, o = {}) {
     const cur = num(this._hass, id), d = this.dirty[id], val = d !== undefined ? d : cur, miss = !S(this._hass, id);

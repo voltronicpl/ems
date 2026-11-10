@@ -36,14 +36,23 @@ export function render(c) {
     ["SOC minimalny", "number.ems_soc_min", "%", "soc_min"], ["SOC przy burzy", "number.ems_soc_burza", "%", "soc_burza"], ["SOC maksymalny", "number.ems_soc_max", "%", "soc_max"]];
   const limits = `<div class="sec" id="s-lim"><div class="ic ic-r">🔒</div>Limity twarde${tip(T.limity)}</div>
     ${c.group("🔒 Nie do ruszenia przez algorytm", `<div class="g3">${lim.map(([n, id, u, k]) => `<div><label class="f">🔒 ${n}${tip(T[k])}</label>${f(id, u, { lock: 1 })}</div>`).join("")}</div>`, lim.map(x => x[1]), "lock")}`;
-  const inv = `<div class="sec" id="s-inv"><div class="ic ic-b">🔌</div>Część Inwerter</div>
+  const st = k => S(c.hass, `sensor.${d}_${k}`)?.state, ok = v => v && !["unknown", "unavailable"].includes(v);
+  const miss = GROUPS.flatMap(g => g.fields).filter(x => x.t !== "b" && !S(c.hass, c.rid(x.id.replace("ecobss", d), x.l))).map(x => x.id.replace("ecobss", d));
+  const status = `<div class="box" style="margin:0 0 12px"><div class="ctrl" style="gap:16px;flex-wrap:wrap">
+    <span>📥 Pomiary: <b>${ok(st("ostatni_odczyt_pomiarow")) ? st("ostatni_odczyt_pomiarow") : "–"}</b></span>
+    <span>📥 Ustawienia: <b>${ok(st("ostatni_odczyt_ustawien")) ? st("ostatni_odczyt_ustawien") : "–"}</b></span>
+    <span>📤 Ostatni zapis: <b>${ok(st("ostatni_zapis")) ? esc(st("ostatni_zapis")) : "–"}</b></span>
+    <span class="lab">licznik cykli ${ok(st("licznik_odczytow")) ? st("licznik_odczytow") : "–"}</span></div>
+    ${ok(st("ostatni_odczyt_ustawien")) ? "" : `<div class="note">Brak potwierdzeń odczytu – wgraj datalogger ecobss.yaml v5.3.</div>`}
+    ${miss.length ? `<div class="note">Brak w HA ${miss.length} encji: <code>${miss.slice(0, 8).map(esc).join(", ")}${miss.length > 8 ? ", …" : ""}</code> – sprawdź Ustawienia → Urządzenia → EcoBss (wyłączone?).</div>` : ""}</div>`;
+  const inv = `<div class="sec" id="s-inv"><div class="ic ic-b">🔌</div>Część Inwerter</div>${status}
     <div class="g2">${GROUPS.map(g => c.group(g.title.replace("Siec", "Sieć"), `<div class="g3">${g.fields.map(x => {
-      const id = x.id.replace("ecobss", d), rr = x.r ? `<span class="lab" style="margin-left:auto">rej. ${x.r}</span>` : "";
+      const id = c.rid(x.id.replace("ecobss", d), x.l), rr = x.r ? `<span class="lab" style="margin-left:auto">rej. ${x.r}</span>` : "";
       if (x.t === "n") return `<div><label class="f">${x.lock ? "🔒 " : ""}${esc(x.l)}${rr}</label>${f(id, x.u, { lock: x.lock })}</div>`;
       if (x.t === "s") return `<div><label class="f">${esc(x.l)}${rr}</label>${c.sw(id, "")}</div>`;
       if (x.t === "o") return `<div><label class="f">${esc(x.l)}${rr}</label>${c.sel(id)}</div>`;
       if (x.t === "b") return `<div><label class="f">Czas falownika</label><button class="btn pri" data-svc="button.press" data-ent="${id}">${esc(x.l)}</button></div>`;
-      return ""; }).join("")}</div>`, g.fields.filter(x => x.t === "n").map(x => x.id.replace("ecobss", d)))).join("")}</div>`;
+      return ""; }).join("")}</div>`, g.fields.filter(x => x.t === "n").map(x => c.rid(x.id.replace("ecobss", d), x.l)))).join("")}</div>`;
   const on = raw.unlocked > Date.now(), res = S(c.hass, `sensor.${d}_surowy_odczyt`)?.state;
   const rawbox = `<div class="box ${on ? "warn" : ""}"><div class="h"><span>🧪 Surowy rejestr Modbus${tip(T.raw)}</span>
       <button class="btn ${on ? "off" : ""}" data-unlock>${on ? `🔓 Odblokowane (${Math.ceil((raw.unlocked - Date.now()) / 60000)} min) – zablokuj` : "🔒 Odblokuj"}</button></div>

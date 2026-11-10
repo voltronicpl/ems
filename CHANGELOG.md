@@ -1,5 +1,14 @@
 # Zmiany EMS
 
+## v0.5.6
+
+**Dodane**
+- Część Inwerter: pasek potwierdzeń z dataloggera – „📥 Pomiary HH:MM:SS”, „📥 Ustawienia HH:MM:SS”, „📤 Ostatni zapis: rej. X o HH:MM:SS”, licznik cykli (wymaga `ecobss.yaml` v5.3).
+- Lista encji, których brakuje w HA (zamiast samego „brak encji” w polach).
+
+**Poprawione**
+- Pola Inwertera szukają encji także pod innym ID (sufiks `_2`, prefiks urządzenia, ta sama nazwa) – zapis idzie do znalezionej encji.
+
 ## v0.5.5
 
 **Zmienione**
