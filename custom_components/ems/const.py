@@ -1,6 +1,6 @@
 """Stale integracji EMS."""
 DOMAIN = "ems"
-VERSION = "0.6.4"
+VERSION = "0.6.5"
 CONF_DEVICE = "device"          # prefiks encji ESPHome, np. "ecobss"
 DEFAULT_DEVICE = "ecobss"
 POLL_NUMBER = "interwal_odczytu"
@@ -129,6 +129,7 @@ PARAMS = {
     "soc_min": ("SOC minimalny", 5, 80, 1, "%", 25),
     "soc_burza": ("SOC przy burzy", 10, 100, 1, "%", 50),
     "soc_max": ("SOC maksymalny", 50, 100, 1, "%", 98),
+    "ladowanie_lagodne_c": ("Lagodne ladowanie z sieci (algorytm)", 0.05, 1, 0.05, "C", 0.2),
     "burza_wyprzedzenie_h": ("Burza - zapas od (h przed)", 0, 12, 0.5, "h", 3),
     "pojemnosc_wh": ("Pojemnosc baterii", 1000, 100000, 100, "Wh", 15000),
     "pv_moc_w": ("Moc PV", 0, 50000, 10, "Wp", 3300),

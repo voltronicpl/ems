@@ -28,8 +28,8 @@ export function flowSvg(vb, paths, st, th = [13, 9, 3.5], id = "flg") {
   let g = "";
   for (const k in paths) {
     const s = st[k] || { w: 0 }, a = Math.abs(s.w || 0), d = paths[k];
-    if (a < 20) { g += `<path d="${d}" stroke="${COL.off}" stroke-width="${th[0]}" opacity=".6"/>`; continue; }
-    const sp = a < 500 ? 60 : a < 1500 ? 130 : 240, dur = GAP / sp, del = -(now % dur);
+    if (a < 5) { g += `<path d="${d}" stroke="${COL.off}" stroke-width="${th[0]}" opacity=".6"/>`; continue; }
+    const sp = a < 100 ? 25 : a < 500 ? 60 : a < 1500 ? 130 : 240, dur = GAP / sp, del = -(now % dur);
     const an = `class="fl-run${s.toHouse ? "" : " fl-rev"}" style="animation-duration:${dur.toFixed(2)}s;animation-delay:${del.toFixed(2)}s" stroke-dasharray="34 70"`;
     g += `<path d="${d}" stroke="${s.col}" stroke-width="${th[0]}" opacity=".28"/>`
       + `<path d="${d}" stroke="${s.col}" stroke-width="${th[1]}" filter="url(#${id})" ${an}/>`

@@ -97,7 +97,10 @@ class Executor:
         res = round(slot["reserve"])
         if slot["action"] == "charge":
             tgt = round(p["soc_max"])
-            return ("charge", True, tgt, int(max_charge_w // 100 * 100), tgt, 100)
+            w = max_charge_w
+            if not slot.get("manual") and slot.get("grid_kwh"):          # algorytm: moc z planu (lagodne 0,2C), w krokach 500 W
+                w = min(max_charge_w, max(500.0, -(-slot["grid_kwh"] * 4000 // 500) * 500))
+            return ("charge", True, tgt, int(w // 100 * 100), tgt, 100)
         if slot["action"] == "sell":
             return ("sell", False, res, int(max_sell_w // 100 * 100), res, res)
         return (slot["action"], False, res, int(max_sell_w // 100 * 100), res, 100)

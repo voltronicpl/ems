@@ -87,6 +87,7 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
     pct = lambda kwh: kwh / cap_kwh * 100          # noqa: E731
     kwh = lambda pc: pc / 100 * cap_kwh            # noqa: E731
     ch_slot = max_charge_w / 1000 * SLOT_H          # max energii DO baterii na slot (moc ladowania po stronie baterii)
+    soft = min(ch_slot, p.get("ladowanie_lagodne_c", 0.2) * cap_kwh * SLOT_H)   # lagodne ladowanie (0,2C) – szybciej tylko gdy trzeba
     ec, ed = eff(p)
     sell_slot = max_sell_w / 1000 * SLOT_H
 
@@ -267,24 +268,27 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                 ahead = sum(sell[j] + max(ld[j] - pvk[j], 0) for j in range(k + 1, b) if in_sh(j)) / ed
                 want = min(kwh(soc_max), kwh(tgt if tgt is not None else res_min) + ahead)
                 if want - e > 0.005:
-                    put = min(ch_slot, want - e)                       # do baterii
+                    left = max(sum(1 for j in range(k, b) if not in_sh(j)), 1)
+                    need = (want - e) / left
+                    put = min(ch_slot, max(soft, need), want - e)      # do baterii: lagodnie, szybciej gdy nie zdazy
                     grid = put / ec                                    # z sieci (ze stratami)
                     e += put
                     imp += grid
                     act = "charge"
-                    why = f"tania strefa G12: laduje pod cel {tgt or res_min:.0f}% + sprzedaz w innej godzinie"
+                    why = f"tania strefa G12: laduje pod cel {tgt or res_min:.0f}% + sprzedaz w innej godzinie" + (f"; szybciej niz {p.get('ladowanie_lagodne_c', 0.2):.2g}C – inaczej nie zdazy" if need > soft + 1e-6 else "")
             elif is_ch:
                 imp += max(-net, 0)                                    # dom z sieci w taniej strefie
                 e, over = store(e, max(net, 0))
                 if tgt is not None and soc < tgt - 0.5:
                     left = b - k
-                    put = min(ch_slot, (kwh(tgt) - e) / max(left, 1) * 2, kwh(tgt) - e)
+                    need = (kwh(tgt) - e) / max(left, 1)
+                    put = min(ch_slot, max(soft, need), kwh(tgt) - e)  # lagodnie (0,2C), szybciej tylko gdy nie zdazy
                     if put > 0.005:
                         grid = put / ec
                         e += put
                         imp += grid
                         act = "charge"
-                        why = f"tania strefa G12, cel {tgt:.0f}% (dom + sprzedaz do nastepnej taniej strefy, miejsce na PV)"
+                        why = f"tania strefa G12, cel {tgt:.0f}% (dom + sprzedaz do nastepnej taniej strefy, miejsce na PV)" + (f"; szybciej niz {p.get('ladowanie_lagodne_c', 0.2):.2g}C – inaczej nie zdazy" if need > soft + 1e-6 else "")
             else:
                 if net >= 0:
                     e, over = store(e, net)

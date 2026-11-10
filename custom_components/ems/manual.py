@@ -71,7 +71,7 @@ class ManualJob:
         act = "charge" if self.kind == "buy" else "sell"
         out = []
         for i in range(16):
-            out.append({"start": (now + timedelta(minutes=15 * i)).isoformat(), "action": act,
+            out.append({"start": (now + timedelta(minutes=15 * i)).isoformat(), "action": act, "manual": True,
                         "reserve": p["soc_min"], "grid_kwh": 0, "price": None})
         out.append({"start": (now + timedelta(hours=4)).isoformat(), "action": "self", "reserve": p["soc_min"],
                     "grid_kwh": 0, "price": None})

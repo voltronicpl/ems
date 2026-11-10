@@ -1,7 +1,7 @@
 import { S, num, fmt, tip, chart, pwChart, setSocMin, PINK, CYAN, g12Price, hm, esc } from "../core.js";
 import { T } from "../tips.js";
 import { loadManual, bands as mBands, MC, line as mLine } from "../manual.js";
-import { range, nowWindow, dayWindow } from "../minute.js";
+import { range, nowWindow, dayWindow, stats, weekWindow, monthWindow } from "../minute.js";
 import { slots } from "../forecast.js";
 import { tou } from "../tou.js";
 export const title = "Plan";
@@ -52,22 +52,30 @@ function fwd(c) {
   loadFwd(c); loadManual(c);
   const a = p.attributes, s = a.podsumowanie || {}, sez = c.zone.summer ? "lato" : "zima";
   const rows = (a.plan || []).map(x => ({ ...x, t: new Date(x.start), ch: x.action === "charge" ? x.grid_kwh : 0, sl: x.action === "sell" ? x.grid_kwh : 0, loadp: x.load }));
-  // okno: "Teraz" = teraz ±12 h (teraz na srodku), inny dzien = 00–24. Os minutowa: przeszlosc = pomiar co 1 min + (przerywana) prognoza, jaka EMS wtedy mial; przyszlosc = plan.
-  const w = st.sel ? dayWindow(new Date(st.sel + "T00:00")) : nowWindow(12), now = Date.now();
-  const meas = range(c, w.t0, w.t1), sm = slots(c, w.t0, w.t1), mrows = [];
-  for (let t = w.t0, i = 0; t < w.t1; t += 6e4, i++) {
-    const x = sm.get(Math.floor(t / 9e5) * 9e5) || {}, m = t < now ? meas[i] : null, fut = t >= Math.floor(now / 9e5) * 9e5;
+  // okno: "Teraz" = teraz ±12 h (teraz na srodku), dzien = 00–24 (co 1 min), tydzien (co 15 min), miesiac (co 1 h).
+  // Przeszlosc = pomiar (linia ciagla) + prognoza, jaka EMS wtedy mial (przerywana); przyszlosc = plan.
+  const w = st.sel === "week" ? weekWindow() : st.sel === "month" ? monthWindow() : st.sel ? dayWindow(new Date(st.sel + "T00:00")) : nowWindow(12), now = Date.now();
+  const step = st.sel === "week" ? 15 : st.sel === "month" ? 60 : 1, sm = slots(c, w.t0, w.t1), mrows = [];
+  const meas = step === 1 ? range(c, w.t0, w.t1) : null, mst = step > 1 ? stats(c, w.t0, w.t1, step === 15 ? "5minute" : "hour") : null;
+  const avg = (arr, k) => { const v = arr.map(o => o && o[k]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const nowSlot = Math.floor(now / 9e5) * 9e5;
+  for (let t = w.t0, i = 0; t < w.t1; t += step * 6e4, i++) {
+    const ss = []; for (let q = Math.floor(t / 9e5) * 9e5; q < t + step * 6e4; q += 9e5) ss.push(sm.get(q));
+    const x = step === 1 ? (ss[0] || {}) : { pv: avg(ss, "pv"), load: avg(ss, "load"), soc: avg(ss, "soc"), price: avg(ss, "price"), grid_kwh: avg(ss, "grid_kwh"), action: (ss.find(o => o && o.action !== "self") || ss[0] || {}).action, why: null };
+    let m = null;
+    if (t < now) { if (step === 1) m = meas[i]; else { const pts = []; for (let q = t; q < t + step * 6e4; q += 3e5) pts.push(mst.get(q)); m = { pv: avg(pts, "pv"), dom: avg(pts, "dom"), bat: avg(pts, "bat"), grid: avg(pts, "grid"), soc: avg(pts, "soc") }; } }
+    const fut = t >= nowSlot;
     mrows.push({ ...x, t: new Date(t), loadp: x.load, ch: fut && x.action === "charge" ? x.grid_kwh : 0, sl: fut && x.action === "sell" ? x.grid_kwh : 0,
       pv_m: m?.pv ?? null, dom_m: m?.dom ?? null, bat_m: m?.bat == null ? null : -m.bat, grid_m: m?.grid ?? null, soc: m ? (m.soc ?? null) : (x.soc ?? null) });
   }
   const thr = [["prog_tania", "#facc15", "tania"], ["prog_droga", "#ff4757", "droga"], ["prog_bezcen", "#cbd5e1", "za bezcen"]].map(([k, col, nm]) => ({ v: num(c.hass, `number.ems_${k}_${sez}`, 0), c: col, name: `${nm} ${fmt(num(c.hass, `number.ems_${k}_${sez}`), 2)}` }));
   setSocMin(num(c.hass, "number.ems_soc_min", null));
-  const main = pwChart({ key: "fwd", rows: mrows, h: 560, tipf: tipRow, hlines: thr, bands: MB(),
+  const main = pwChart({ key: "fwd", rows: mrows, h: 560, order: "msp", tipf: tipRow, hlines: thr, bands: MB(),
     prices: [{ k: "price", c: CYAN, name: "Cena sprzedaży (RCE)", act: r => r.sl > 0 }, { f: r => g12Price(r.t), c: PINK, name: "Cena kupna (G12)", act: r => r.ch > 0 }],
     socs: [{ k: "soc", c: "#a78bfa", name: "SOC (pomiar / plan)", fill: true }],
     areas: [{ k: "ch", c: "#3d8dff", name: "Ładowanie z sieci" }, { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż" }],
-    lines: [{ k: "pv", c: "#ffad2e", name: "PV (prognoza)", dash: "6 5", nofill: true }, { k: "loadp", c: "#ff4757", name: "Dom (prognoza)", nofill: true, dash: "6 5" },
-      { k: "pv_m", raw: true, c: "#ffe066", name: "PV (pomiar)", w: 1.4 }, { k: "dom_m", raw: true, c: "#ff6b8a", name: "Dom (pomiar)", w: 1.4 },
+    lines: [{ k: "pv", c: "#ffad2e", name: "PV (prognoza)", dash: "6 5", nofill: true }, { k: "loadp", c: "#1e9bff", name: "Dom (prognoza)", nofill: true, dash: "6 5" },
+      { k: "pv_m", raw: true, c: "#ffe066", name: "PV (pomiar)", w: 1.4 }, { k: "dom_m", raw: true, c: "#1e9bff", name: "Dom – konsumpcja (pomiar)", w: 2.2, fill: true },
       { k: "bat_m", raw: true, c: "#7CFC4A", name: "Bateria (pomiar, + ładowanie)", w: 1.4 }, { k: "grid_m", raw: true, c: "#3aa0ff", name: "Sieć (pomiar, + pobór)", w: 1.4 }] });
   const fk = (st.fakt || []).map(f => ({ t: new Date(f.start), pva: f.pv / 1000, loada: f.load != null ? f.load / 1000 : null }));
   const hourly = (key, fkey) => { const m = {}; rows.forEach(r => { const k = new Date(r.t).setMinutes(0, 0, 0); m[k] = (m[k] || 0) + r[key]; }); const ks = Object.keys(m).map(Number).sort(); fk.forEach(f => { const k = f.t.getTime(); if (!(k in m)) { m[k] = null; ks.push(k); } }); return [...new Set(ks)].sort().map(k => ({ t: new Date(k), [key]: m[k], [fkey]: fk.find(f => f.t.getTime() === k)?.[fkey] ?? null })); };
@@ -76,7 +84,7 @@ function fwd(c) {
   const acts = []; rows.forEach(r => { if (r.action === "self") return; const l = acts[acts.length - 1]; if (l && l.action === r.action && l.end === r.t.getTime()) { l.kwh += r.grid_kwh; l.end += 9e5; l.pr.push(r.price); } else acts.push({ action: r.action, start: r.t, end: r.t.getTime() + 9e5, kwh: r.grid_kwh, pr: [r.price], why: r.why }); });
   const tile = (ic, cls, lab, val, sub) => `<div class="tile"><div class="ic ${cls}">${ic}</div><div><div class="lab">${lab}</div><div class="val">${val}</div><div class="sub">${sub}</div></div></div>`;
   return `${a.blad ? `<div class="box err">Błąd planu: ${esc(a.blad)}</div>` : ""}
-  <div class="box"><div class="h"><span>📅 ${st.sel ? new Date(st.sel + "T00:00").toLocaleDateString("pl-PL", { weekday: "long", day: "2-digit", month: "2-digit" }) : "Teraz ±12 h"} <span class="lab" style="font-size:inherit">(pomiar co 1 min linią ciągłą, prognoza przerywaną, plan co 15 min)</span>${tip(T.wykres)}</span><span class="pill b">🗼 taryfa: G12</span></div>${main}</div>
+  <div class="box"><div class="h"><span>📅 ${st.sel === "week" ? "Bieżący tydzień" : st.sel === "month" ? "Bieżący miesiąc" : st.sel ? new Date(st.sel + "T00:00").toLocaleDateString("pl-PL", { weekday: "long", day: "2-digit", month: "2-digit" }) : "Teraz ±12 h"} <span class="lab" style="font-size:inherit">(${step === 1 ? "co 1 min" : step === 15 ? "co 15 min" : "co 1 h"}; pomiar linią ciągłą, prognoza przerywaną)</span>${tip(T.wykres)}</span><span class="pill b">🗼 taryfa: G12</span></div>${main}</div>
   ${st.sel ? "" : `${manual(c, a)}
   <div class="tiles">${tile("🔵", "ic-b", "Ładowanie z sieci", fmt(s.ladowanie_kwh, 1, "kWh"), `pobór razem ${fmt(s.import_kwh, 1, "kWh")}`)}${tile("💰", "ic-g", "Sprzedaż", fmt(s.sprzedaz_kwh, 1, "kWh"), `~${fmt(s.przychod_zl, 2, "zł")}`)}
     ${tile("☀", "ic-o", "Prognoza PV", fmt(s.pv_kwh, 1, "kWh"), `korekta dnia ×${fmt(s.korekta_pv, 2)}`)}${tile("🏠", "ic-b", "Prognoza zużycia", fmt(s.zuzycie_kwh, 1, "kWh"), `wsp. temp. ${fmt(s.wsp_temp, 2)} kWh/°C`)}${tile("⚡", s.burza ? "ic-r" : "ic-g", "Burza", s.burza ? "TAK" : "nie", s.burza ? `zapas ${num(c.hass, "number.ems_soc_burza", 50)}%` : "brak w prognozie")}</div>
@@ -122,15 +130,20 @@ function back(c) {
 
 export function render(c) {
   const a = S(c.hass, "sensor.ems_plan")?.attributes || {}, hz = a.podsumowanie?.horyzont_do;
-  const days = []; for (let i = -14; i <= 1; i++) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); days.push(d); }
-  const bar = days.map((d, i) => { const id = iso(d), on = i === 14 ? !st.sel : st.sel === id, lab = i === 14 ? "Teraz" : `${d.toLocaleDateString("pl-PL", { weekday: "short" })} ${d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" })}${i === 15 ? " (jutro)" : ""}`;
-    return `<button class="btn ${on ? "on" : ""}" data-pday="${i === 14 ? "" : id}">${lab}</button>`; }).join("");
+  if ((c.tabAt || 0) > (st.seen || 0)) st.sel = null;     // wejscie w zakladke -> zawsze "Teraz"
+  st.seen = Date.now();
+  const days = []; for (let i = -3; i <= 1; i++) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); days.push(d); }
+  const bar = days.map((d, i) => { const id = iso(d), on = i === 3 ? !st.sel : st.sel === id, lab = i === 3 ? "Teraz" : `${d.toLocaleDateString("pl-PL", { weekday: "short" })} ${d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" })}${i === 4 ? " (jutro)" : ""}`;
+    return `<button class="btn ${on ? "on" : ""}" data-pday="${i === 3 ? "" : id}">${lab}</button>`; }).join("")
+    + `<label class="btn ${st.sel && /^\d/.test(st.sel) && !days.some(d => iso(d) === st.sel) ? "on" : ""}" style="position:relative">📅 ${st.sel && /^\d/.test(st.sel) && !days.some(d => iso(d) === st.sel) ? st.sel : "Kalendarz"}<input type="date" data-pcal max="${iso(days[4])}" value="${/^\d/.test(st.sel || "") ? st.sel : ""}" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>`
+    + `<button class="btn ${st.sel === "week" ? "on" : ""}" data-pday="week">Tydzień</button><button class="btn ${st.sel === "month" ? "on" : ""}" data-pday="month">Miesiąc</button>`;
   return `<div class="ctrl" style="margin-bottom:14px;flex-wrap:nowrap"><div class="pday" data-pdays>${bar}</div><span class="ctrl" style="margin-left:auto;flex:none"><span class="lab">przeliczono ${a.przeliczono ? hm(a.przeliczono) : "–"} · do ${hz || "–"}</span><button class="btn" data-svc="button.press" data-ent="button.ems_przelicz">↻ Przelicz</button></span></div>
   <style>.pday{display:flex;gap:6px;overflow-x:auto;scrollbar-width:thin;padding-bottom:4px;min-width:0;flex:1}.pday .btn{flex:none;white-space:nowrap}</style>`
     + fwd(c) + back(c) + tou(c);
 }
 export function bind(c, r) {
   r.querySelectorAll("[data-pday]").forEach(b => b.onclick = () => { st.sel = b.dataset.pday || null; c.render(true); });
+  const cal = r.querySelector("[data-pcal]"); if (cal) cal.onchange = () => { if (cal.value) { st.sel = cal.value; c.render(true); } };
   const pd = r.querySelector("[data-pdays] .on"); if (pd && !st.scrolled) { pd.scrollIntoView({ inline: "center", block: "nearest" }); st.scrolled = true; }
   const d0 = r.querySelector("[data-d0]"), d1 = r.querySelector("[data-d1]");
   if (d0) d0.onchange = () => { st.d0 = d0.value; if (st.d1 < st.d0) st.d1 = st.d0; };

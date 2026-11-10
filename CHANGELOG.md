@@ -1,5 +1,16 @@
 # Zmiany EMS
 
+## v0.6.5
+
+**Zmienione**
+- EMS-001: linie przesyłu widoczne już od 5 W (było 20 W); najwolniejsza animacja poniżej 100 W.
+- EMS-002: łagodne ładowanie z sieci w algorytmie – parametr „Łagodne ładowanie z sieci” (domyślnie 0,2C ≈ 3 kW przy 15 kWh). Szybciej (do limitów) tylko gdy przy tej mocy nie zdąży do celu przed końcem taniej strefy – powód w dymku planu. Moc punktu TOU z planu (kroki 500 W). Ręczne kupno zawsze pełną mocą.
+- EMS-003: Plan po wejściu w zakładkę zawsze na „Teraz” (±12 h, podświetlone).
+- EMS-004: konsumpcja domu w pasie Moc – pomiar wypełnioną linią, prognoza przerywaną (ten sam niebieski).
+- EMS-005: kolejność pasów w Planie: Moc → SOC → Ceny.
+- EMS-006: pasek dni: 3 dni wstecz, Teraz, jutro + 📅 kalendarz.
+- EMS-007: przyciski Tydzień (pn–nd, co 15 min) i Miesiąc (co 1 h) – ten sam wykres Planu ze statystyk HA i zapisanych prognoz.
+
 ## v0.6.4
 
 **Zmienione**

@@ -70,14 +70,17 @@ export const g12Price = t => cheapAt(t) ? G12_ZL.cheap : G12_ZL.expensive;
 const OFF = {};
 const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100].find(s => span / s <= n) || 200;
 const ICC = { coins: "#facc15", bolt: "#facc15", batteryBolt: "#3ee07a" };
-export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [] }) {
+export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [], order = "pms" }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
   // Trzy pasy na wspolnej osi czasu (kazdy z jedna osia): ceny zl/kWh | moc kW | SOC %. Na komputerze opis pasa z ikona po lewej.
   const off = OFF[key] = OFF[key] || {}, mob = ui.mob;
   const id = "c" + (++CH), W = vbW(), L = mob ? 44 : 150, R = mob ? 10 : 18, T = mob ? 22 : 14, B = 30, GAP = mob ? 30 : 18, n = rows.length, bw = (W - L - R) / n;
   const hasP = prices.some(p => !off[p.name]) || hlines.length, hasS = socs.some(s => !off[s.name]);
   const free = h - T - B - GAP * 2, hP = hasP ? free * 0.36 : 0, hS = hasS ? free * 0.24 : 0, hM = free - hP - hS;
-  const tP = T, tM = tP + (hasP ? hP + GAP : 0), tS = tM + hM + GAP, bot = hasS ? tS + hS : tM + hM;
+  // kolejnosc pasow od gory: order = "pms" (ceny, moc, SOC) albo np. "msp" (moc, SOC, ceny)
+  const HB = { p: hasP ? hP : 0, m: hM, s: hasS ? hS : 0 }, TB = {}; let yy = T, last = "m";
+  for (const b of order) { if (!HB[b]) continue; TB[b] = yy; yy += HB[b] + GAP; last = b; }
+  const tP = TB.p ?? T, tM = TB.m, tS = TB.s ?? T, bot = TB[last] + HB[last];
   const x = i => L + i * bw, val = (s, r) => { const v = s.f ? s.f(r) : r[s.k]; return v == null || isNaN(v) ? null : (s.sign || 1) * v * (s.raw ? 1 : 4); };
   const kw = [...areas, ...lines].filter(s => !off[s.name]).flatMap(s => rows.map(r => val(s, r))).filter(v => v != null);
   let mag = Math.max(1, ...kw.map(Math.abs)); const st = [0.25, 0.5, 1, 2.5, 5, 10, 25].find(q => mag / q <= (mob ? 2 : 4)) || 50; mag = Math.ceil(mag / st) * st;
@@ -115,7 +118,7 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   for (const s of areas) { if (off[s.name]) continue; rows.forEach((r, i) => { const v = val(s, r); if (!v) return; const y0 = Y(0), y1 = Y(v);
     g += `<rect x="${(x(i) + gp / 2).toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}" width="${Math.max(bw - gp, 0.6).toFixed(1)}" height="${Math.max(Math.abs(y1 - y0), 0.5).toFixed(1)}" rx="1.5" fill="${s.c}" opacity=".9"/>`; }); }
   lines.forEach((s, j) => { if (off[s.name]) return; const d = steps(r => val(s, r), Y); if (!d) return;
-    if (j === 0 && !s.nofill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${Y(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".16"/>`).join("");
+    if ((j === 0 && !s.nofill) || s.fill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${Y(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".16"/>`).join("");
     g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 2.2}" stroke-linejoin="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""}/>`; });
   if (hasP) {
     hlines.forEach(l => { if (l.v > pTop) return; g += `<line x1="${L}" x2="${W - R}" y1="${YP(l.v)}" y2="${YP(l.v)}" stroke="${l.c}" stroke-dasharray="7 6" stroke-width="1.6" opacity=".85"/>`; });

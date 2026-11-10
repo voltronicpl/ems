@@ -42,3 +42,22 @@ export function dayWindow(day) {   // day = Date (lokalna polnoc)
   const d = new Date(day); d.setHours(0, 0, 0, 0); const e = new Date(d); e.setDate(e.getDate() + 1);
   return { t0: d.getTime(), t1: e.getTime(), now: Date.now() };
 }
+
+// Statystyki HA (srednie) dla dlugich okresow: period "5minute" (tydzien) albo "hour" (miesiac). -> Map(start ms -> {pv, bat, grid, dom (kW), soc})
+const STATS = {};
+export function stats(c, t0, t1, period) {
+  const key = `${period}:${t0}`, e = STATS[key] = STATS[key] || { at: 0, busy: false, map: new Map() };
+  if (!e.busy && Date.now() - e.at > 300000) {
+    e.busy = true;
+    const ids = Object.fromEntries(Object.entries(PK).map(([k, v]) => [c.e(v), k]));
+    c.hass.callWS({ type: "recorder/statistics_during_period", start_time: new Date(t0).toISOString(), end_time: new Date(Math.min(t1, Date.now())).toISOString(),
+      statistic_ids: Object.keys(ids), period, types: ["mean"] })
+      .then(res => { const m = new Map(); for (const [id, arr] of Object.entries(res || {})) { const k = ids[id]; if (!k) continue;
+        for (const p of arr) { const t = typeof p.start === "number" ? p.start : Date.parse(p.start); if (p.mean == null) continue; const o = m.get(t) || {}; o[k] = k === "soc" ? p.mean : p.mean / 1000; m.set(t, o); } }
+        e.map = m; })
+      .catch(() => {}).finally(() => { e.at = Date.now(); e.busy = false; c.render(true); });
+  }
+  return e.map;
+}
+export function weekWindow() { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); const e = new Date(d); e.setDate(e.getDate() + 7); return { t0: d.getTime(), t1: e.getTime(), now: Date.now() }; }
+export function monthWindow() { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(1); const e = new Date(d); e.setMonth(e.getMonth() + 1); return { t0: d.getTime(), t1: e.getTime(), now: Date.now() }; }

@@ -39,6 +39,7 @@ export const T = {
   mn_snieg: { co: "Mnożnik prognozy PV przy śniegu na panelach.", plus: "Więcej PV w prognozie.", minus: "Mniej PV w prognozie." },
   soc_min: { co: "Zapas, poniżej którego EMS nie rozładuje baterii.", plus: "Więcej rezerwy na awarię, mniej do sprzedaży.", minus: "Więcej do sprzedaży, mniejszy zapas." },
   soc_burza: { co: "Zapas trzymany przed i w trakcie burzy.", plus: "Bezpieczniej przy zaniku sieci.", minus: "Mniej energii trzymanej „na wszelki wypadek”." },
+  ladowanie_lagodne_c: { co: "Z jaką mocą algorytm ładuje baterię z sieci, jako ułamek pojemności na godzinę (0,2C przy 15 kWh ≈ 3 kW). Szybciej ładuje tylko wtedy, gdy przy tej mocy nie zdąży do celu przed końcem taniej strefy. Ręczne kupno zawsze pełną mocą.", plus: "Szybsze ładowanie, krótsze okna.", minus: "Łagodniej dla baterii, mniej ciepła." },
   soc_max: { co: "Do ilu % ładować z sieci w taniej strefie.", plus: "Więcej energii na wieczór.", minus: "Więcej miejsca na PV, mniejsze zużycie baterii." },
   burza_wyprzedzenie_h: { co: "Ile godzin przed burzą zacząć trzymać zapas.", plus: "Wcześniej się przygotowuje.", minus: "Później, mniej czasu na doładowanie." },
   wsp_temp: { co: "Ile kWh/dobę więcej dom zużywa na każdy °C chłodniej.", jak: "0 = EMS liczy to sam z historii (regresja).", plus: "Wyższa prognoza zużycia w zimne dni.", minus: "Niższa prognoza." },
