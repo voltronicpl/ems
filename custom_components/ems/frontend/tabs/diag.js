@@ -7,16 +7,25 @@ export function render(c) {
   const lines = cache.lines.filter(l => !filter || l.toLowerCase().includes(filter));
   const col = l => / ERROR /.test(l) ? "#ff8c97" : / WARNING /.test(l) ? "#ffd58a" : /ZAPIS|SUROWY/.test(l) ? "#7fb3ff" : "";
   return `<div class="box"><div class="h"><span>🩺 Logi na żywo${tip(TIP)}</span>
-      <span class="ctrl"><div class="inp wflt"><input placeholder="filtr: plan, pv, ZAPIS, blad…" data-filter value="${esc(filter)}"></div><button class="btn" data-reload>↻ Odśwież</button></span></div>
+      <span class="ctrl"><div class="inp wflt"><input placeholder="filtr: plan, pv, ZAPIS, blad…" data-filter value="${esc(filter)}"></div><button class="btn" data-copy title="Kopiuje widoczne linie (z filtrem) do schowka">📋 Kopiuj</button><button class="btn" data-reload>↻ Odśwież</button></span></div>
       <div class="log" id="log">${lines.map(l => `<span style="color:${col(l)}">${esc(l)}</span>`).join("\n") || "Brak logów."}</div></div>
     <div class="box"><div class="h"><span>💾 Pobierz log z całego dnia</span><span class="lab">/config/ems_logs/ · 14 dni</span></div>
       ${cache.days.map(d => `<div class="row"><span>${d}</span><button class="btn" data-dl="${d}">Pobierz</button></div>`).join("") || `<p class="note">Brak plików.</p>`}</div>`;
 }
-async function load(c) { try { cache = await c.hass.callApi("GET", "ems/logs?tail=600"); } catch (e) { cache.lines = ["Błąd pobierania logów: " + e.message]; } c.render(true); }
+async function load(c) { try { cache = await c.hass.callApi("GET", "ems/logs?tail=1000"); } catch (e) { cache.lines = ["Błąd pobierania logów: " + e.message]; } c.render(true); }
 export function bind(c, r) {
   const f = r.querySelector("[data-filter]");
   if (f) { f.onfocus = () => { c._hold = true; }; f.onblur = () => { c._hold = false; }; f.oninput = () => { filter = f.value.toLowerCase(); }; f.onchange = () => { c._hold = false; c.render(true); }; }
   r.querySelector("[data-reload]")?.addEventListener("click", () => load(c));
+  r.querySelector("[data-copy]")?.addEventListener("click", async () => {
+    const txt = cache.lines.filter(l => !filter || l.toLowerCase().includes(filter)).join("\n");
+    let ok = false;
+    try { await navigator.clipboard.writeText(txt); ok = true; } catch (e) {          // http bez TLS / stara przegladarka -> stara metoda
+      const t = document.createElement("textarea"); t.value = txt; t.style.cssText = "position:fixed;opacity:0"; c.shadowRoot.appendChild(t); t.select();
+      try { ok = document.execCommand("copy"); } catch (e2) { ok = false; } t.remove(); }
+    const n = txt ? txt.split("\n").length : 0;
+    c.toast(ok ? "ok" : "err", ok ? `📋 Skopiowano ${n} linii logu` : "❌ Nie udało się skopiować – zaznacz log ręcznie", []);
+  });
   r.querySelectorAll("[data-dl]").forEach(b => b.onclick = async () => {
     const res = await c.hass.fetchWithAuth(`/api/ems/logs/download?day=${b.dataset.dl}`);
     const url = URL.createObjectURL(await res.blob()), a = document.createElement("a"); a.href = url; a.download = `ems-${b.dataset.dl}.log`; a.click(); URL.revokeObjectURL(url);

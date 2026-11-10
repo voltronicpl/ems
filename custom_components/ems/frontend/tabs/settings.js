@@ -36,7 +36,8 @@ export function render(c) {
     ["SOC minimalny", "number.ems_soc_min", "%", "soc_min"], ["SOC przy burzy", "number.ems_soc_burza", "%", "soc_burza"], ["SOC maksymalny", "number.ems_soc_max", "%", "soc_max"]];
   const limits = `<div class="sec" id="s-lim"><div class="ic ic-r">🔒</div>Limity twarde${tip(T.limity)}</div>
     ${c.group("🔒 Nie do ruszenia przez algorytm", `<div class="g3">${lim.map(([n, id, u, k]) => `<div><label class="f">🔒 ${n}${tip(T[k])}</label>${f(id, u, { lock: 1 })}</div>`).join("")}</div>`, lim.map(x => x[1]), "lock")}`;
-  const st = k => S(c.hass, `sensor.${d}_${k}`)?.state, ok = v => v && !["unknown", "unavailable"].includes(v);
+  const NM = { ostatni_odczyt_pomiarow: "Ostatni odczyt pomiarow", ostatni_odczyt_ustawien: "Ostatni odczyt ustawien", ostatni_zapis: "Ostatni zapis", licznik_odczytow: "Licznik odczytow" };
+  const st = k => S(c.hass, c.rid(`sensor.${d}_${k}`, NM[k]))?.state, ok = v => v && !["unknown", "unavailable"].includes(v);
   const miss = GROUPS.flatMap(g => g.fields).filter(x => x.t !== "b" && !S(c.hass, c.rid(x.id.replace("ecobss", d), x.l))).map(x => x.id.replace("ecobss", d));
   const status = `<div class="box" style="margin:0 0 12px"><div class="ctrl" style="gap:16px;flex-wrap:wrap">
     <span>📥 Pomiary: <b>${ok(st("ostatni_odczyt_pomiarow")) ? st("ostatni_odczyt_pomiarow") : "–"}</b></span>

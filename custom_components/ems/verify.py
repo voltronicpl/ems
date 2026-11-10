@@ -21,6 +21,7 @@ import time
 
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from .diag import get_logger
 
@@ -33,8 +34,30 @@ def _local(entity: str) -> bool:
     return entity.split(".", 1)[1].startswith("ems_")
 
 
+_NAMES = {"ostatni_odczyt_ustawien": "Ostatni odczyt ustawien", "licznik_odczytow": "Licznik odczytow",
+          "interwal_odczytu": "Interwal odczytu", "ostatni_odczyt_pomiarow": "Ostatni odczyt pomiarow"}
+_EID: dict = {}
+
+
+def dev_entity(hass: HomeAssistant, dev: str, domain: str, key: str) -> str:
+    """ID encji dataloggera: <domain>.<dev>_<key>, a jak HA nadal inne ID - szukane w rejestrze po nazwie z ESPHome."""
+    eid = f"{domain}.{dev}_{key}"
+    if hass.states.get(eid) is not None:
+        return eid
+    if _EID.get(eid) and hass.states.get(_EID[eid]) is not None:
+        return _EID[eid]
+    name = _NAMES.get(key, key.replace("_", " ")).lower()
+    for e in er.async_get(hass).entities.values():
+        if e.domain == domain and e.platform == "esphome" and (
+                (e.original_name or "").lower() == name or e.entity_id.endswith("_" + key) or e.entity_id.split(".")[1].startswith(f"{dev}_{key}")):
+            _EID[eid] = e.entity_id
+            LOG.info("Encja %s jest w HA jako %s", eid, e.entity_id)
+            return e.entity_id
+    return eid
+
+
 def _interval(hass: HomeAssistant, dev: str) -> float:
-    st = hass.states.get(f"number.{dev}_interwal_odczytu") or hass.states.get("number.ems_interwal")
+    st = hass.states.get(dev_entity(hass, dev, "number", "interwal_odczytu")) or hass.states.get("number.ems_interwal")
     try:
         return max(1.0, float(st.state))
     except (AttributeError, TypeError, ValueError):
@@ -46,7 +69,7 @@ def _timeout(hass: HomeAssistant, dev: str) -> float:
 
 
 def _counter(hass: HomeAssistant, dev: str) -> float | None:
-    st = hass.states.get(f"sensor.{dev}_licznik_odczytow")
+    st = hass.states.get(dev_entity(hass, dev, "sensor", "licznik_odczytow"))
     try:
         return float(st.state)
     except (AttributeError, TypeError, ValueError):
@@ -55,7 +78,7 @@ def _counter(hass: HomeAssistant, dev: str) -> float | None:
 
 def _cfg_read_at(hass: HomeAssistant, dev: str) -> float | None:
     """Kiedy datalogger (v5.3+) skonczyl ostatni odczyt ustawien (czas zmiany sensora 'Ostatni odczyt ustawien')."""
-    st = hass.states.get(f"sensor.{dev}_ostatni_odczyt_ustawien")
+    st = hass.states.get(dev_entity(hass, dev, "sensor", "ostatni_odczyt_ustawien"))
     if st is None or st.state in BAD:
         return None
     return st.last_updated.timestamp()
@@ -104,6 +127,8 @@ async def _confirm(hass: HomeAssistant, dev: str, entity: str, want, t0: float, 
     """Czeka na pelny cykl odczytu po zapisie (t0 = time.time() tuz po zapisie, c0 = licznik cykli wtedy)."""
     iv, timeout = _interval(hass, dev), _timeout(hass, dev)
     end, check_at = time.monotonic() + timeout, t0 + 2 * iv + 3
+    LOG.debug("Czekam na potwierdzenie %s = %s (interwal %.0f s, limit %.0f s, licznik start %s, odczyt ustawien %s)",
+              entity, want, iv, timeout, c0, dev_entity(hass, dev, "sensor", "ostatni_odczyt_ustawien"))
     while True:
         st, now, c, rc = hass.states.get(entity), time.time(), _counter(hass, dev), _cfg_read_at(hass, dev)
         if rc is not None and rc > t0 + 0.3:            # v5.4: ESP czyta ustawienia od razu po zapisie
@@ -115,6 +140,7 @@ async def _confirm(hass: HomeAssistant, dev: str, entity: str, want, t0: float, 
             read = now >= check_at and _alive_since(hass, dev, t0 + iv)
             how = "odczyt po zapisie"
         if read:
+            LOG.debug("%s: odczyt po zapisie (%s) po %.1f s, falownik ma %s", entity, how, time.time() - t0, _show(st))
             if _match(st, want):
                 return {"ok": True, "got": st.state, "msg": f"zapisano – falownik potwierdził ({how})"}
             return {"ok": False, "got": _show(st), "msg": f"falownik ma {_show(st)}, a nie {want}"}
@@ -133,12 +159,14 @@ async def write_verified(hass: HomeAssistant, dev: str, items: list[dict]) -> li
             out.append(res)
             continue
         cur = hass.states.get(entity)
+        LOG.debug("Zapis %s: teraz %s -> chce %s", entity, _show(cur), want)
         if not _local(entity) and _match(cur, want):  # falownik juz ma te wartosc -> bez zapisu (zapis tylko przy zmianie)
             res.update(ok=True, got=cur.state, same=True, msg=f"bez zmian – falownik już ma {cur.state}")
             out.append(res)
             continue
         try:
             await _write(hass, entity, want)
+            LOG.debug("Wyslano %s = %s do dataloggera", entity, want)
         except Exception as e:  # noqa: BLE001 - blad jednej encji nie blokuje reszty
             res.update(ok=False, got=_show(hass.states.get(entity)), msg=f"błąd zapisu: {e}")
             out.append(res)
@@ -164,19 +192,30 @@ async def read_now(hass: HomeAssistant, dev: str, ids: list[str], timeout: float
     svc = f"{dev}_odczytaj_ustawienia"
     if not hass.services.has_service("esphome", svc):
         return {"ok": False, "msg": f"datalogger nie ma akcji esphome.{svc} – wgraj ecobss.yaml v5.4", "items": []}
+    eid = dev_entity(hass, dev, "sensor", "ostatni_odczyt_ustawien")
+    before = hass.states.get(eid)
+    LOG.debug("Odczyt: %d pol, wywoluje esphome.%s; %s = %s (zmiana %s)", len(ids), svc, eid, _show(before),
+              before.last_updated.isoformat(timespec="seconds") if before else "-")
     t0 = time.time()
     await hass.services.async_call("esphome", svc, {}, blocking=True)
+    LOG.debug("Odczyt: akcja wyslana do dataloggera, czekam max %.0f s", timeout)
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         rc = _cfg_read_at(hass, dev)
         if rc is not None and rc > t0:
             items = [{"entity_id": i, "got": _show(hass.states.get(i))} for i in ids]
-            at = hass.states.get(f"sensor.{dev}_ostatni_odczyt_ustawien").state
+            LOG.debug("Odczyt po %.1f s: %s", time.time() - t0, ", ".join(f"{x['entity_id'].split('.')[1]}={x['got']}" for x in items))
+            at = hass.states.get(dev_entity(hass, dev, "sensor", "ostatni_odczyt_ustawien")).state
             LOG.info("ODCZYTANO z falownika o %s (%d pol)", at, len(items))
             return {"ok": True, "at": at, "items": items, "msg": f"odczytano z falownika o {at}"}
         await asyncio.sleep(POLL)
-    LOG.error("NIE ODCZYTANO – brak odpowiedzi dataloggera w %.0f s", timeout)
-    return {"ok": False, "msg": f"brak odczytu z falownika w {timeout:.0f} s", "items": []}
+    eid = dev_entity(hass, dev, "sensor", "ostatni_odczyt_ustawien")
+    ent = er.async_get(hass).async_get(eid)
+    why = (f"encja {eid} wyłączona w HA – włącz ją (Ustawienia → Encje)" if ent and ent.disabled_by
+           else f"brak encji {eid} w HA" if hass.states.get(eid) is None
+           else f"{eid} nie zmienił się w {timeout:.0f} s")
+    LOG.error("NIE ODCZYTANO – %s", why)
+    return {"ok": False, "msg": why, "items": []}
 
 
 class ReadView(HomeAssistantView):
@@ -186,7 +225,9 @@ class ReadView(HomeAssistantView):
     async def post(self, request):
         hass: HomeAssistant = request.app["hass"]
         body = await request.json()
-        return self.json(await read_now(hass, body.get("dev") or "ecobss", [i for i in body.get("ids", []) if i]))
+        ids = [i for i in body.get("ids", []) if i]
+        LOG.info("Panel: Odczyt %d pol (%s…)", len(ids), ", ".join(i.split(".")[1] for i in ids[:4]))
+        return self.json(await read_now(hass, body.get("dev") or "ecobss", ids))
 
 
 class WriteView(HomeAssistantView):
@@ -199,5 +240,6 @@ class WriteView(HomeAssistantView):
         items = [dict(i, source="panel") for i in body.get("items", []) if i.get("entity_id")]
         if not items:
             return self.json({"ok": False, "items": [], "msg": "nic do zapisu"}, status_code=400)
+        LOG.info("Panel: Zapisz %d pol: %s", len(items), ", ".join(f"{i['entity_id'].split('.')[1]}={i.get('value')}" for i in items))
         res = await write_verified(hass, body.get("dev") or "ecobss", items)
         return self.json({"ok": all(r["ok"] for r in res), "items": res})

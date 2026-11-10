@@ -1,5 +1,16 @@
 # Zmiany EMS
 
+## v0.5.8
+
+**Poprawione**
+- „Odczyt” i potwierdzenie zapisu nie widziały odczytu dataloggera, gdy HA nadał encjom ESPHome inne ID niż `sensor.<dev>_ostatni_odczyt_ustawien` (ESP czytał w 3 s, EMS po 25 s „brak odczytu”). EMS szuka teraz encji dataloggera (ostatni odczyt, licznik cykli, interwał) w rejestrze HA po nazwie z ESPHome; znalezione ID w logu.
+- Komunikat błędu mówi konkretnie: encja wyłączona w HA / brak encji / brak zmiany.
+- Pasek potwierdzeń w Części Inwerter też szuka tych encji po nazwie.
+
+**Dodane**
+- Diagnostyka: przycisk „📋 Kopiuj” – kopiuje widoczne linie logu (z filtrem) do schowka (działa też po http), widać 1000 ostatnich linii.
+- Więcej debugu przy zapisie i odczycie: co panel wysłał, stan przed zapisem, wysłanie do dataloggera, na co czeka (interwał, limit, licznik, encja odczytu), po ilu sekundach przyszedł odczyt i jakie wartości.
+
 ## v0.5.7
 
 **Dodane**
