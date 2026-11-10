@@ -28,9 +28,10 @@ export function today(h) {
 
 // 3 ostatnie wpisy (dzis) + klik -> modal
 export function recent() {
-  const d0 = day0().toISOString(), rows = st.rows.filter(r => r.od >= d0).slice(-3).reverse();
-  if (!rows.length) return `<div class="ov-mut mr-l">Dziś brak ręcznych kupna / sprzedaży.</div><button class="btn mr-all" data-mopen>Historia (14 dni)</button>`;
-  return `<div class="mr-list" data-mopen title="Pokaż wszystkie">${rows.map(r => `<div class="mr-r">${line(r)}</div>`).join("")}</div><button class="btn mr-all" data-mopen>Wszystkie (${st.rows.length}) →</button>`;
+  const d0 = day0().toISOString(), rows = st.rows.filter(r => r.od >= d0).slice(-4).reverse();
+  if (!rows.length) return `<div class="ov-mut mr-l">Dziś brak ręcznych kupna / sprzedaży. <a class="mr-lnk" data-mopen>Historia (14 dni) →</a></div>`;
+  // wpisy z 0 kWh (przerwane / nic nie przeszlo) wyszarzone
+  return `<div class="mr-list mr-2" data-mopen title="Pokaż wszystkie">${rows.map(r => `<div class="mr-r${(r.zrobione_kwh || 0) < 0.005 ? " mr-0" : ""}">${line(r)}${(r.zrobione_kwh || 0) < 0.005 && r.do ? " <span>(nic nie przeszło)</span>" : ""}</div>`).join("")}</div><a class="mr-lnk" data-mopen>Wszystkie (${st.rows.length}) →</a>`;
 }
 
 const REASON = { cel: "cel osiągnięty", SOC: "granica SOC", "4 h": "limit 4 h", przerwane: "przerwane", zastapione: "zastąpione nowym", "w toku": "w toku" };
@@ -59,7 +60,7 @@ export function bands(t0, t1) {
 
 export const MANUAL_CSS = `
 .mr-list{cursor:pointer;margin-top:8px;display:grid;gap:4px;font-size:13px}.mr-r{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mr-l{margin-top:8px}
-.mr-all{margin-top:8px;font-size:12px;padding:4px 10px}
+.mr-all{margin-top:8px;font-size:12px;padding:4px 10px}.mr-2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));column-gap:18px}.mr-0{opacity:.45}.mr-0 span{font-size:11px}.mr-lnk{display:inline-block;margin-top:6px;font-size:12px;color:#60a5fa;cursor:pointer}.mr-lnk:hover{text-decoration:underline}
 .mr-ov{position:fixed;inset:0;z-index:50;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px}
 .mr-md{background:#0b1622;border:1px solid #2a4560;border-radius:14px;max-width:820px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 0 40px #000}
 .mr-hd{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid #1d3a55}.mr-hd span{display:flex;gap:6px}

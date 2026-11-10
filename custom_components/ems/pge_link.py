@@ -23,13 +23,29 @@ OLD_DOMAIN = "pge_net_billing"
 ENTITY_KEYS = ["import_entity", "export_entity", *POWER_ENTITIES]
 
 
-async def start(hass, entry_id: str) -> PGELedger:
+def _dl_entities(dev: str) -> dict:
+    """Liczniki i moce z dataloggera EMS (domyslne zrodla rozliczenia PGE)."""
+    e = lambda k: f"sensor.{dev}_{k}"  # noqa: E731
+    return {"import_entity": e("energia_siec_import_lacznie"), "export_entity": e("energia_siec_export_lacznie"),
+            "grid_import_total_entity": e("energia_siec_import_lacznie"), "grid_export_total_entity": e("energia_siec_export_lacznie"),
+            "pv_total_entity": e("energia_pv_produkcja_lacznie"), "battery_charge_total_entity": e("energia_bateria_ladowanie_lacznie"),
+            "battery_discharge_total_entity": e("energia_bateria_rozladowanie_lacznie"), "load_total_entity": e("energia_zuzycie_dom_lacznie"),
+            "pv_power_entity": e("pv_moc_suma"), "battery_power_entity": e("bateria_moc"), "battery_soc_entity": e("bateria_soc"),
+            "load_power_entity": e("obciazenie_moc_suma"), "grid_power_entity": e("siec_moc_suma")}
+
+
+# stare encje EMS (Ustawienia -> Historia do nauki) -> klucze mocy/licznikow PGE (historia sprzed dataloggera)
+OLD_SRC = {"grid_import_total": "imp", "grid_export_total": "exp", "pv_total": "pv", "battery_charge_total": "bat_in",
+           "battery_discharge_total": "bat_out", "load_total": "dom"}
+
+
+async def start(hass, eng, entry_id: str) -> PGELedger:
     cfg_store = Store(hass, 1, f"ems_pge_{entry_id}")
     saved = await cfg_store.async_load()
     key = f"ems_pge_dane_{entry_id}"
+    old = hass.config_entries.async_entries(OLD_DOMAIN)
     if saved is None:
         saved = {"ustawienia": {}}
-        old = hass.config_entries.async_entries(OLD_DOMAIN)
         if old:
             e = old[0]
             saved["ustawienia"] = {**e.data, **e.options}
@@ -39,11 +55,96 @@ async def start(hass, entry_id: str) -> PGELedger:
                 if old_data:
                     await data_new.async_save(old_data)
             LOG.info("Przejęto ustawienia i dane ze starej integracji PGE Net-Billing (%s). Starej integracji nie ruszam.", e.title)
-        await cfg_store.async_save(saved)
+    # stare statystyki sensorow PGE (do historii wykresow – zostaja w bazie HA takze po usunieciu starej integracji)
+    if not saved.get("stare_pge"):
+        from homeassistant.helpers import entity_registry as er
+        reg = er.async_get(hass)
+        saved["stare_pge"] = {x.translation_key or x.unique_id.split("_", 1)[-1]: x.entity_id for x in reg.entities.values() if x.platform == OLD_DOMAIN}
+    # v0.6.21: zrodla = datalogger EMS (jednorazowo); stan licznikow od nowa (bez skoku o caly licznik)
+    if not saved.get("zrodla_v2"):
+        saved["ustawienia"] = {**saved.get("ustawienia", {}), **_dl_entities(eng.dev), "battery_invert": True, "grid_invert": False}
+        saved["zrodla_v2"] = True
+        st = Store(hass, 3, key)
+        d = await st.async_load()
+        if d is not None:
+            for k in ("last_import", "last_export", "last_import_time", "last_export_time"):
+                d[k] = None
+            await st.async_save(d)
+        LOG.info("Rozliczenie PGE: liczniki i moce z dataloggera %s (stan liczników od teraz)", eng.dev)
+    await cfg_store.async_save(saved)
     ledger = PGELedger(hass, saved.get("ustawienia", {}), key)
-    ledger.cfg_store = cfg_store
+    ledger.cfg_store, ledger.ems = cfg_store, eng
+    ledger.extra = {"stare_pge": saved.get("stare_pge", {}), "stare_moce": {k: eng.src.cfg.get(v) for k, v in OLD_SRC.items() if eng.src.cfg.get(v)}}
     await ledger.async_load()
+    hass.async_create_task(backfill(hass, eng, ledger))
     return ledger
+
+
+async def backfill(hass, eng, ledger) -> None:
+    """Miesiace od „Poczatku rozliczenia”, ktorych rozliczenie nie ma (0 kWh i 0 zl), liczone wstecz z godzinowych statystyk:
+    datalogger + stare encje (Historia do nauki). Import -> strefa G12 tej godziny, eksport -> 4 kwadranse po 1/4 z cena RCE.
+    Biezacy miesiac i miesiace juz policzone na zywo nie sa ruszane."""
+    from datetime import datetime, timedelta
+    from .energy import hourly, WAW
+    from .pge.pse import fetch_range
+    from .pge.settlement import zone, month_key
+    try:
+        await eng.src.load() if not eng.src.cfg else None
+        s, d = ledger.settings, ledger.data
+        start = datetime.fromisoformat(s["start_date"]).replace(tzinfo=WAW)
+        m_now = datetime.now(WAW).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        done = set(d.get("uzupelnione", []))
+        todo, cur = [], start.replace(day=1)
+        while cur < m_now:
+            k = cur.strftime("%Y-%m")
+            m = d.get("months", {}).get(k, {})
+            if k not in done and not m.get("energy") and not m.get("export_credit"):
+                todo.append(cur)
+            cur = (cur + timedelta(days=32)).replace(day=1)
+        if not todo:
+            return
+        for m0 in todo:
+            m1 = (m0 + timedelta(days=32)).replace(day=1)
+            a = max(m0, start)
+            H = await hourly(hass, eng, a, m1)
+            hours = sorted(set(H["imp"]) | set(H["exp"]))
+            if not hours:
+                LOG.info("Rozliczenie PGE wstecz %s: brak danych (datalogger / stare encje)", m0.strftime("%Y-%m"))
+                continue
+            try:
+                d["prices"].update(await fetch_range(hass, a.date(), (m1 - timedelta(days=1)).date()))
+            except Exception as err:  # noqa: BLE001
+                LOG.warning("RCE wstecz %s: %s", m0.strftime("%Y-%m"), err)
+            k = m0.strftime("%Y-%m")
+            mm = ledger._month(k)
+            var = sum(float(s[x]) for x in ("quality", "cogen", "oze"))
+            ik = ek = 0.0
+            for h in hours:
+                loc = h.astimezone(WAW)
+                if month_key(loc) != k:
+                    continue
+                imp, exp = H["imp"].get(h, 0.0), H["exp"].get(h, 0.0)
+                if imp > 0:
+                    z = zone(loc)
+                    d[f"import_{z}"] += imp
+                    cost, dist = imp * float(s[f"buy_{z}"]), imp * (float(s[f"distribution_{z}"]) + var)
+                    mm["energy"] += cost
+                    mm["distribution"] += dist
+                    d["energy_cost"] += cost
+                    d["distribution_cost"] += dist
+                    ik += imp
+                if exp > 0:
+                    d["export_kwh"] += exp
+                    for q in range(4):
+                        d["intervals"].append({"slot": (h + timedelta(minutes=15 * q)).isoformat(), "kwh": exp / 4})
+                    ek += exp
+            d.setdefault("uzupelnione", []).append(k)
+            LOG.info("Rozliczenie PGE wstecz %s: import %.1f kWh, eksport %.1f kWh (%d h)", k, ik, ek, len(hours))
+        ledger._reprice()
+        await ledger.store.async_save(d)
+        ledger._notify()
+    except Exception as err:  # noqa: BLE001
+        LOG.exception("Rozliczenie PGE wstecz: %s", err)
 
 
 def _engine(hass):

@@ -49,6 +49,14 @@ function resolveEntities(hass, config) {
   return out;
 }
 
+// EMS: dane sprzed wcielenia / sprzed dataloggera ze starych encji – stary wiersz tylko tam, gdzie nowego brak (przed pierwszym nowym)
+const tsOf = x => typeof x.start === "number" ? x.start : Date.parse(x.start);
+function mergeOld(res, pairs) {
+  if (!res) return res;
+  for (const [nid, oid] of pairs) { if (!oid || oid === nid) continue; const nw = res[nid] || [], od = res[oid] || []; if (!od.length) continue;
+    const first = nw.length ? Math.min(...nw.map(tsOf)) : Infinity; res[nid] = [...od.filter(x => tsOf(x) < first), ...nw]; }
+  return res;
+}
 const statCache = new Map();
 async function loadStats(hass, ids, start, end, period = "day") {
   const list = STAT_KEYS.map(k => ids[k]).filter(Boolean);
@@ -56,10 +64,11 @@ async function loadStats(hass, ids, start, end, period = "day") {
   const key = period + "|" + list.join(",") + "|" + start.toISOString() + "|" + end.toISOString();
   const hit = statCache.get(key);
   if (hit && Date.now() - hit.t < 300000) return hit.p;
+  const old = hass?.states?.[ids.invoice_forecast]?.attributes?.stare_pge || {}, pairs = STAT_KEYS.filter(k => ids[k]).map(k => [ids[k], old[k]]);
   const p = hass.callWS({
     type: "recorder/statistics_during_period", start_time: start.toISOString(), end_time: end.toISOString(),
-    statistic_ids: list, period, types: ["change", "max", "mean", "state"],
-  }).catch(e => { console.warn("PGE Net-Billing: statistics unavailable", e); return null; });
+    statistic_ids: [...list, ...pairs.map(x => x[1]).filter(Boolean)], period, types: ["change", "max", "mean", "state"],
+  }).then(r => mergeOld(r, pairs)).catch(e => { console.warn("PGE Net-Billing: statistics unavailable", e); return null; });
   statCache.set(key, { t: Date.now(), p });
   return p;
 }
@@ -345,7 +354,7 @@ const CSS = `
 @media(max-width:600px){.fc-tiles{grid-template-columns:1fr}.fc-ctrl{display:grid;grid-template-columns:40px minmax(0,1fr) minmax(0,1fr) 40px;gap:6px}.fc-date{max-width:none;min-width:0;padding-right:4px}.fc-date .ic{display:none}.fc-arrow{width:40px}.fc-modes{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.fc-mode{min-width:0}.fc-today{grid-column:1/4}.fc-plot{overflow-x:auto}.fc-svg{min-width:680px}.fc-tip{position:fixed;top:auto;bottom:16px;left:50%!important}}
 /* Panel */
 :host([embedded]) .pf{min-height:0!important;background:none!important;padding:0!important}.pf{min-height:100vh;background:radial-gradient(ellipse at 40% -10%,#0b2233 0%,var(--bg) 60%);padding:16px 17px 24px}
-.pf-grid>*{min-width:0}.pf-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:27px;max-width:1700px;margin:0 auto}
+:host([summary]) .pf-head,:host([summary]) .warn,:host([summary]) .aside,:host([summary]) .foot,:host([summary]) .main>section:not(.top):not(.dep){display:none!important}:host([summary]) .pf-grid{grid-template-columns:minmax(0,1fr)!important}.pf-grid>*{min-width:0}.pf-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:27px;max-width:1700px;margin:0 auto}
 .pf-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px;min-height:74px}.pf-brand{display:flex;align-items:center;gap:16px}
 .pf-brand h1{font-size:27px;margin:0;font-weight:700;letter-spacing:-.4px}.pf-sub{color:var(--mut);font-size:13px;margin-top:4px}
 .pf-date{background:#0c1f2e;border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:270px}
@@ -619,8 +628,8 @@ async function pwChange(hass, cfg, start, end) {
   if (!keys.length || !hass?.callWS) return {};
   const ck = "chg|" + keys.map(k => cfg[k].id).join(",") + "|" + +start + "|" + +end, hit = pwCache.get(ck);
   if (hit && Date.now() - hit.t < 300000) return hit.p;
-  const p = hass.callWS({ type: "recorder/statistics_during_period", start_time: new Date(start).toISOString(), end_time: new Date(Math.min(+end, Date.now())).toISOString(), statistic_ids: keys.map(k => cfg[k].id), period: "hour", types: ["change", "state"] })
-    .then(res => { const out = {}; for (const k of keys) { const f = pwFactor(k, hass, cfg[k].id); out[k] = (res?.[cfg[k].id] || []).map(x => { const c = Number(x.change), s = Number(x.state); return { t: typeof x.start === "number" ? x.start : Date.parse(x.start), e: (isNum(c) && c >= 0 ? c : isNum(s) && s >= 0 ? s : 0) * f }; }).filter(x => isNum(x.t)); } return out; })
+  const p = hass.callWS({ type: "recorder/statistics_during_period", start_time: new Date(start).toISOString(), end_time: new Date(Math.min(+end, Date.now())).toISOString(), statistic_ids: [...keys.map(k => cfg[k].id), ...keys.map(k => cfg[k].old).filter(Boolean)], period: "hour", types: ["change", "state"] })
+    .then(res => mergeOld(res, keys.map(k => [cfg[k].id, cfg[k].old]))).then(res => { const out = {}; for (const k of keys) { const f = pwFactor(k, hass, cfg[k].id); out[k] = (res?.[cfg[k].id] || []).map(x => { const c = Number(x.change), s = Number(x.state); return { t: typeof x.start === "number" ? x.start : Date.parse(x.start), e: (isNum(c) && c >= 0 ? c : isNum(s) && s >= 0 ? s : 0) * f }; }).filter(x => isNum(x.t)); } return out; })
     .catch(e => { console.warn("PGE Net-Billing: counter statistics unavailable", e); pwCache.delete(ck); return { error: e?.message || String(e) }; });
   pwCache.set(ck, { t: Date.now(), p });
   return p;
@@ -632,7 +641,8 @@ const pwCache = new Map();
 function pwConfig(hass, ids) {
   const p = hass?.states?.[ids?.invoice_forecast]?.attributes?.power || {};
   const out = {};
-  for (const k in PW) { const id = p[PW[k].attr]; if (id && hass?.states?.[id]) out[k] = { id, sign: PW[k].inv && p[PW[k].inv] ? -1 : 1 }; }
+  const po = hass?.states?.[ids?.invoice_forecast]?.attributes?.power_old || {};
+  for (const k in PW) { const id = p[PW[k].attr]; if (id && hass?.states?.[id]) out[k] = { id, old: po[PW[k].attr], sign: PW[k].inv && p[PW[k].inv] ? -1 : 1 }; }
   return out;
 }
 const pwFactor = (k, hass, id) => {

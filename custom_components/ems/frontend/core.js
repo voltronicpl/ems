@@ -70,22 +70,24 @@ export const g12Price = t => cheapAt(t) ? G12_ZL.cheap : G12_ZL.expensive;
 const OFF = {};
 const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100].find(s => span / s <= n) || 200;
 const ICC = { coins: "#facc15", bolt: "#facc15", batteryBolt: "#3ee07a" };
-export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [], order = "pms" }) {
+// Kolumny kupna / sprzedazy (przez cala wysokosc, delikatne): czerwone = kupno z sieci, zielone = sprzedaz do sieci
+export const BUYSELL = { kup: "#ff4d5e", sprzedaj: "#22e07a" };
+export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [], order = "pms", act = null, socIn = true }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
   // Trzy pasy na wspolnej osi czasu (kazdy z jedna osia): ceny zl/kWh | moc kW | SOC %. Na komputerze opis pasa z ikona po lewej.
   const off = OFF[key] = OFF[key] || {}, mob = ui.mob;
-  const id = "c" + (++CH), W = vbW(), L = mob ? 44 : 150, R = mob ? 10 : 18, T = mob ? 22 : 14, B = 30, GAP = mob ? 30 : 18, n = rows.length, bw = (W - L - R) / n;
-  const hasP = prices.some(p => !off[p.name]) || hlines.length, hasS = socs.some(s => !off[s.name]);
-  const free = h - T - B - GAP * 2, hP = hasP ? free * 0.36 : 0, hS = hasS ? free * 0.24 : 0, hM = free - hP - hS;
+  const id = "c" + (++CH), W = vbW(), L = mob ? 44 : 150, R = (socIn && socs.length) ? (mob ? 34 : 50) : (mob ? 10 : 18), T = mob ? 22 : 14, B = 30, GAP = mob ? 30 : 18, n = rows.length, bw = (W - L - R) / n;
+  const hasP = prices.some(p => !off[p.name]) || hlines.length, hasS = socs.some(s => !off[s.name]), sIn = socIn && hasS;   // sIn: SOC w ramce Moc, os % po prawej
+  const free = h - T - B - GAP * 2, hP = hasP ? free * 0.36 : 0, hS = hasS && !socIn ? free * 0.24 : 0, hM = free - hP - hS;
   // kolejnosc pasow od gory: order = "pms" (ceny, moc, SOC) albo np. "msp" (moc, SOC, ceny)
-  const HB = { p: hasP ? hP : 0, m: hM, s: hasS ? hS : 0 }, TB = {}; let yy = T, last = "m";
+  const HB = { p: hasP ? hP : 0, m: hM, s: hasS && !socIn ? hS : 0 }, TB = {}; let yy = T, last = "m";
   for (const b of order) { if (!HB[b]) continue; TB[b] = yy; yy += HB[b] + GAP; last = b; }
   const tP = TB.p ?? T, tM = TB.m, tS = TB.s ?? T, bot = TB[last] + HB[last];
   const x = i => L + i * bw, val = (s, r) => { const v = s.f ? s.f(r) : r[s.k]; return v == null || isNaN(v) ? null : (s.sign || 1) * v * (s.raw ? 1 : 4); };
   const kw = [...areas, ...lines].filter(s => !off[s.name]).flatMap(s => rows.map(r => val(s, r))).filter(v => v != null);
   let mag = Math.max(1, ...kw.map(Math.abs)); const st = [0.25, 0.5, 1, 2.5, 5, 10, 25].find(q => mag / q <= (mob ? 2 : 4)) || 50; mag = Math.ceil(mag / st) * st;
   const lo = Math.min(0, ...kw) < 0 ? -mag : 0, hi = mag;
-  const Y = v => tM + (hi - v) / (hi - lo) * hM, YS = p => tS + (100 - Math.min(100, Math.max(0, p))) / 100 * hS;
+  const Y = v => tM + (hi - v) / (hi - lo) * hM, YS = p => sIn ? tM + (100 - Math.min(100, Math.max(0, p))) / 100 * hM : tS + (100 - Math.min(100, Math.max(0, p))) / 100 * hS;
   const pv = prices.filter(p => !off[p.name]).flatMap(p => rows.map(r => p.f ? p.f(r) : r[p.k])).concat(hlines.map(l => l.v)).filter(v => v != null && !isNaN(v));
   const pTop = Math.max(1, Math.ceil(Math.max(0, ...pv) * 2) / 2), YP = v => tP + (pTop - Math.max(0, v)) / pTop * hP;
   const nf = v => String(+v.toFixed(2)).replace(".", ",");
@@ -101,16 +103,18 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   // tanie strefy G12
   let z0 = -1; rows.forEach((r, i) => { const c = cheapAt(r.t); if (c && z0 < 0) z0 = i; if ((!c || i === n - 1) && z0 >= 0) { const e = c ? i + 1 : i;
     g += `<rect x="${x(z0)}" y="${T - 7}" width="${x(e) - x(z0)}" height="${bot - T + 14}" class="pw-night"/>`; z0 = -1; } });
-  // pasy recznego kupna / sprzedazy (bands: [{a, b (ms), c, txt}])
+  // kolumny kupna / sprzedazy: z planu (act(r) -> "kup" | "sprzedaj") + reczne zlecenia (bands: [{a, b (ms), typ}]); bez napisow (szczegoly w dymku)
+  const col = (a, e, k) => { if (off["__" + k] || e - a < 0.5) return; g += `<rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${bot - T + 14}" fill="${BUYSELL[k]}" opacity=".075"/>`; };
+  if (act) { let k0 = null, i0 = 0; rows.forEach((r, i) => { const k = act(r) || null; if (k !== k0) { if (k0) col(x(i0), x(i), k0); k0 = k; i0 = i; } }); if (k0) col(x(i0), x(n), k0); }
   if (n > 1) { const t0 = rows[0].t.getTime(), dt = rows[1].t - rows[0].t, xt = t => L + (t - t0) / dt * bw;
-    for (const b of bands) { const a = Math.max(L, xt(b.a)), e = Math.min(W - R, xt(b.b)); if (e <= a) continue;
-      g += `<rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 2).toFixed(1)}" height="${bot - T + 14}" fill="${b.c}" opacity=".12"/><rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 2).toFixed(1)}" height="3" fill="${b.c}"/><text x="${(a + 3).toFixed(1)}" y="${bot + 4}" style="fill:${b.c};font-size:11px;font-weight:600">${b.txt}</text>`; } }
+    for (const b of bands) { const a = Math.max(L, xt(b.a)), e = Math.min(W - R, xt(b.b)); if (e > a) col(a, e, b.typ === "sprzedaj" ? "sprzedaj" : "kup"); } }
   const pill = (y, c, txt) => { const w = txt.length * 6.6 + 16, x0 = W - R - w - 4; return `<rect x="${x0}" y="${y - 11}" width="${w}" height="22" rx="11" fill="#0b1828"/><rect x="${x0}" y="${y - 11}" width="${w}" height="22" rx="11" fill="${c}" fill-opacity=".2" stroke="${c}" stroke-opacity=".85"/><text x="${x0 + w / 2}" y="${y + 4}" text-anchor="middle" style="fill:${c};font-size:12px;font-weight:600">${txt}</text>`; };
   if (hasP) { pane(tP, hP, "coins", "Ceny|energii", "zł/kWh"); const pst = pTop > 3 ? 0.5 : 0.25;
     for (let v = 0; v <= pTop + 1e-9; v += pst) g += `<line x1="${L}" x2="${W - R}" y1="${YP(v)}" y2="${YP(v)}" class="grid"/><text x="${L - 8}" y="${YP(v) + 4}" text-anchor="end" class="ax">${fmt(v, 2)}</text>`; }
   pane(tM, hM, "bolt", "Moc", "kW", lo < 0 ? "(± sieć / bateria)" : "");
   for (let v = lo; v <= hi + st / 1e6; v += st) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="${Math.abs(v) < st / 1e6 ? "zero" : "grid"}"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" class="ax">${(v > 0 ? "+" : "") + nf(v)}</text>`;
-  if (hasS) { pane(tS, hS, "batteryBolt", "SOC|baterii", ""); for (const p of [0, 25, 50, 75, 100]) g += `<line x1="${L}" x2="${W - R}" y1="${YS(p)}" y2="${YS(p)}" class="grid"/><text x="${L - 8}" y="${YS(p) + 4}" text-anchor="end" class="ax">${p}%</text>`; }
+  if (sIn) for (const p of [0, 25, 50, 75, 100]) g += `<text x="${W - R + 6}" y="${YS(p) + 4}" class="ax" style="fill:#c4b5fd">${p}%</text>`;
+  if (hasS && !sIn) { pane(tS, hS, "batteryBolt", "SOC|baterii", ""); for (const p of [0, 25, 50, 75, 100]) g += `<line x1="${L}" x2="${W - R}" y1="${YS(p)}" y2="${YS(p)}" class="grid"/><text x="${L - 8}" y="${YS(p) + 4}" text-anchor="end" class="ax">${p}%</text>`; }
   const span = rows[n - 1].t - rows[0].t, every = Math.max(span > 26 * 36e5 ? 3 : 2, xEvery(span / 36e5, W - L - R));
   rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % every === 0) g += `${d.getHours() === 0 ? `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="vgrid"/>` : ""}<text x="${x(i)}" y="${bot + 22}" text-anchor="middle" class="xl">${d.getHours() === 0 && span > 26 * 36e5 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0") + ":00"}</text>`; });
   const steps = (f, y) => { let d = "", on = false; rows.forEach((r, i) => { const v = f(r); if (v == null) { on = false; return; } d += on ? `V${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}` : `M${x(i).toFixed(1)} ${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; on = true; }); return d; };
@@ -125,10 +129,10 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
     prices.forEach((p, j) => { if (off[p.name]) return; const f = r => { const v = p.f ? p.f(r) : r[p.k]; return v == null || isNaN(v) ? null : v; }; const d = steps(f, YP); let hh = "";
       rows.forEach((r, i) => { const v = f(r); if (v != null && p.act && p.act(r)) hh += `M${x(i).toFixed(1)} ${YP(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; });
       if (j === 0 && d) g += d.split("M").filter(Boolean).map(q => `<path d="M${q}V${YP(0).toFixed(1)}H${q.split(" ")[0]}Z" fill="${p.c}" opacity=".07"/>`).join("");
-      g += (d ? `<path d="${d}" fill="none" stroke="${p.c}" stroke-width="2.6" stroke-linejoin="round"/>` : "") + (hh ? `<path d="${hh}" fill="none" stroke="${p.c}" stroke-width="5" stroke-linecap="round" filter="url(#gl${id})"/>` : ""); });
+      g += (d ? `<path d="${d}" fill="none" stroke="${p.c}" stroke-width="1.4" stroke-linejoin="round"/>` : "") + (hh ? `<path d="${hh}" fill="none" stroke="${p.c}" stroke-width="3" stroke-linecap="round" filter="url(#gl${id})"/>` : ""); });
     hlines.forEach(l => { if (l.v <= pTop) g += pill(YP(l.v), l.c, l.name); }); }
   if (hasS) { for (const s of socs) { if (off[s.name]) continue; const d = steps(r => r[s.k] == null ? null : r[s.k], YS); if (!d) continue;
-      if (s.fill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${YS(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".22"/>`).join("");
+      if (s.fill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${YS(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity="${sIn ? ".08" : ".22"}"/>`).join("");
       g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 2.6}" stroke-linejoin="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""}/>`; }
     const mn = OFF.socMin; if (mn != null) g += `<line x1="${L}" x2="${W - R}" y1="${YS(mn)}" y2="${YS(mn)}" stroke="#d8b4fe" stroke-dasharray="7 6" stroke-width="1.4" opacity=".8"/>` + pill(YS(mn), "#d8b4fe", `min ${mn}%`); }
   if (now) { const t = Date.now(), i = rows.findIndex(r => r.t.getTime() > t); if (i > 0) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="nowl"/><text x="${x(i) + 5}" y="${T + 12}" class="nowt">teraz</text>`; }
@@ -143,7 +147,8 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
     if (cols.length > 1 && !dash.length) return `<svg width="30" height="10">${cols.slice(0, 2).map((c, i) => `<line x1="1" y1="${3 + i * 5}" x2="29" y2="${3 + i * 5}" stroke="${c}" stroke-width="2.4"/>`).join("")}</svg>`;
     if (cols.length > 1) return `<svg width="30" height="10">${cols.slice(0, 2).map((c, i) => `<line x1="1" y1="${3 + i * 5}" x2="29" y2="${3 + i * 5}" stroke="${c}" stroke-width="2" stroke-dasharray="4 3"/>`).join("")}</svg>`;
     return `<svg width="30" height="10">${solid.length ? `<line x1="1" y1="5" x2="${dash.length ? 13 : 29}" y2="5" stroke="${cols[0]}" stroke-width="2.6"/>` : ""}${dash.length ? `<line x1="${solid.length ? 17 : 1}" y1="5" x2="29" y2="5" stroke="${cols[0]}" stroke-width="2" stroke-dasharray="3 3"/>` : ""}</svg>`; };
-  const legend = [...grp.entries()].map(([g, ss]) => `<button class="pw-lg${ss.every(x => off[x.name]) ? " off" : ""}" data-lg="${esc(key)}|${esc(ss.map(x => x.name).join("\u0001"))}">${ico(ss)}${esc(g)}</button>`).join("");
+  const bsLeg = (act || bands.length) ? ["kup", "sprzedaj"].map(k => `<button class="pw-lg${off["__" + k] ? " off" : ""}" data-lg="${esc(key)}|__${k}"><svg width="16" height="12"><rect x="1" y="0" width="14" height="12" rx="2" fill="${BUYSELL[k]}" opacity=".45"/></svg>${k === "kup" ? "Kupno" : "Sprzedaż"}</button>`).join("") : "";
+  const legend = [...grp.entries()].map(([g, ss]) => `<button class="pw-lg${ss.every(x => off[x.name]) ? " off" : ""}" data-lg="${esc(key)}|${esc(ss.map(x => x.name).join("\u0001"))}">${ico(ss)}${esc(g)}</button>`).join("") + bsLeg;
   return `<div class="pw-legend">${legend}</div><div class="fc-plot pw-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T - 7}" y2="${bot + 7}" style="display:none"/><g class="cd"></g></svg>${tipBox()}</div>`;
 }
 export const setSocMin = v => { OFF.socMin = v; };
@@ -189,7 +194,7 @@ export const CSS = `
 .ov-lab{font-size:14px;font-weight:600;color:#e8eef5;display:flex;align-items:center}.ov-val{font-size:27px;font-weight:700;color:#fff;line-height:1.2}.ov-sub{font-size:14px;color:#cbd5e1}
 .ov-box{background:linear-gradient(150deg,#0f2236d9,#0b1a2bd9);backdrop-filter:blur(2px);border:1px solid #1f3d5c;border-radius:14px;padding:14px 18px;min-width:0}.ov-h{font-size:16px;font-weight:700;color:#f1f5f9;margin-bottom:8px;display:flex;align-items:center;gap:6px}
 .ov-mut{color:#8fa6bd;font-size:13px;font-weight:400}.ov-row{display:flex;justify-content:space-between;gap:12px;padding:5px 10px;font-size:15px;color:#e2e8f0;border-radius:6px}.ov-row:nth-child(even){background:#ffffff06}.ov-row b{font-weight:600}
-.ov-3{display:grid;grid-template-columns:1fr 1.3fr 1.2fr;gap:12px;margin-bottom:14px}.ov-mid{display:grid;grid-template-columns:1fr 1.75fr 1.1fr;gap:12px;margin-bottom:14px}.ov-bot{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:12px}
+.ov-3{display:grid;grid-template-columns:1fr 1.3fr 1.2fr;gap:12px;margin-bottom:14px}.hd-rd{all:unset;cursor:pointer;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid #2a4560;background:#0f2236;color:#9fd0ff;font-size:13px;vertical-align:middle;margin-left:4px}.hd-rd:hover{border-color:#3a77b8}.hd-rd.spin{animation:hdspin 1s linear infinite}@keyframes hdspin{to{transform:rotate(360deg)}}.hd-z{color:#8fa6bd}.st-row{display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;margin:8px 0}.ov-ster .ctrl{margin:0}.en-tg{display:inline-flex;gap:4px}.en-tg .btn{height:28px;padding:0 10px;font-size:12px}.ov-mid{display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:14px}.ov-bot{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:12px}
 .ov-ac{display:grid;grid-template-columns:110px 1fr 54px;align-items:center;gap:12px;padding:9px 0;font-size:15px;color:#e2e8f0}.ov-ac b{text-align:right}.ov-bar{height:14px;border-radius:7px;background:#1e3347;overflow:hidden}.ov-bar i{display:block;height:100%;border-radius:7px;box-shadow:0 0 10px #3ee07a88}
 .ov-prof .ov-ax{fill:#cbd5e1;font-size:11px}.ov-leg{display:flex;justify-content:center;gap:18px;font-size:13px;color:#e2e8f0;margin-top:4px}.ov-leg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 .pf-mode{margin-left:auto;display:inline-flex;align-items:center;gap:8px;border:1px solid #1f3d5c;background:#0f2236;border-radius:12px;padding:8px 14px;font-size:14px;color:#cbd5e1;white-space:nowrap}.pf-mode b{color:#fff}

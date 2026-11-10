@@ -1,5 +1,13 @@
 # Zmiany EMS
 
+## 0.6.21
+- Wykresy (Plan i Profil mocy): SOC w ramce Moc (oś % po prawej), delikatne kolumny przez całą wysokość – czerwone = kupno z sieci, zielone = sprzedaż (plan EMS + ręczne), bez napisów przy osi, cieńsze linie cen, w legendzie „Kupno” / „Sprzedaż”.
+- Przegląd: jedna ramka „Sterowanie” (algorytm + ręczne kup / sprzedaj + ostatnie wpisy w 2 kolumnach, puste wyszarzone); bez „Szybkich akcji” i ramki „Autokonsumpcja”.
+- Nagłówek panelu: ikonka ⟳ „Odczytaj falownik” i godzina ostatniego zapisu.
+- „Energia dziś / Miesiąc” + sekcja Handel: sprzedane nie z PV (kWh, zł), sprzedaż łącznie, zakup pod sprzedaż, zysk z handlu (/api/ems/energia).
+- Przegląd: kafle PGE (rachunek, depozyt, bilans) i depozyt miesięcznie.
+- PGE: liczniki i moce z dataloggera EMS (stan liczników od nowa), historia wykresów ze starych encji (Historia do nauki) i ze starych sensorów PGE; brakujące miesiące od „Początku rozliczenia” przeliczane wstecz.
+
 ## 0.6.20 – PGE w EMS
 - Wcielona integracja PGE Net-Billing v1.8.1: rozliczenie G12, depozyt RCE, sensory „EMS – rozliczenie PGE” (pge_*).
 - Nowa zakładka **PGE** (między Przegląd a Plan) – cały dawny panel PGE.

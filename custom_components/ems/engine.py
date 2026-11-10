@@ -151,7 +151,7 @@ class Engine:
         old = self.pge
         await old.async_shutdown()
         new = PGELedger(self.hass, settings, old.store.key)
-        new.cfg_store, new.listeners = old.cfg_store, old.listeners
+        new.cfg_store, new.listeners, new.ems, new.extra = old.cfg_store, old.listeners, old.ems, getattr(old, 'extra', {})
         await new.async_load()
         self.pge = new
         new._notify()

@@ -16,6 +16,7 @@ from .engine import Engine
 from .manual import DayView, ManualView
 from .sources import SourcesView
 from . import pge_link
+from .energy import EnergyView
 from .verify import ReadView, WriteView
 
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SWITCH, Platform.BUTTON]
@@ -39,6 +40,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.http.register_view(DayView)
     hass.http.register_view(SourcesView)
     hass.http.register_view(pge_link.PgeRceView)
+    hass.http.register_view(EnergyView)
     hass.http.register_view(pge_link.PgeSettingsView)
     return True
 
@@ -47,7 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data = hass.data.setdefault(DOMAIN, {})
     engine = Engine(hass, entry.data[CONF_DEVICE], entry.entry_id)
     data[entry.entry_id] = engine
-    engine.pge = await pge_link.start(hass, entry.entry_id)     # rozliczenie PGE (dawna integracja PGE Net-Billing)
+    engine.pge = await pge_link.start(hass, engine, entry.entry_id)     # rozliczenie PGE (dawna integracja PGE Net-Billing)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     engine.start()
     entry.async_on_unload(engine.stop)

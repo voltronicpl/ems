@@ -9,6 +9,9 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from .const import DEFAULTS, POWER_ENTITIES, POWER_FLAGS, auto_entity
 from .pse import fetch_day, remember, WARSAW
+
+OLD_SRC = {'grid_import_total': 'imp', 'grid_export_total': 'exp', 'pv_total': 'pv', 'battery_charge_total': 'bat_in',
+           'battery_discharge_total': 'bat_out', 'load_total': 'dom'}
 from .settlement import zone, month_key, settle_months, money, add_months
 
 _LOGGER = logging.getLogger(__name__)
@@ -242,6 +245,9 @@ class PGELedger:
             return {
                 'months': self._settlements(credits),
                 'deposit_credits': credits,
+                # EMS: stare encje (historia sprzed dataloggera) i stare sensory PGE (statystyki sprzed wcielenia do EMS)
+                'power_old': {k: src.get(v) for k, v in OLD_SRC.items() if (src := getattr(getattr(getattr(self, 'ems', None), 'src', None), 'cfg', {}) or {}).get(v)},
+                'stare_pge': (getattr(self, 'extra', None) or {}).get('stare_pge', {}),
                 'power': {**{k.replace('_entity', ''): auto_entity(self.hass, k, s.get(k)) for k in POWER_ENTITIES},
                           **{k: bool(s.get(k, False)) for k in POWER_FLAGS}},
                 'tariff': {'name': 'G12', 'zone': z, 'price_gross': price, 'vat': vat,

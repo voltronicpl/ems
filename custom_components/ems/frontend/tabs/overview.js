@@ -42,18 +42,33 @@ export function pgeIds(h) {
     o[k] = reg.find(e => e.platform === "ems" && e.translation_key === "pge_" + k)?.entity_id;
   return o;
 }
-function pgeBox(c) {
-  const h = c.hass, ids = pgeIds(h), v = k => { const s = ids[k] && h.states[ids[k]]; const n = s ? parseFloat(s.state) : NaN; return isNaN(n) ? null : n; };
-  const mies = new Date().toLocaleDateString("pl-PL", { month: "long" });
-  if (!ids.invoice_forecast) return `<div class="ov-box"><div class="ov-h">${ic("coins", 20)} Rachunek PGE – ${mies}</div><div class="ov-mut">Brak encji rozliczenia PGE (uruchom ponownie HA po aktualizacji EMS).</div></div>`;
+// Kafle PGE (rachunek, depozyt, bilans + depozyt miesiecznie) – ten sam element co zakladka PGE, w trybie "summary"
+const PV_ = new URL(import.meta.url).search;
+let pgeEl = null;
+const pgeReady = import(`../pge.js${PV_}`).then(() => { pgeEl = document.createElement("ems-pge-dashboard"); pgeEl.setAttribute("embedded", ""); pgeEl.setAttribute("summary", ""); });
+// Energia dzis / miesiac + handel (/api/ems/energia), odswiezane co 5 min
+const EN = { okres: "dzis", d: {}, at: {}, busy: {} };
+function loadEn(c, o) {
+  if (EN.busy[o] || Date.now() - (EN.at[o] || 0) < 300000) return;
+  EN.busy[o] = true;
+  c.hass.callApi("GET", `ems/energia?okres=${o}`).then(r => { EN.d[o] = r; }).catch(e => { EN.d[o] = { err: e.message || String(e) }; }).finally(() => { EN.at[o] = Date.now(); EN.busy[o] = false; c.render(true); });
+}
+
+function enBox(c, x) {
+  const o = EN.okres; loadEn(c, o); const d = EN.d[o] || null, mo = o === "miesiac";
   const row = (a, b, cl = "") => `<div class="ov-row"><span>${a}</span><b ${cl ? `style="color:${cl}"` : ""}>${b}</b></div>`;
-  const inv = v("invoice_forecast"), imp = (v("import_s1") || 0) + (v("import_s2") || 0);
-  return `<div class="ov-box" data-go-pge style="cursor:pointer" title="Kliknij: zakładka PGE"><div class="ov-h">${ic("coins", 20)} Rachunek PGE – ${mies} <span class="ov-mut">(prognoza faktury)</span></div>
-    ${row("Prognoza rachunku", fmt(inv, 2, "zł"), inv > 0 ? "#ff6b6b" : "#3ee07a")}
-    ${row("Pobrano z sieci", `${fmt(imp, 1, "kWh")} · dzień ${fmt(v("import_s1"), 1, "kWh")} / noc ${fmt(v("import_s2"), 1, "kWh")}`, "#ff6b6b")}
-    ${row("Oddano do sieci", `${fmt(v("export_kwh"), 1, "kWh")} · ${fmt(v("export_value"), 2, "zł")}`, "#3ee07a")}
-    ${row("Depozyt (saldo)", fmt(v("deposit_estimate"), 2, "zł"), "#3ee07a")}${row("Opłaty stałe", fmt(v("fixed_monthly"), 2, "zł"))}
-    <div class="ov-mut" style="margin-top:6px">Szacunek z rozliczenia PGE (stawki z Ustawień → Rozliczenie PGE), nie faktura PGE.</div></div>`;
+  const g = k => mo ? (d && !d.err ? d[k] : null) : null;
+  const imp = mo ? g("imp") : x.imp, exp = mo ? g("exp") : x.exp, bl = mo ? g("bin") : x.bl, br = mo ? g("bout") : x.br, pvd = mo ? g("pv") : x.pvd;
+  const tg = `<span class="en-tg">${[["dzis", "Dziś"], ["miesiac", "Miesiąc"]].map(([k, n]) => `<button class="btn ${o === k ? "on" : ""}" data-en="${k}">${n}</button>`).join("")}</span>`;
+  const mk = mo ? null : x.mt;
+  const han = !d ? `<div class="ov-mut">Liczę…</div>` : d.err ? `<div class="ov-mut">Nie udało się policzyć: ${esc(d.err)}</div>` :
+    row("Sprzedane nie z PV", `${fmt(d.nonpv_kwh, 2, "kWh")} · ${fmt(d.nonpv_zl, 2, "zł")}`, "#3ee07a") + row("Sprzedaż łącznie (depozyt)", `${fmt(d.exp, 1, "kWh")} · ${fmt(d.sprz_zl, 2, "zł")}`, "#3ee07a")
+    + row("Zakup pod sprzedaż", d.zakup_pod_sprzedaz_zl == null ? "–" : `${fmt(d.zakup_pod_sprzedaz_zl, 2, "zł")} <span class="ov-mut">(${fmt(d.koszt_kwh_baterii, 2, "zł/kWh")})</span>`, "#ff6b6b")
+    + row("Zysk z handlu", d.zysk_handel_zl == null ? "–" : fmt(d.zysk_handel_zl, 2, "zł"), d.zysk_handel_zl >= 0 ? "#3ee07a" : "#ff6b6b");
+  return `<div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px">${ic("stack", 20)} Energia ${mo ? "w tym miesiącu" : "dziś"}</span>${tg}</div>
+    ${row("Import z sieci", fmt(imp, 1, "kWh"), "#ff6b6b")}${row("Eksport do sieci", fmt(exp, 1, "kWh"), "#3ee07a")}${row("Bateria ład. / rozł.", `${fmt(bl, 1)} / ${fmt(br, 1, "kWh")}`)}${row("Produkcja PV", fmt(pvd, 1, "kWh"), "#facc15")}
+    ${mk ? row("Ręcznie kupione", `${fmt(mk.kup.kwh, 2, "kWh")} · ${fmt(mk.kup.zl, 2, "zł")}`, MC.kup) + row("Ręcznie sprzedane", `${fmt(mk.sprzedaj.kwh, 2, "kWh")} · ${fmt(mk.sprzedaj.zl, 2, "zł")}`, MC.sprzedaj) : ""}
+    <div class="ov-h" style="margin:10px 0 4px;font-size:14px">${ic("coins", 16)} Handel${tip({ co: "Liczone co godzinę: sprzedane nie z PV = eksport ponad bieżącą nadwyżkę PV (PV − dom). Wartość = kWh × RCE × mnożnik depozytu. Zakup pod sprzedaż = sprzedane nie z PV ÷ (sprawność ład. × rozł.) × średni koszt kWh kupionego do baterii (G12). Godziny sprzed dataloggera ze starych encji." })}</div>${han}</div>`;
 }
 
 export function render(c) {
@@ -88,33 +103,28 @@ export function render(c) {
     ${tile(icR("home", 32), "b", "Dom", kw(domW), `Dziś: ${fmt(dom, 1, "kWh")}`, "", T.dom)}
     ${tile(icR("tower", 32), "r", "Sieć", kw(Math.abs(grid)), grid > 0 ? "Pobór" : grid < 0 ? "Oddawanie" : "–", grid > 0 ? "#ff6b6b" : "#3ee07a", T.siec)}
     ${tile(icR("leaf", 32), "g", "Autokonsumpcja", `${auto} %`, "PV w domu", "", T.autokons)}</div>`;
-  const ster = `<div class="ov-3 ov-ster">
-    <div class="ov-box"><div class="ov-h">${ic("robot", 20)} Algorytm EMS${tip(T.algorytm)}</div>
-      <div class="sw" data-svc="switch.toggle" data-ent="switch.ems_algorytm" style="cursor:pointer;margin:8px 0"><div class="tg ${on ? "on" : ""}"></div><b style="color:${on ? (man ? "#ffad2e" : "#3ee07a") : "#ff6b6b"};font-size:16px">${on ? (man ? "Czuwa (ręczne ma pierwszeństwo)" : "Włączony") : "Wyłączony"}</b></div>
-      ${pa.pmax_zakupu?.ostrzezenie ? `<div style="color:#ffad2e;margin:4px 0">⚠ ${esc(pa.pmax_zakupu.ostrzezenie)}</div>` : ""}${pa.sprzedaz_ostrzezenie ? `<div style="color:#ff6b6b;margin:4px 0">⚠ ${esc(pa.sprzedaz_ostrzezenie)}</div>` : ""}
-      <div class="ov-mut">Teraz: ${ACT[plan?.state] || plan?.state || "–"}${nxt ? ` · następnie ${new Date(nxt.start).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })} ${(ACT[nxt.action] || nxt.action).toLowerCase()}` : ""}</div></div>
-    <div class="ov-box"><div class="ov-h">${ic("cart", 20)} Ręcznie teraz${tip(T.kup)}</div><div class="ctrl" style="margin-top:8px">
-      <div class="inp wbuy">${c.input("number.ems_kup_wh")}<span>Wh</span></div><button class="btn pri" data-svc="button.press" data-ent="button.ems_kup_teraz">Kup</button>
-      <div class="inp wbuy">${c.input("number.ems_sprzedaj_wh")}<span>Wh</span></div><button class="btn pri" data-svc="button.press" data-ent="button.ems_sprzedaj_teraz">Sprzedaj</button></div>
-      ${man ? `<div class="ov-mut" style="margin-top:8px">W toku: ${esc(man.typ)} ${fmt(man.zrobione_kwh, 2)} / ${fmt(man.kwh, 2, "kWh")}${man.zl != null ? ` · ${fmt(man.zl, 2, "zł")}` : ""}${man.ostrzezenie ? `<div style="color:#ffad2e;margin-top:4px">⚠ ${esc(man.ostrzezenie)}</div>` : ""} <button class="btn" data-svc="button.press" data-ent="button.ems_przerwij_reczne">Przerwij</button></div>` : ""}
-      <div class="ov-mut" style="margin-top:8px">Dziś: <span style="color:${MC.kup}">kupione ${fmt(mt.kup.kwh, 2, "kWh")} za ${fmt(mt.kup.zl, 2, "zł")}</span> · <span style="color:${MC.sprzedaj}">sprzedane ${fmt(mt.sprzedaj.kwh, 2, "kWh")} za ${fmt(mt.sprzedaj.zl, 2, "zł")}</span></div>${recent()}</div>
-    <div class="ov-box"><div class="ov-h">${ic("settings", 20)} Szybkie akcje</div><div class="ctrl" style="margin-top:8px">
-      <button class="btn" data-svc="button.press" data-ent="button.ems_przelicz">${ic("refresh", 16)} Przelicz plan</button><button class="btn" data-odczyt>${ic("download", 16)} Odczytaj falownik</button>
-      <button class="btn" data-svc="button.press" data-ent="${c.rid(`button.${c.dev}_ustaw_czas_z_ha`, "Ustaw czas z HA")}">${ic("clock", 16)} Ustaw czas</button></div>
-      <div class="ov-mut" style="margin-top:8px">${ic("download", 14)} ${esc(S(h, c.rid(c.e("ostatni_odczyt_ustawien"), "Ostatni odczyt ustawien"))?.state || "–")} · ${ic("upload", 14)} ${esc(S(h, c.rid(c.e("ostatni_zapis"), "Ostatni zapis"))?.state || "–")}</div></div></div>`;
+  const ster = `<div class="ov-box ov-ster" style="margin-bottom:14px"><div class="ov-h">${ic("robot", 20)} Sterowanie${tip(T.algorytm)}</div>
+    <div class="st-row"><div class="sw" data-svc="switch.toggle" data-ent="switch.ems_algorytm" style="cursor:pointer;margin:0"><div class="tg ${on ? "on" : ""}"></div><b style="color:${on ? (man ? "#ffad2e" : "#3ee07a") : "#ff6b6b"};font-size:16px">${on ? (man ? "Czuwa (ręczne ma pierwszeństwo)" : "Włączony") : "Wyłączony"}</b></div><span class="ov-mut">Teraz: ${ACT[plan?.state] || plan?.state || "–"}${nxt ? ` · następnie ${new Date(nxt.start).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })} ${(ACT[nxt.action] || nxt.action).toLowerCase()}` : ""}</span></div>
+    ${pa.pmax_zakupu?.ostrzezenie ? `<div style="color:#ffad2e;margin:4px 0">⚠ ${esc(pa.pmax_zakupu.ostrzezenie)}</div>` : ""}${pa.sprzedaz_ostrzezenie ? `<div style="color:#ff6b6b;margin:4px 0">⚠ ${esc(pa.sprzedaz_ostrzezenie)}</div>` : ""}
+    <div class="st-row"><div class="ctrl"><div class="inp wbuy">${c.input("number.ems_kup_wh")}<span>Wh</span></div><button class="btn pri" data-svc="button.press" data-ent="button.ems_kup_teraz">Kup</button>
+      <div class="inp wbuy">${c.input("number.ems_sprzedaj_wh")}<span>Wh</span></div><button class="btn pri" data-svc="button.press" data-ent="button.ems_sprzedaj_teraz">Sprzedaj</button></div><span class="ov-mut">Dziś: <span style="color:${MC.kup}">kupione ${fmt(mt.kup.kwh, 2, "kWh")} za ${fmt(mt.kup.zl, 2, "zł")}</span> · <span style="color:${MC.sprzedaj}">sprzedane ${fmt(mt.sprzedaj.kwh, 2, "kWh")} za ${fmt(mt.sprzedaj.zl, 2, "zł")}</span></span>${tip(T.kup)}</div>
+    ${man ? `<div class="ov-mut" style="margin-top:8px">W toku: ${esc(man.typ)} ${fmt(man.zrobione_kwh, 2)} / ${fmt(man.kwh, 2, "kWh")}${man.zl != null ? ` · ${fmt(man.zl, 2, "zł")}` : ""}${man.ostrzezenie ? `<div style="color:#ffad2e;margin-top:4px">⚠ ${esc(man.ostrzezenie)}</div>` : ""} <button class="btn" data-svc="button.press" data-ent="button.ems_przerwij_reczne">Przerwij</button></div>` : ""}
+    ${recent()}</div>`;
   const row = (a, b, cl = "") => `<div class="ov-row"><span>${a}</span><b ${cl ? `style="color:${cl}"` : ""}>${b}</b></div>`;
   const barr = (lab, p, col) => `<div class="ov-ac"><span>${lab}</span><div class="ov-bar"><i style="width:${p}%;background:${col}"></i></div><b>${p} %</b></div>`;
   const mid = `<div class="ov-mid">
-    <div class="ov-box"><div class="ov-h">${ic("stack", 20)} Energia dziś</div>${row("Import z sieci", fmt(imp, 1, "kWh"), "#ff6b6b")}${row("Eksport do sieci", fmt(exp, 1, "kWh"), "#3ee07a")}${row("Bateria ład. / rozł.", `${fmt(bl, 1)} / ${fmt(br, 1, "kWh")}`)}${row("Produkcja PV", fmt(pvd, 1, "kWh"), "#facc15")}${row("Ręcznie kupione", `${fmt(mt.kup.kwh, 2, "kWh")} · ${fmt(mt.kup.zl, 2, "zł")}`, MC.kup)}${row("Ręcznie sprzedane", `${fmt(mt.sprzedaj.kwh, 2, "kWh")} · ${fmt(mt.sprzedaj.zl, 2, "zł")}`, MC.sprzedaj)}</div>
-    <div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px">${icR("chart", 26)} Profil mocy <span class="ov-mut">(teraz ±12 h)</span></span><button class="btn" data-pfopen style="font-size:12px;padding:4px 10px">Prognoza vs rzeczywistość ↗</button></div>${profile(c)}</div>
-    <div class="ov-box"><div class="ov-h">${ic("gauge", 20)} Autokonsumpcja${tip(T.autokons)}</div>${barr("PV → dom", pc(pvH), "#3ee07a")}${barr("PV → bateria", pc(pvB), "#3ee07a")}${barr("PV → sieć", pc(pvG), "#3ee07a")}</div></div>`;
+    ${enBox(c, { imp, exp, bl, br, pvd, mt })}
+    <div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px">${icR("chart", 26)} Profil mocy <span class="ov-mut">(teraz ±12 h)</span></span><button class="btn" data-pfopen style="font-size:12px;padding:4px 10px">Prognoza vs rzeczywistość ↗</button></div>${profile(c)}</div></div>`;
   const bot = `<div class="ov-bot">
     <div class="ov-box"><div class="ov-h">${ic("tower", 20)} Sieć (3F, ${fmt(v("siec_czestotliwosc"), 1, "Hz")})</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("siec_napiecie_" + l), 1, "V")} · ${kw(v("siec_moc_" + l))}`)).join("")}</div>
     <div class="ov-box"><div class="ov-h">${ic("cpu", 20)} Przetwornica</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("przetwornica_napiecie_" + l), 1, "V")} · ${kw(v("przetwornica_moc_" + l))}`)).join("")}${row("Temp. radiatora", `${fmt(v("temperatura_przetwornicy"), 1)} °C / ${fmt(v("temperatura_radiatora"), 1, "°C")}`)}</div>
     <div class="ov-box"><div class="ov-h">${ic("panel", 20)} PV (stringi)</div>${[1, 2, 3, 4].map(i => row("PV" + i, kw(v("pv" + i + "_moc")))).join("")}</div></div>`;
-  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}${ster}<div style="margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">${pgeBox(c)}${billBox(c)}</div>${mid}${bot}${modal()}${accuracyModal(c)}`;
+  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}${ster}<div data-pge-ov style="margin-bottom:14px">${pgeEl ? "" : `<div class="ov-box ov-mut">Ładuję rozliczenie PGE…</div>`}</div>${mid}<div style="margin-bottom:14px">${billBox(c)}</div>${bot}${modal()}${accuracyModal(c)}`;
 }
 export function bind(c, r) {
+  const host = r.querySelector("[data-pge-ov]");
+  if (host) { if (pgeEl) { pgeEl.hass = c.hass; host.appendChild(pgeEl); } else pgeReady.then(() => c.render(true)); }
+  r.querySelectorAll("[data-en]").forEach(b => b.onclick = () => { EN.okres = b.dataset.en; c.render(true); });
   r.querySelector("[data-go-pge]")?.addEventListener("click", () => { c.tab = 1; c.render(); });
   bindManual(c, r);
   bindProfile(c, r);

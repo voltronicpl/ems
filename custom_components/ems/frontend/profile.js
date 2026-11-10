@@ -5,6 +5,7 @@ import { ic } from "./icons.js";
 import { range, nowWindow, dayWindow } from "./minute.js";
 import { slots, kw, dayData } from "./forecast.js";
 import { bands, MC } from "./manual.js";
+import { BUYSELL } from "./core.js";
 
 const W = 900, H = 330, L = 64, R = 46, T = 16, B = 34;
 const SER = [["pv", "#facc15", "PV"], ["bat", "#22e07a", "Bateria"], ["grid", "#ff4d5e", "Sieć"], ["dom", "#1e9bff", "Dom"], ["soc", "#a78bfa", "SOC (bateria)"]];
@@ -28,7 +29,10 @@ export function profile(c) {
   for (const p of [0, 50, 100]) g += `<text x="${W - R + 6}" y="${YS(p) + 4}" class="pf-ax" style="fill:#a78bfa">${p}%</text>`;
   for (let t = Math.ceil(w.t0 / 108e5) * 108e5; t <= w.t1; t += 108e5) { const d = new Date(t); g += `<line x1="${X(t)}" x2="${X(t)}" y1="${T}" y2="${H - B}" class="pf-grid"/><text x="${X(t)}" y="${H - 12}" text-anchor="middle" class="pf-ax">${String(d.getHours()).padStart(2, "0")}:00</text>`; }
   g += `<text transform="translate(16 ${(H - B + T) / 2}) rotate(-90)" text-anchor="middle" class="pf-yl">Moc [kW]</text>`;
-  for (const b of bands(w.t0, w.t1)) { const a = Math.max(L, X(b.a)), e = Math.min(W - R, X(b.b)); if (e > a) g += `<rect x="${a}" y="${T}" width="${Math.max(e - a, 2)}" height="${H - T - B}" fill="${MC[b.typ]}" opacity=".1"/><text x="${a + 3}" y="${T + 12}" style="fill:${MC[b.typ]};font-size:11px;font-weight:600">${b.txt}</text>`; }
+  // kolumny kupna / sprzedazy przez cala wysokosc (delikatne): reczne zlecenia + plan EMS do przodu; bez napisow (szczegoly w dymku)
+  const colr = (a, e, k) => { if (e - a > 0.5) g += `<rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${H - T - B}" fill="${BUYSELL[k]}" opacity=".075"/>`; };
+  for (const b of bands(w.t0, w.t1)) { const a = Math.max(L, X(b.a)), e = Math.min(W - R, X(b.b)); colr(a, e, b.typ === "sprzedaj" ? "sprzedaj" : "kup"); }
+  for (let t = Math.floor(Math.max(w.now, w.t0) / 9e5) * 9e5; t < w.t1; t += 9e5) { const a = (sm.get(t) || {}).action, k = a === "charge" ? "kup" : a === "sell" ? "sprzedaj" : null; if (k) colr(Math.max(L, X(Math.max(t, w.now))), Math.min(W - R, X(t + 9e5)), k); }
   const path = (rows, k, y) => { let d = "", on = false; rows.forEach(r => { const v = r[k]; if (v == null) { on = false; return; } d += `${on ? "L" : "M"}${X(r.t).toFixed(1)} ${y(v).toFixed(1)}`; on = true; }); return d; };
   const smr = ["pv", "bat", "grid", "dom", "soc"].reduce((o, k) => { const s = sma(meas, k, k === "soc" ? 0 : 4); meas.forEach((r, i) => { (o[i] = o[i] || { t: r.t })[k] = s[i]; }); return o; }, []);
   for (const [k, col] of SER) { if (OFF[k]) continue; const y = k === "soc" ? YS : Y;
