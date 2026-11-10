@@ -79,12 +79,16 @@ function fwd(c) {
       { k: "pv_m", raw: true, c: "#facc15", name: "PV (pomiar)", g: "PV", w: 2, fill: true }, { k: "pv", c: "#facc15", name: "PV (prognoza)", g: "PV", dash: "6 5", nofill: true },
       { k: "grid_m", raw: true, c: "#ff4d5e", name: "Sieć (pomiar)", g: "Sieć", w: 1.8 }, { k: "grid_p", c: "#ff4d5e", name: "Sieć (prognoza)", g: "Sieć", dash: "6 5", nofill: true },
       { k: "bat_m", raw: true, c: "#22e07a", name: "Bateria (pomiar)", g: "Bateria", w: 1.4 },
-      { k: "ch", c: "#3d8dff", name: "Ładowanie z sieci (plan)", g: "Ładowanie / sprzedaż (plan)", dash: "6 5", nofill: true, w: 2.2 },
-      { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż (plan)", g: "Ładowanie / sprzedaż (plan)", dash: "6 5", nofill: true, w: 2.2 }] });
+      { k: "ch", c: "#3d8dff", name: "Ładowanie z sieci (plan)", lg: "Ładowanie z sieci", g: "Ładowanie / sprzedaż (plan)", dash: "6 5", nofill: true, w: 2.2 },
+      { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż (plan)", lg: "Sprzedaż", g: "Ładowanie / sprzedaż (plan)", dash: "6 5", nofill: true, w: 2.2 }] });
   const fk = (st.fakt || []).map(f => ({ t: new Date(f.start), pva: f.pv / 1000, loada: f.load != null ? f.load / 1000 : null }));
   const hourly = (key, fkey) => { const m = {}; rows.forEach(r => { const k = new Date(r.t).setMinutes(0, 0, 0); m[k] = (m[k] || 0) + r[key]; }); const ks = Object.keys(m).map(Number).sort(); fk.forEach(f => { const k = f.t.getTime(); if (!(k in m)) { m[k] = null; ks.push(k); } }); return [...new Set(ks)].sort().map(k => ({ t: new Date(k), [key]: m[k], [fkey]: fk.find(f => f.t.getTime() === k)?.[fkey] ?? null })); };
-  const pvc = chart({ key: "pv", rows: hourly("pv", "pva"), bars: [{ k: "pv", c: "#ffaa22", name: "Prognoza PV" }], lines: [{ k: "pva", c: "#fff", name: "Faktyczna produkcja" }], unit: "kWh/h", h: 200, tipf: r => `<div class="tt2">${hm(r.t)}</div><div><span>Prognoza</span><b>${fmt(r.pv, 2, "kWh")}</b></div><div><span>Fakt</span><b>${fmt(r.pva, 2, "kWh")}</b></div>` });
-  const ldc = chart({ key: "dom", rows: hourly("loadp", "loada"), bars: [{ k: "loadp", c: "#3d8dff", name: "Prognoza zużycia" }], lines: [{ k: "loada", c: "#fff", name: "Faktyczne zużycie" }], unit: "kWh/h", h: 200, tipf: r => `<div class="tt2">${hm(r.t)}</div><div><span>Prognoza</span><b>${fmt(r.loadp, 2, "kWh")}</b></div><div><span>Fakt</span><b>${fmt(r.loada, 2, "kWh")}</b></div>` });
+  const sumK = (k, raw) => mrows.reduce((q, r) => q + (r[k] == null ? 0 : raw ? r[k] * step / 60 : r[k] * step / 15), 0);
+  const fcChart = (key, mk, pk, col, nm) => pwChart({ key, rows: mrows, h: 230, order: "m", mName: nm, mUnit: "kW", mSub: "", socIn: false,
+    tipf: r => `<div class="tt2">${r.t.toLocaleString("pl-PL", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</div><div><span>${DOT(col)}Prognoza</span><b>${fmt((r[pk] || 0) * 4, 2, "kW")}</b></div><div><span>${DOT(col)}Pomiar</span><b>${r[mk] == null ? "–" : fmt(r[mk], 2, "kW")}</b></div>${r[mk] != null && r[pk] != null ? `<div><span>Różnica</span><b>${fmt(r[mk] - r[pk] * 4, 2, "kW")}</b></div>` : ""}`,
+    lines: [{ k: mk, raw: true, c: col, name: `${nm} (pomiar)`, lg: nm, w: 2.2, fill: true }, { k: pk, c: col, name: `${nm} (prognoza)`, lg: nm, dash: "6 5", nofill: true, w: 2 }] });
+  const pvc = fcChart("fpv", "pv_m", "pv", "#facc15", "PV"), ldc = fcChart("fdom", "dom_m", "loadp", "#1e9bff", "Dom");
+  const fsum = (pk, mk) => `<b class="${pk === "pv" ? "t-o" : "t-b"}">${fmt(sumK(pk, false), 1, "kWh")} prognoza</b>${mrows.some(r => r[mk] != null) ? ` <span class="lab">· ${fmt(sumK(mk, true), 1, "kWh")} faktycznie</span>` : ""}`;
   const acts = []; rows.forEach(r => { if (r.action === "self") return; const l = acts[acts.length - 1]; if (l && l.action === r.action && l.end === r.t.getTime()) { l.kwh += r.grid_kwh; l.end += 9e5; l.pr.push(r.price); } else acts.push({ action: r.action, start: r.t, end: r.t.getTime() + 9e5, kwh: r.grid_kwh, pr: [r.price], why: r.why }); });
   const tile = (ic, cls, lab, val, sub) => `<div class="tile"><div class="ic ${cls}">${ic}</div><div><div class="lab">${lab}</div><div class="val">${val}</div><div class="sub">${sub}</div></div></div>`;
   return `${a.blad ? `<div class="box err">Błąd planu: ${esc(a.blad)}</div>` : ""}
@@ -94,8 +98,9 @@ function fwd(c) {
     ${tile("☀", "ic-o", "Prognoza PV", fmt(s.pv_kwh, 1, "kWh"), `korekta dnia ×${fmt(s.korekta_pv, 2)}`)}${tile("🏠", "ic-b", "Prognoza zużycia", fmt(s.zuzycie_kwh, 1, "kWh"), `wsp. temp. ${fmt(s.wsp_temp, 2)} kWh/°C`)}${tile("⚡", s.burza ? "ic-r" : "ic-g", "Burza", s.burza ? "TAK" : "nie", s.burza ? `zapas ${num(c.hass, "number.ems_soc_burza", 50)}%` : "brak w prognozie")}</div>
   <div class="box" style="margin-top:14px"><div class="h"><span>📋 Zaplanowane akcje</span></div><div style="overflow:auto"><table class="tbl rt"><tr><th>Od–do</th><th>Co</th><th class="r">Ile</th><th class="r">Śr. cena</th><th>Dlaczego</th></tr>
     ${acts.slice(0, 30).map(x => `<tr><td class="hd">${x.start.toLocaleString("pl-PL", { weekday: "short", hour: "2-digit", minute: "2-digit" })}–${hm(x.end)}</td><td data-l="Co"><b style="color:${COL[x.action]}">${NAME[x.action]}</b></td><td class="r" data-l="Ile">${fmt(x.kwh, 2, "kWh")}</td><td class="r" data-l="Śr. cena">${fmt(x.pr.filter(v => v != null).reduce((a, b) => a + b, 0) / Math.max(1, x.pr.filter(v => v != null).length), 2, "zł")}</td><td class="lab wide" data-l="Dlaczego">${esc(x.why)}</td></tr>`).join("") || `<tr><td colspan="5" class="lab">Tylko autokonsumpcja.</td></tr>`}</table></div></div>
-  <div class="g2"><div class="box"><div class="h"><span>☀ Prognoza PV${tip(T.pvwyk)}</span><b class="t-o">${fmt(s.pv_kwh, 1, "kWh")}</b></div>${pvc}</div>
-    <div class="box"><div class="h"><span>🏠 Prognoza zużycia domu${tip(T.domwyk)}</span><b class="t-b">${fmt(s.zuzycie_kwh, 1, "kWh")}</b></div>${ldc}</div></div>`}`;
+`}
+  <div class="g2"><div class="box"><div class="h"><span>☀ Produkcja PV – prognoza i pomiar${tip(T.pvwyk)}</span><span>${fsum("pv", "pv_m")}</span></div>${pvc}</div>
+    <div class="box"><div class="h"><span>🏠 Zużycie domu – prognoza i pomiar${tip(T.domwyk)}</span><span>${fsum("loadp", "dom_m")}</span></div>${ldc}</div></div>`;
 }
 
 function money(m, cls = "") { return m ? `<td class="r">${fmt(m.kup_tanio_kwh, 1)} / ${fmt(m.kup_drogo_kwh, 1)}</td><td class="r t-r">${fmt(m.koszt_zl, 2)}</td><td class="r">${fmt(m.sprzedaz_kwh, 1)}</td><td class="r t-g">${fmt(m.przychod_zl, 2)}</td><td class="r" title="SOC ${fmt(m.soc_start, 0)}% → ${fmt(m.soc_koniec, 0)}%"><span class="lab">${fmt(m.soc_start, 0)}→${fmt(m.soc_koniec, 0)}%</span> ${m.bateria_zl >= 0 ? "+" : ""}${fmt(m.bateria_zl, 2)}</td><td class="r"><b class="${cls}">${fmt(m.bilans_zl, 2, "zł")}</b></td>` : ""; }
@@ -132,41 +137,55 @@ function back(c) {
     ${d.dni.map(x => `<tr><td rowspan="2"><a href="#" data-day="${x.dzien}" style="color:#7fb3ff">${x.dzien}</a>${x.rce_brak ? ' <span class="pill r">brak RCE</span>' : ""}</td><td class="lab">stary</td>${money(x.stary)}<td class="r" rowspan="2"><b class="${x.roznica_zl >= 0 ? "t-g" : "t-r"}">${x.roznica_zl >= 0 ? "+" : ""}${fmt(x.roznica_zl, 2, "zł")}</b></td></tr><tr><td class="lab">nasz</td>${money(x.nowy, "t-b")}</tr>`).join("")}</table></div></div>` : ""}`;
 }
 
-// Kafelki pieniedzy dzis: do teraz (pomiar) i na koniec dnia (pomiar + plan). Bilansowanie godzinowe, zakup G12, sprzedaz RCE x depozyt.
-// "Bez EMS" = dom z sieci po G12, PV zuzyte na biezaco, nadwyzka PV sprzedana (bez magazynu).
-function moneyTiles(c) {
-  const dw = dayWindow(new Date()), now = Date.now(), meas = range(c, dw.t0, dw.t1), sm = slots(c, dw.t0, dw.t1);
+// Kafelki dnia wybranego na pasku (Teraz / tydzien / miesiac -> dzis): przeszly dzien = fakty, dzis = do teraz + prognoza reszty, jutro = prognoza.
+// Bilansowanie godzinowe, zakup G12, sprzedaz RCE x depozyt. "Bez EMS" = dom z sieci po G12, PV na biezaco, nadwyzka PV sprzedana (bez magazynu).
+// Handel (co godzine): sprzedane nie z PV = max(0, eksport - max(0, PV - dom)); zakup do baterii = max(0, import - max(0, dom - PV)).
+function dayTiles(c) {
+  const day = /^\d/.test(st.sel || "") ? new Date(st.sel + "T00:00") : new Date();
+  const dw = dayWindow(day), now = Date.now(), kind = dw.t1 <= now ? "past" : dw.t0 > now ? "fut" : "today";
+  const meas = kind === "fut" ? [] : range(c, dw.t0, dw.t1), sm = slots(c, dw.t0, dw.t1);
   const dep = num(c.hass, "number.ems_depozyt_mnoznik", 1.23), cap = num(c.hass, "number.ems_pojemnosc_wh", 15000) / 1000;
-  const z = () => ({ kup: 0, kupZl: 0, spr: 0, sprZl: 0, kupB: 0, kupBZl: 0, sprB: 0, sprBZl: 0 }), A = z(), E = z();
+  const eta = num(c.hass, "number.ems_sprawnosc_ladowania", 93) / 100 * num(c.hass, "number.ems_sprawnosc_rozladowania", 93) / 100 || 0.86;
+  const z = () => ({ kup: 0, kupZl: 0, spr: 0, sprZl: 0, kupB: 0, kupBZl: 0, sprB: 0, sprBZl: 0, pv: 0, dom: 0, npv: 0, npvZl: 0, gb: 0, gbZl: 0 }), A = z(), E = z(), F = z();
   for (let h = 0; h < 24; h++) {
     const a = dw.t0 + h * 36e5, b = a + 36e5, ss = [0, 1, 2, 3].map(i => sm.get(a + i * 9e5));
-    const pr = ss.map(x => x?.price).filter(v => v != null), rce = pr.length ? pr.reduce((x, y) => x + y, 0) / pr.length : 0, g12 = g12Price(new Date(a + 18e5));
-    // pomiar (do teraz) + plan (reszta godziny / dnia)
-    let imp = 0, exp = 0, dom = 0, pv = 0, impN = 0, expN = 0, domN = 0, pvN = 0;
+    const pr = ss.map(x => x?.price).filter(v => v != null), rce = Math.max(pr.length ? pr.reduce((x, y) => x + y, 0) / pr.length : 0, 0), g12 = g12Price(new Date(a + 18e5));
+    let imp = 0, exp = 0, dom = 0, pv = 0;
     meas.forEach(r => { if (r.t < a || r.t >= b) return; const gr = r.grid || 0; imp += Math.max(gr, 0) / 60; exp += Math.max(-gr, 0) / 60; dom += (r.dom || 0) / 60; pv += (r.pv || 0) / 60; });
-    impN = imp; expN = exp; domN = dom; pvN = pv;
-    ss.forEach((x, i) => { const t = a + i * 9e5; if (!x || t + 9e5 <= now) return; const f = t < now ? (t + 9e5 - now) / 9e5 : 1;
-      impN += (x.imp || 0) * f; expN += (x.exp || 0) * f; domN += (x.load || 0) * f; pvN += (x.pv || 0) * f; });
+    let impN = imp, expN = exp, domN = dom, pvN = pv, fI = 0, fE = 0, fD = 0, fP = 0;
+    ss.forEach((x, i) => { if (!x) return; const t = a + i * 9e5; fI += x.imp || 0; fE += x.exp || 0; fD += x.load || 0; fP += x.pv || 0;
+      if (t + 9e5 <= now) return; const f = t < now ? (t + 9e5 - now) / 9e5 : 1; impN += (x.imp || 0) * f; expN += (x.exp || 0) * f; domN += (x.load || 0) * f; pvN += (x.pv || 0) * f; });
     const add = (o, i, e, d, p) => { const n = i - e, nb = d - p;
-      if (n > 0) { o.kup += n; o.kupZl += n * g12; } else { o.spr -= n; o.sprZl += -n * Math.max(rce, 0) * dep; }
-      if (nb > 0) { o.kupB += nb; o.kupBZl += nb * g12; } else { o.sprB -= nb; o.sprBZl += -nb * Math.max(rce, 0) * dep; } };
+      o.pv += p; o.dom += d;
+      if (n > 0) { o.kup += n; o.kupZl += n * g12; } else { o.spr -= n; o.sprZl += -n * rce * dep; }
+      if (nb > 0) { o.kupB += nb; o.kupBZl += nb * g12; } else { o.sprB -= nb; o.sprBZl += -nb * rce * dep; }
+      const npv = Math.max(0, e - Math.max(0, p - d)), gb = Math.max(0, i - Math.max(0, d - p));
+      o.npv += npv; o.npvZl += npv * rce * dep; o.gb += gb; o.gbZl += gb * g12; };
     if (a < now) add(A, imp, exp, dom, pv);
     add(E, impN, expN, domN, pvN);
+    add(F, fI, fE, fD, fP);                               // sama prognoza (jaka EMS mial) – do porownania dla dni przeszlych
   }
-  const soc0 = meas.find(r => r.soc != null)?.soc, socN = [...meas].reverse().find(r => r.soc != null)?.soc;
+  const soc0 = meas.find(r => r.soc != null)?.soc ?? [...sm.entries()].sort((x, y) => x[0] - y[0])[0]?.[1]?.soc, socN = [...meas].reverse().find(r => r.soc != null)?.soc;
   const lastSlot = [...sm.entries()].filter(([t, x]) => t < dw.t1 && x?.soc != null).sort((x, y) => x[0] - y[0]).pop()?.[1]?.soc;
   const batA = soc0 != null && socN != null ? (socN - soc0) / 100 * cap * 0.61 : 0, batE = soc0 != null && lastSlot != null ? (lastSlot - soc0) / 100 * cap * 0.61 : batA;
-  const bil = (o, bat) => o.sprZl - o.kupZl + bat, bilB = o => o.sprBZl - o.kupBZl;
-  const pvA = meas.reduce((q, r) => q + (r.pv || 0), 0) / 60;
-  let pvE = pvA, chPlan = 0; for (const [tt, x] of sm) { if (!x || tt >= dw.t1 || tt + 9e5 <= now) continue; const f = tt < now ? (tt + 9e5 - now) / 9e5 : 1; pvE += (x.pv || 0) * f; if (x.action === "charge") chPlan += (x.grid_kwh || 0) * f; }
-  const zA = bil(A, batA) - bilB(A), zE = bil(E, batE) - bilB(E), col = v => v >= 0 ? "t-g" : "t-r", sg = v => (v >= 0 ? "+" : "") + fmt(v, 2, "zł");
-  const t = (icn, cls, lab, val, sub) => `<div class="tile"><div class="ic ${cls}">${icn}</div><div><div class="lab">${lab}</div><div class="val">${val}</div><div class="sub">${sub}</div></div></div>`;
-  return `<div class="tiles" style="margin-bottom:14px">
-    ${t("🔌", "ic-r", "Zakup prądu dziś", `<span class="t-r">${fmt(A.kupZl, 2, "zł")}</span>`, `${fmt(A.kup, 1, "kWh")} do teraz · koniec dnia ~${fmt(E.kupZl, 2, "zł")} (${fmt(E.kup, 1, "kWh")})<br>algorytm planuje dziś jeszcze dokupić do baterii <b>${fmt(chPlan, 1, "kWh")}</b>`)}
-    ${t("💰", "ic-g", "Sprzedaż dziś", `<span class="t-g">${fmt(A.sprZl, 2, "zł")}</span>`, `${fmt(A.spr, 1, "kWh")} do teraz · koniec dnia ~${fmt(E.sprZl, 2, "zł")} (${fmt(E.spr, 1, "kWh")})`)}
-    ${t("⚖", bil(A, batA) >= 0 ? "ic-g" : "ic-r", "Bilans dnia", `<span class="${col(bil(A, batA))}">${sg(bil(A, batA))}</span>`, `w tym bateria ${sg(batA)} · koniec dnia ~${sg(bil(E, batE))}`)}
-    ${t("⚡", "ic-b", "Bilans energii dziś (kWh)", `PV ${fmt(pvA, 1)} <span class="lab">/ ~${fmt(pvE, 1)}</span>`, `zakup ${fmt(A.kup, 1)} / ~${fmt(E.kup, 1)} · sprzedaż ${fmt(A.spr, 1)} / ~${fmt(E.spr, 1)} kWh<br><span class="lab">do teraz / prognoza na koniec dnia</span>`)}
-    ${t("🤖", zA >= 0 ? "ic-g" : "ic-r", "Zysk dzięki EMS dziś", `<span class="${col(zA)}">${sg(zA)}</span>`, `vs dom bez magazynu na G12 (${sg(bilB(A))}) · koniec dnia ~${sg(zE)}`)}</div>`;
+  let chPlan = 0; for (const [tt, x] of sm) { if (!x || tt >= dw.t1 || tt + 9e5 <= now) continue; const f = tt < now ? (tt + 9e5 - now) / 9e5 : 1; if (x.action === "charge") chPlan += (x.grid_kwh || 0) * f; }
+  const bil = (o, bat) => o.sprZl - o.kupZl + bat, bilB = o => o.sprBZl - o.kupBZl, col = v => v >= 0 ? "t-g" : "t-r", sg = v => (v >= 0 ? "+" : "") + fmt(v, 2, "zł");
+  const trade = o => { const avg = o.gb > 0.01 ? o.gbZl / o.gb : null, kwh = o.npv / eta, zl = avg != null ? kwh * avg : null; return { kwh, zl, zysk: zl != null ? o.npvZl - zl : null }; };
+  const M = kind === "past" ? A : E, bat = kind === "past" ? batA : batE, TR = trade(M);
+  const dn = kind === "today" ? "dziś" : kind === "fut" ? `– ${day.toLocaleDateString("pl-PL", { weekday: "long", day: "2-digit", month: "2-digit" })}` : `– ${day.toLocaleDateString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit" })}`;
+  const tag = kind === "past" ? "faktycznie" : kind === "fut" ? "prognoza" : "";
+  // wartosc i podpis: przeszly = fakt (+ "prognoza była"), dzis = do teraz + reszta = razem, jutro = prognoza
+  const kv = (ak, d = 1, u = "kWh") => kind === "past" ? `${fmt(A[ak], d, u)}` : `${fmt(E[ak], d, u)}`;
+  const ks = (ak, d = 1, u = "kWh") => kind === "past" ? `prognoza była ${fmt(F[ak], d, u)}` : kind === "fut" ? "wg planu EMS" : `dotąd ${fmt(A[ak], d, u)} + prognoza reszty ${fmt(E[ak] - A[ak], d, u)} = ${fmt(E[ak], d, u)}`;
+  const t = (icn, cls, lab, val, sub) => `<div class="tile"><div class="ic ${cls}">${icn}</div><div><div class="lab">${lab}${tag ? ` <span class="pill ${kind === "fut" ? "b" : "g"}">${tag}</span>` : ""}</div><div class="val">${val}</div><div class="sub">${sub}</div></div></div>`;
+  return `<div class="tiles dtiles" style="margin-bottom:14px">
+    ${t("☀", "ic-o", `Produkcja PV ${dn}`, `<span class="t-o">${kv("pv")}</span>`, ks("pv"))}
+    ${t("🏠", "ic-b", `Konsumpcja domu ${dn}`, `<span class="t-b">${kv("dom")}</span>`, ks("dom"))}
+    ${t("🔌", "ic-r", `Zakup prądu ${dn}`, `<span class="t-r">${fmt(M.kup, 1, "kWh")} · ${fmt(M.kupZl, 2, "zł")}</span>`, `${kind === "today" ? `do teraz ${fmt(A.kup, 1, "kWh")} · ${fmt(A.kupZl, 2, "zł")}<br>` : kind === "past" ? `prognoza była ${fmt(F.kup, 1, "kWh")} · ${fmt(F.kupZl, 2, "zł")}<br>` : ""}${kind !== "past" ? `algorytm planuje ${kind === "today" ? "dziś jeszcze " : ""}dokupić do baterii <b>${fmt(chPlan, 1, "kWh")}</b>` : ""}`)}
+    ${t("💰", "ic-g", `Sprzedaż ${dn}`, `<span class="t-g">${fmt(M.spr, 1, "kWh")} · ${fmt(M.sprZl, 2, "zł")}</span>`, kind === "today" ? `do teraz ${fmt(A.spr, 1, "kWh")} · ${fmt(A.sprZl, 2, "zł")}` : kind === "past" ? `prognoza była ${fmt(F.spr, 1, "kWh")} · ${fmt(F.sprZl, 2, "zł")}` : "wg planu EMS")}
+    ${t("💱", TR.zysk == null || TR.zysk >= 0 ? "ic-g" : "ic-r", `Handel ${dn}`, `<span class="${TR.zysk == null ? "" : col(TR.zysk)}">${TR.zysk == null ? "–" : sg(TR.zysk)}</span>`, `zakup pod sprzedaż <span class="t-r">${fmt(TR.kwh, 1, "kWh")} · ${TR.zl == null ? "–" : fmt(TR.zl, 2, "zł")}</span><br>sprzedane nie z PV <span class="t-g">${fmt(M.npv, 1, "kWh")} · ${fmt(M.npvZl, 2, "zł")}</span>`)}
+    ${t("⚖", bil(M, bat) >= 0 ? "ic-g" : "ic-r", `Bilans dnia ${dn}`, `<span class="${col(bil(M, bat))}">${sg(bil(M, bat))}</span>`, `w tym bateria ${sg(bat)}${kind === "today" ? ` · do teraz ${sg(bil(A, batA))}` : ""}`)}
+    ${t("🤖", bil(M, bat) - bilB(M) >= 0 ? "ic-g" : "ic-r", `Zysk dzięki EMS ${dn}`, `<span class="${col(bil(M, bat) - bilB(M))}">${sg(bil(M, bat) - bilB(M))}</span>`, `vs dom bez magazynu na G12 (${sg(bilB(M))})${kind === "today" ? ` · do teraz ${sg(bil(A, batA) - bilB(A))}` : ""}`)}</div>`;
 }
 
 export function render(c) {
@@ -180,7 +199,7 @@ export function render(c) {
     + `<button class="btn ${st.sel === "week" ? "on" : ""}" data-pday="week">Tydzień</button><button class="btn ${st.sel === "month" ? "on" : ""}" data-pday="month">Miesiąc</button>`;
   return `<div class="ctrl" style="margin-bottom:14px;flex-wrap:nowrap"><div class="pday" data-pdays>${bar}</div><span class="ctrl" style="margin-left:auto;flex:none"><span class="lab">przeliczono ${a.przeliczono ? hm(a.przeliczono) : "–"} · do ${hz || "–"}</span><button class="btn" data-svc="button.press" data-ent="button.ems_przelicz">↻ Przelicz</button></span></div>
   <style>.pday{display:flex;gap:6px;overflow-x:auto;scrollbar-width:thin;padding-bottom:4px;min-width:0;flex:1}.pday .btn{flex:none;white-space:nowrap}</style>`
-    + moneyTiles(c) + fwd(c) + tou(c) + accuracyModal(c);   // symulacja wstecz (nasz vs stary) – nie wyswietlana (decyzja uzytkownika)
+    + dayTiles(c) + fwd(c) + tou(c) + accuracyModal(c);   // symulacja wstecz (nasz vs stary) – nie wyswietlana (decyzja uzytkownika)
 }
 export function bind(c, r) {
   bindProfile(c, r);

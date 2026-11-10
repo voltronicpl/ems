@@ -1,5 +1,12 @@
 # Zmiany EMS
 
+## 0.6.22
+- Handel: „Zakup pod sprzedaż” jako kWh · zł (na czerwono).
+- Kolumny kupno / sprzedaż mocniejsze (16 %).
+- Plan: wykresy PV i domu liniami (pomiar ciągły + prognoza przerywana, to samo okno co główny wykres), w nagłówku prognoza i faktycznie.
+- Legenda wykresów w wierszach: Faktyczne / Prognozy (każda seria osobno + „Wszystkie”) / Inne (ceny, kupno, sprzedaż); to samo w Profilu mocy.
+- Plan: kafelki dnia wybranego na pasku – Produkcja PV, Konsumpcja, Zakup, Sprzedaż, Handel (zakup pod sprzedaż + zysk), Bilans, Zysk dzięki EMS; przeszłe = faktycznie (z „prognoza była”), dziś = dotąd + reszta, jutro = prognoza.
+
 ## 0.6.21
 - Wykresy (Plan i Profil mocy): SOC w ramce Moc (oś % po prawej), delikatne kolumny przez całą wysokość – czerwone = kupno z sieci, zielone = sprzedaż (plan EMS + ręczne), bez napisów przy osi, cieńsze linie cen, w legendzie „Kupno” / „Sprzedaż”.
 - Przegląd: jedna ramka „Sterowanie” (algorytm + ręczne kup / sprzedaj + ostatnie wpisy w 2 kolumnach, puste wyszarzone); bez „Szybkich akcji” i ramki „Autokonsumpcja”.

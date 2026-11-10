@@ -72,7 +72,7 @@ const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50
 const ICC = { coins: "#facc15", bolt: "#facc15", batteryBolt: "#3ee07a" };
 // Kolumny kupna / sprzedazy (przez cala wysokosc, delikatne): czerwone = kupno z sieci, zielone = sprzedaz do sieci
 export const BUYSELL = { kup: "#ff4d5e", sprzedaj: "#22e07a" };
-export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [], order = "pms", act = null, socIn = true }) {
+export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [], order = "pms", act = null, socIn = true, mName = "Moc", mUnit = "kW", mSub = null }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
   // Trzy pasy na wspolnej osi czasu (kazdy z jedna osia): ceny zl/kWh | moc kW | SOC %. Na komputerze opis pasa z ikona po lewej.
   const off = OFF[key] = OFF[key] || {}, mob = ui.mob;
@@ -104,14 +104,14 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   let z0 = -1; rows.forEach((r, i) => { const c = cheapAt(r.t); if (c && z0 < 0) z0 = i; if ((!c || i === n - 1) && z0 >= 0) { const e = c ? i + 1 : i;
     g += `<rect x="${x(z0)}" y="${T - 7}" width="${x(e) - x(z0)}" height="${bot - T + 14}" class="pw-night"/>`; z0 = -1; } });
   // kolumny kupna / sprzedazy: z planu (act(r) -> "kup" | "sprzedaj") + reczne zlecenia (bands: [{a, b (ms), typ}]); bez napisow (szczegoly w dymku)
-  const col = (a, e, k) => { if (off["__" + k] || e - a < 0.5) return; g += `<rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${bot - T + 14}" fill="${BUYSELL[k]}" opacity=".075"/>`; };
+  const col = (a, e, k) => { if (off["__" + k] || e - a < 0.5) return; g += `<rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${bot - T + 14}" fill="${BUYSELL[k]}" opacity=".16"/>`; };
   if (act) { let k0 = null, i0 = 0; rows.forEach((r, i) => { const k = act(r) || null; if (k !== k0) { if (k0) col(x(i0), x(i), k0); k0 = k; i0 = i; } }); if (k0) col(x(i0), x(n), k0); }
   if (n > 1) { const t0 = rows[0].t.getTime(), dt = rows[1].t - rows[0].t, xt = t => L + (t - t0) / dt * bw;
     for (const b of bands) { const a = Math.max(L, xt(b.a)), e = Math.min(W - R, xt(b.b)); if (e > a) col(a, e, b.typ === "sprzedaj" ? "sprzedaj" : "kup"); } }
   const pill = (y, c, txt) => { const w = txt.length * 6.6 + 16, x0 = W - R - w - 4; return `<rect x="${x0}" y="${y - 11}" width="${w}" height="22" rx="11" fill="#0b1828"/><rect x="${x0}" y="${y - 11}" width="${w}" height="22" rx="11" fill="${c}" fill-opacity=".2" stroke="${c}" stroke-opacity=".85"/><text x="${x0 + w / 2}" y="${y + 4}" text-anchor="middle" style="fill:${c};font-size:12px;font-weight:600">${txt}</text>`; };
   if (hasP) { pane(tP, hP, "coins", "Ceny|energii", "zł/kWh"); const pst = pTop > 3 ? 0.5 : 0.25;
     for (let v = 0; v <= pTop + 1e-9; v += pst) g += `<line x1="${L}" x2="${W - R}" y1="${YP(v)}" y2="${YP(v)}" class="grid"/><text x="${L - 8}" y="${YP(v) + 4}" text-anchor="end" class="ax">${fmt(v, 2)}</text>`; }
-  pane(tM, hM, "bolt", "Moc", "kW", lo < 0 ? "(± sieć / bateria)" : "");
+  pane(tM, hM, "bolt", mName, mUnit, mSub ?? (lo < 0 ? "(± sieć / bateria)" : ""));
   for (let v = lo; v <= hi + st / 1e6; v += st) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="${Math.abs(v) < st / 1e6 ? "zero" : "grid"}"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" class="ax">${(v > 0 ? "+" : "") + nf(v)}</text>`;
   if (sIn) for (const p of [0, 25, 50, 75, 100]) g += `<text x="${W - R + 6}" y="${YS(p) + 4}" class="ax" style="fill:#c4b5fd">${p}%</text>`;
   if (hasS && !sIn) { pane(tS, hS, "batteryBolt", "SOC|baterii", ""); for (const p of [0, 25, 50, 75, 100]) g += `<line x1="${L}" x2="${W - R}" y1="${YS(p)}" y2="${YS(p)}" class="grid"/><text x="${L - 8}" y="${YS(p) + 4}" text-anchor="end" class="ax">${p}%</text>`; }
@@ -140,15 +140,15 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   const dots = rows.map(r => [...prices.filter(p => !off[p.name]).map(p => { const v = p.f ? p.f(r) : r[p.k]; return v == null || isNaN(v) ? null : { y: YP(v), c: p.c }; }),
     ...socs.filter(s => !off[s.name]).map(s => r[s.k] == null ? null : { y: YS(r[s.k]), c: s.c })].filter(Boolean));
   CHARTS[id] = { key, rows, P: { l: L }, bw, W, tipf, dots };
-  // legenda: serie z tym samym "g" (grupa) = jeden przycisk, wlacza / wylacza je naraz; ikonka: ciagla = pomiar, przerywana = prognoza / plan
-  const grp = new Map();
-  [...lines, ...socs, ...areas, ...prices].forEach(s => { const g = s.g || s.name; if (!grp.has(g)) grp.set(g, []); grp.get(g).push(s); });
-  const ico = ss => { const cols = [...new Set(ss.map(x => x.c))], solid = ss.filter(x => !x.dash), dash = ss.filter(x => x.dash);
-    if (cols.length > 1 && !dash.length) return `<svg width="30" height="10">${cols.slice(0, 2).map((c, i) => `<line x1="1" y1="${3 + i * 5}" x2="29" y2="${3 + i * 5}" stroke="${c}" stroke-width="2.4"/>`).join("")}</svg>`;
-    if (cols.length > 1) return `<svg width="30" height="10">${cols.slice(0, 2).map((c, i) => `<line x1="1" y1="${3 + i * 5}" x2="29" y2="${3 + i * 5}" stroke="${c}" stroke-width="2" stroke-dasharray="4 3"/>`).join("")}</svg>`;
-    return `<svg width="30" height="10">${solid.length ? `<line x1="1" y1="5" x2="${dash.length ? 13 : 29}" y2="5" stroke="${cols[0]}" stroke-width="2.6"/>` : ""}${dash.length ? `<line x1="${solid.length ? 17 : 1}" y1="5" x2="29" y2="5" stroke="${cols[0]}" stroke-width="2" stroke-dasharray="3 3"/>` : ""}</svg>`; };
-  const bsLeg = (act || bands.length) ? ["kup", "sprzedaj"].map(k => `<button class="pw-lg${off["__" + k] ? " off" : ""}" data-lg="${esc(key)}|__${k}"><svg width="16" height="12"><rect x="1" y="0" width="14" height="12" rx="2" fill="${BUYSELL[k]}" opacity=".45"/></svg>${k === "kup" ? "Kupno" : "Sprzedaż"}</button>`).join("") : "";
-  const legend = [...grp.entries()].map(([g, ss]) => `<button class="pw-lg${ss.every(x => off[x.name]) ? " off" : ""}" data-lg="${esc(key)}|${esc(ss.map(x => x.name).join("\u0001"))}">${ico(ss)}${esc(g)}</button>`).join("") + bsLeg;
+  // legenda w wierszach: Faktyczne (ciagle) | Prognozy / plan (przerywane) | reszta (ceny, kupno / sprzedaz). Kazda seria osobno + [Wszystkie] na wiersz.
+  const ico = s => s.dash ? `<svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="${s.c}" stroke-width="2.2" stroke-dasharray="4 3"/></svg>` : `<svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="${s.c}" stroke-width="2.6"/></svg>`;
+  const btn = s => `<button class="pw-lg${off[s.name] ? " off" : ""}" data-lg="${esc(key)}|${esc(s.name)}" title="${esc(s.name)}">${ico(s)}${esc(s.lg || s.g || s.name)}</button>`;
+  const all = (lab, ss) => ss.length > 1 ? `<button class="pw-lg pw-all${ss.every(x => off[x.name]) ? " off" : ""}" data-lg="${esc(key)}|${esc(ss.map(x => x.name).join("\u0001"))}">${lab}</button>` : "";
+  const ser = [...lines, ...socs, ...areas], fakt = ser.filter(x => !x.dash), prog = ser.filter(x => x.dash);
+  const rowL = (lab, ss, extra = "") => ss.length || extra ? `<div class="pw-lrow"><span class="pw-lt">${lab}</span>${all("Wszystkie", ss)}${ss.map(btn).join("")}${extra}</div>` : "";
+  const prc = prices.length ? `<button class="pw-lg${prices.every(x => off[x.name]) ? " off" : ""}" data-lg="${esc(key)}|${esc(prices.map(x => x.name).join("\u0001"))}"><svg width="26" height="10">${prices.slice(0, 2).map((p, i) => `<line x1="1" y1="${3 + i * 5}" x2="25" y2="${3 + i * 5}" stroke="${p.c}" stroke-width="2"/>`).join("")}</svg>${esc(prices[0].g || "Ceny")}</button>` : "";
+  const bsLeg = (act || bands.length) ? ["kup", "sprzedaj"].map(k => `<button class="pw-lg${off["__" + k] ? " off" : ""}" data-lg="${esc(key)}|__${k}"><svg width="16" height="12"><rect x="1" y="0" width="14" height="12" rx="2" fill="${BUYSELL[k]}" opacity=".7"/></svg>${k === "kup" ? "Kupno" : "Sprzedaż"}</button>`).join("") : "";
+  const legend = rowL("── Faktyczne", fakt) + rowL("┄┄ Prognozy / plan", prog) + (prc || bsLeg ? `<div class="pw-lrow"><span class="pw-lt">Inne</span>${prc}${bsLeg}</div>` : "");
   return `<div class="pw-legend">${legend}</div><div class="fc-plot pw-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T - 7}" y2="${bot + 7}" style="display:none"/><g class="cd"></g></svg>${tipBox()}</div>`;
 }
 export const setSocMin = v => { OFF.socMin = v; };
@@ -203,7 +203,7 @@ export const CSS = `
 .pw-svg .pw-pane{fill:#0e2234;fill-opacity:.55;stroke:#1d3a55}.pw-svg .pw-ic{fill:#13314c;stroke:#2b5b86}.pw-svg .pw-ict{font-size:17px}.pw-svg .pw-pt{fill:#e8eef5;font-size:14.5px;font-weight:700}.pw-svg .pw-pu{fill:#8fa6bd;font-size:11.5px}
 .pw-svg .cl{stroke:#e8eef5;stroke-dasharray:4 4;stroke-width:1.5}.fc-tip i.d{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:middle}
 .pw-plot .fc-tip{min-width:290px;border-color:#3b5a73;border-radius:12px;font-size:14px;padding:11px 14px}.pw-plot .fc-tip div{margin-top:4px}
-.pw-legend .pw-lg{border-radius:20px;padding:6px 14px;background:#0e2234}
+.pw-legend .pw-lg{border-radius:20px;padding:5px 12px;background:#0e2234}.pw-legend{display:grid!important;gap:6px}.pw-lrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.pw-lt{font-size:12px;color:#8fa6bd;min-width:118px}.pw-all{font-weight:700;border-style:dashed!important}
 .pf-brand img.brand{height:64px;width:auto;display:block;margin:-6px 4px -6px 0;flex:none}@media(max-width:700px){.pf-brand img.brand{height:44px}}
 :host{display:block;--bg:#06111b;--card1:#0c1f2e;--card2:#081826;--line:#14293a;--txt:#eaf2f9;--mut:#9bb3c6;--mut2:#6f8ba1;--o:#ffaa22;--g:#1fe090;--b:#3d8dff;--r:#ff4757;--v:#a78bfa;color:var(--txt);font-family:var(--paper-font-body1_-_font-family,Roboto),Roboto,"Segoe UI",Arial,sans-serif}
 *{box-sizing:border-box}

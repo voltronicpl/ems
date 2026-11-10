@@ -63,7 +63,7 @@ function enBox(c, x) {
   const mk = mo ? null : x.mt;
   const han = !d ? `<div class="ov-mut">Liczę…</div>` : d.err ? `<div class="ov-mut">Nie udało się policzyć: ${esc(d.err)}</div>` :
     row("Sprzedane nie z PV", `${fmt(d.nonpv_kwh, 2, "kWh")} · ${fmt(d.nonpv_zl, 2, "zł")}`, "#3ee07a") + row("Sprzedaż łącznie (depozyt)", `${fmt(d.exp, 1, "kWh")} · ${fmt(d.sprz_zl, 2, "zł")}`, "#3ee07a")
-    + row("Zakup pod sprzedaż", d.zakup_pod_sprzedaz_zl == null ? "–" : `${fmt(d.zakup_pod_sprzedaz_zl, 2, "zł")} <span class="ov-mut">(${fmt(d.koszt_kwh_baterii, 2, "zł/kWh")})</span>`, "#ff6b6b")
+    + row("Zakup pod sprzedaż", `${fmt(d.zakup_pod_sprzedaz_kwh, 2, "kWh")} · ${d.zakup_pod_sprzedaz_zl == null ? "–" : fmt(d.zakup_pod_sprzedaz_zl, 2, "zł")}${d.koszt_kwh_baterii != null ? ` <span class="ov-mut">(${fmt(d.koszt_kwh_baterii, 2, "zł/kWh")})</span>` : ""}`, "#ff6b6b")
     + row("Zysk z handlu", d.zysk_handel_zl == null ? "–" : fmt(d.zysk_handel_zl, 2, "zł"), d.zysk_handel_zl >= 0 ? "#3ee07a" : "#ff6b6b");
   return `<div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px">${ic("stack", 20)} Energia ${mo ? "w tym miesiącu" : "dziś"}</span>${tg}</div>
     ${row("Import z sieci", fmt(imp, 1, "kWh"), "#ff6b6b")}${row("Eksport do sieci", fmt(exp, 1, "kWh"), "#3ee07a")}${row("Bateria ład. / rozł.", `${fmt(bl, 1)} / ${fmt(br, 1, "kWh")}`)}${row("Produkcja PV", fmt(pvd, 1, "kWh"), "#facc15")}

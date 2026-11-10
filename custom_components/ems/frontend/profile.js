@@ -21,7 +21,7 @@ export function profile(c) {
   const w = nowWindow(12), meas = range(c, w.t0, w.t0 + 24 * 36e5).map(disp), sm = slots(c, w.t0, w.t1);
   const fc = []; for (let t = Math.max(w.now, w.t0) - (w.now % 6e4); t < w.t1; t += 6e4) { const k = kw(sm.get(Math.floor(t / 9e5) * 9e5)); fc.push(k ? { t, ...k } : { t }); }
   const X = t => L + (t - w.t0) / (w.t1 - w.t0) * (W - L - R);
-  const all = [...meas, ...fc].flatMap(r => ["pv", "bat", "grid", "dom"].filter(k => !OFF[k]).map(k => Math.abs(r[k] || 0)));
+  const all = [...meas.flatMap(r => ["pv", "bat", "grid", "dom"].filter(k => !OFF[k]).map(k => Math.abs(r[k] || 0))), ...fc.flatMap(r => ["pv", "bat", "grid", "dom"].filter(k => !OFF["p_" + k]).map(k => Math.abs(r[k] || 0)))];
   const top = Math.max(2.5, Math.ceil(Math.max(0, ...all) / 2.5) * 2.5), Y = v => T + (top - v) / (2 * top) * (H - T - B), YS = p => T + (100 - p) / 100 * (H - T - B);
   const stp = top <= 5 ? 1 : top <= 10 ? 2.5 : 5;
   let g = `<defs>${SER.map(([k, col]) => `<linearGradient id="pf-${k}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".45"/><stop offset=".5" stop-color="${col}" stop-opacity=".08"/><stop offset="1" stop-color="${col}" stop-opacity=".45"/></linearGradient>`).join("")}<filter id="pf-gl"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
@@ -35,17 +35,18 @@ export function profile(c) {
   for (let t = Math.floor(Math.max(w.now, w.t0) / 9e5) * 9e5; t < w.t1; t += 9e5) { const a = (sm.get(t) || {}).action, k = a === "charge" ? "kup" : a === "sell" ? "sprzedaj" : null; if (k) colr(Math.max(L, X(Math.max(t, w.now))), Math.min(W - R, X(t + 9e5)), k); }
   const path = (rows, k, y) => { let d = "", on = false; rows.forEach(r => { const v = r[k]; if (v == null) { on = false; return; } d += `${on ? "L" : "M"}${X(r.t).toFixed(1)} ${y(v).toFixed(1)}`; on = true; }); return d; };
   const smr = ["pv", "bat", "grid", "dom", "soc"].reduce((o, k) => { const s = sma(meas, k, k === "soc" ? 0 : 4); meas.forEach((r, i) => { (o[i] = o[i] || { t: r.t })[k] = s[i]; }); return o; }, []);
-  for (const [k, col] of SER) { if (OFF[k]) continue; const y = k === "soc" ? YS : Y;
-    const d = path(smr, k, y), f = path(fc, k, y);
+  for (const [k, col] of SER) { const y = k === "soc" ? YS : Y;   // OFF[k] = pomiar, OFF["p_" + k] = prognoza (osobno)
+    const d = OFF[k] ? "" : path(smr, k, y), f = OFF["p_" + k] ? "" : path(fc, k, y);
     if (d && k !== "soc") g += d.split("M").filter(Boolean).map(q => { const pts = q.split("L"), x0 = pts[0].split(" ")[0], x1 = pts[pts.length - 1].split(" ")[0]; return `<path d="M${q}L${x1} ${Y(0)}L${x0} ${Y(0)}Z" fill="url(#pf-${k})"/>`; }).join("");
     if (d) g += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${k === "soc" ? 1.8 : 2.4}" stroke-linejoin="round" filter="url(#pf-gl)"/>`;
     if (f) g += `<path d="${f}" fill="none" stroke="${col}" stroke-width="1.8" stroke-dasharray="6 5" opacity=".85"/>`; }
   g += `<line x1="${X(w.now)}" x2="${X(w.now)}" y1="${T}" y2="${H - B}" stroke="#e2e8f0" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${X(w.now) + 5}" y="${H - B - 6}" class="pf-ax">teraz</text>`;
   cur = { w, meas, fc, X, Y, YS };
   const last = meas.length ? meas[meas.length - 1] : {};
-  const leg = SER.map(([k, col, n]) => `<button class="pf-lg${OFF[k] ? " off" : ""}" data-pflg="${k}"><i style="background:${col}"></i>${n}</button>`).join("");
+  const lrow = (lab, pre, dash) => `<div class="pf-lrow"><span class="pf-lt">${lab}</span><button class="pf-lg pf-all${SER.every(([k]) => OFF[pre + k]) ? " off" : ""}" data-pflg="${SER.map(([k]) => pre + k).join(",")}">Wszystkie</button>${SER.map(([k, col, n]) => `<button class="pf-lg${OFF[pre + k] ? " off" : ""}" data-pflg="${pre + k}"><svg width="22" height="8"><line x1="1" y1="4" x2="21" y2="4" stroke="${col}" stroke-width="2.4" ${dash ? 'stroke-dasharray="4 3"' : ""}/></svg>${n}</button>`).join("")}</div>`;
+  const leg = lrow("── Faktyczne", "", false) + lrow("┄┄ Prognozy", "p_", true);
   return `<div class="pf-wrap" data-prof><svg viewBox="0 0 ${W} ${H}" width="100%" class="pf-svg">${g}<line class="pcl" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#fff" stroke-width="1.4" stroke-dasharray="5 4" style="display:none"/><g class="pdots"></g></svg><div class="pf-tip" style="display:none"></div></div>
-    <div class="pf-foot"><div class="pf-legs">${leg}<span class="pf-dash">┄ prognoza</span></div><div class="pf-soc">${ic("battery", 18)} SOC: <b>${fmt(last.soc, 0, "%")}</b></div></div>`;
+    <div class="pf-foot"><div class="pf-legs">${leg}</div><div class="pf-soc">${ic("battery", 18)} SOC: <b>${fmt(last.soc, 0, "%")}</b></div></div>`;
 }
 
 function tip(box, t) {
@@ -53,7 +54,7 @@ function tip(box, t) {
   if (!cur || t == null || t < cur.w.t0 || t >= cur.w.t1) { l.style.display = tp.style.display = "none"; dots.innerHTML = ""; return; }
   const past = t <= cur.w.now, src = past ? cur.meas : cur.fc, r = src.find(x => x.t <= t && t < x.t + 6e4) || src[src.length - 1] || {};
   const x = cur.X(t); l.setAttribute("x1", x); l.setAttribute("x2", x); l.style.display = "";
-  dots.innerHTML = SER.filter(([k]) => !OFF[k] && r[k] != null).map(([k, col]) => `<circle cx="${x}" cy="${(k === "soc" ? cur.YS : cur.Y)(r[k])}" r="5" fill="${col}" stroke="#fff" stroke-width="1.5"/>`).join("");
+  dots.innerHTML = SER.filter(([k]) => r[k] != null).map(([k, col]) => `<circle cx="${x}" cy="${(k === "soc" ? cur.YS : cur.Y)(r[k])}" r="5" fill="${col}" stroke="#fff" stroke-width="1.5"/>`).join("");
   const sg = v => (v > 0 ? "+" : "") + fmt(v, 2) + " kW", pf = past ? "" : ` <span class="pf-pr">(prognoza)</span>`;
   const row = (col, txt) => `<div><i style="background:${col}"></i>${txt}</div>`;
   tp.innerHTML = `<div class="pf-th">${ic("clock", 18)} <b>${new Date(t).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}</b>${pf}</div>`
@@ -68,7 +69,7 @@ function tip(box, t) {
 }
 
 export function bindProfile(c, r) {
-  r.querySelectorAll("[data-pflg]").forEach(b => b.onclick = () => { OFF[b.dataset.pflg] = !OFF[b.dataset.pflg]; c.render(true); });
+  r.querySelectorAll("[data-pflg]").forEach(b => b.onclick = () => { const ks = b.dataset.pflg.split(","), v = !ks.every(k => OFF[k]); ks.forEach(k => { OFF[k] = v; }); c.render(true); });
   r.querySelectorAll("[data-pfopen]").forEach(b => b.onclick = () => { st.open = true; st.day = st.day || new Date().toLocaleDateString("sv-SE"); c._hold = true; c.render(true); });
   r.querySelectorAll("[data-pfclose]").forEach(b => b.onclick = e => { if (e.target !== b) return; st.open = false; c._hold = false; c.render(true); });
   r.querySelectorAll("[data-pfday]").forEach(b => b.onclick = () => { const d = new Date(st.day); d.setDate(d.getDate() + +b.dataset.pfday); if (d <= new Date()) st.day = d.toLocaleDateString("sv-SE"); c.render(true); });
@@ -131,7 +132,8 @@ export function accuracyModal(c) {
       ${leadTab}<div class="note" style="margin-top:8px">kWh w godzinie. Błąd = fakt − prognoza (zielony: więcej niż przewidziano). „Początek dnia” = prognoza z pierwszego przeliczenia po północy, „ostatnia” = ostatnia przed daną godziną. Błąd wg wyprzedzenia = średni błąd bezwzględny slotu 15 min dla prognoz zrobionych tyle godzin wcześniej (z każdej aktualizacji w ciągu dnia).</div></div></div></div>`;
 }
 
-export const PROFILE_CSS = `
+export const PROFILE_CSS = `.pf-legs{display:grid!important;gap:5px}.pf-lrow{display:flex;flex-wrap:wrap;align-items:center;gap:5px}.pf-lt{font-size:12px;color:#8fa6bd;min-width:100px}.pf-lg svg{vertical-align:middle;margin-right:4px}.pf-all{font-weight:700;border-style:dashed!important}
+
 .pf-wrap{position:relative}.pf-svg{display:block;touch-action:pan-y;cursor:crosshair}
 .pf-grid{stroke:#1a3246;stroke-width:1}.pf-grid.z{stroke:#3b5a73}.pf-ax{fill:#cbd5e1;font-size:13px}.pf-yl{fill:#cbd5e1;font-size:14px}
 .pf-tip{position:absolute;top:8px;z-index:5;background:#0a1420f2;border:1px solid #4b6b8a;border-radius:12px;padding:10px 14px;font-size:14px;line-height:1.7;pointer-events:none;white-space:nowrap;box-shadow:0 0 18px #3b82f633}

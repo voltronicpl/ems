@@ -75,7 +75,7 @@ async def summary(hass, eng, start: datetime, end: datetime) -> dict:
     avg = t["kup_bat_zl"] / t["kup_bat_kwh"] if t["kup_bat_kwh"] > 0.01 else None
     cost = t["nonpv_kwh"] / eta * avg if avg is not None else None
     out = {k: round(v, 3) for k, v in t.items()}
-    out.update({"koszt_kwh_baterii": round(avg, 3) if avg is not None else None, "zakup_pod_sprzedaz_zl": round(cost, 2) if cost is not None else None,
+    out.update({"koszt_kwh_baterii": round(avg, 3) if avg is not None else None, "zakup_pod_sprzedaz_zl": round(cost, 2) if cost is not None else None, "zakup_pod_sprzedaz_kwh": round(t["nonpv_kwh"] / eta, 2),
                 "zysk_handel_zl": round(t["nonpv_zl"] - cost, 2) if cost is not None else None, "godzin": len(hours)})
     return out
 
