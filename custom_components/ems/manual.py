@@ -107,3 +107,35 @@ class ManualView(HomeAssistantView):
         if eng.manual:
             rows.append({**eng.manual.record("w toku"), "do": None})
         return self.json({"wpisy": rows})
+
+
+class DayView(HomeAssistantView):
+    """GET /api/ems/dzien?day=YYYY-MM-DD -> zapisane prognozy slotow (rano / ostatnia) + ceny RCE tego dnia (slot UTC ISO -> zl/kWh)."""
+
+    url = "/api/ems/dzien"
+    name = "api:ems:dzien"
+    requires_auth = True
+
+    async def get(self, request):
+        from datetime import date as _date
+        from zoneinfo import ZoneInfo
+        from . import prices
+        hass = request.app["hass"]
+        engines = [e for k, e in hass.data.get("ems", {}).items() if not k.startswith("_")]
+        if not engines:
+            return self.json_message("EMS nie jest skonfigurowany", 404)
+        eng = engines[0]
+        try:
+            d = _date.fromisoformat(request.query.get("day", ""))
+        except ValueError:
+            return self.json_message("day = YYYY-MM-DD", 400)
+        waw = ZoneInfo("Europe/Warsaw")
+        t0 = datetime(d.year, d.month, d.day, tzinfo=waw).astimezone(timezone.utc)
+        t1 = t0 + timedelta(days=1)
+        slots = {k: v for k, v in eng.fc_log.items() if t0 <= datetime.fromisoformat(k) < t1}
+        try:
+            rce = await prices.fetch_days(hass, d, d)
+        except Exception:  # noqa: BLE001
+            rce = {}
+        ceny = {k.isoformat(): v for k, v in rce.items() if t0 <= k < t1}
+        return self.json({"dzien": d.isoformat(), "prognozy": slots, "ceny": ceny})

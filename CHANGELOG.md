@@ -1,5 +1,18 @@
 # Zmiany EMS
 
+## v0.6.4
+
+**Zmienione**
+- Przegląd: nowe tło sceny (grafika użytkownika bez kafelków), kafelki i linie przesyłu ułożone od nowa. Kafelek Sieć: „← Pobór” (czerwony, od słupa do domu), „→ Oddawanie” (niebieski).
+- Tło na wszystkich zakładkach: ta sama grafika, przyciemniona i rozmyta, ramki półprzezroczyste.
+- Profil mocy (Przegląd) wg wzoru użytkownika: okno teraz ±12 h („teraz” na środku), pomiar co 1 min gładką linią z wypełnieniem, **prognoza linią przerywaną** (PV, dom, bateria, sieć, SOC z planu), oś „Moc [kW]” symetryczna, SOC na osi %, kropki i dymek pod kursorem, klikana legenda, plakietka SOC. Znaki: bateria + = ładowanie, sieć − = pobór.
+- Plan: jeden wykres zamiast „Teraz + 24 h” / „Wstecz” – pasek dni na górze (14 dni wstecz, **Teraz**, jutro). „Teraz” = okno ±12 h z „teraz” na środku; inny dzień = 00–24. Przeszłość: pomiar co 1 min + przerywana prognoza, jaką EMS wtedy miał; ceny RCE także wstecz. Symulacja „nasz EMS vs stary” jako ramka pod wykresem.
+- Harmonogram TOU także w Ustawieniach (na górze; wspólny kod z Planem).
+
+**Dodane**
+- Okno „Prognoza vs rzeczywistość” (klik w Profil mocy albo przycisk): wykres godzinowy fakt / prognoza, tabela godzinowa PV i dom (fakt, prognoza ostatnia i z rana, błąd), ładowanie i sprzedaż plan / fakt, podsumowanie dnia (błąd kWh i %, trafione godziny ±10 %), dni ◀ ▶.
+- EMS zapisuje prognozę każdego slotu (pierwsza „z rana” i ostatnia przed slotem; Store `ems_prognozy_<wpis>`, 14 dni). API `GET /api/ems/dzien?day=` (prognozy + ceny RCE dnia).
+
 ## v0.6.3
 
 **Poprawione**

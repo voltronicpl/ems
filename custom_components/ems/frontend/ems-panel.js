@@ -1,7 +1,7 @@
 // EMS – panel boczny Home Assistant w stylu PGE Net-Billing. Rdzen + zakladki jako osobne moduly (tabs/*.js).
 import { S, num, g12, CSS, esc, bindCharts, ui } from "./core.js";
 const V = new URL(import.meta.url).search;
-const LOGO = new URL("./logo.png", import.meta.url).href;   // logo w naglowku (sciezka z wersja -> bez starego cache)             // ?v=wersja -> takze dla modulow zakladek
+const LOGO = new URL("./logo.png", import.meta.url).href, BG = new URL("./bg.jpg", import.meta.url).href;   // logo w naglowku (sciezka z wersja -> bez starego cache)             // ?v=wersja -> takze dla modulow zakladek
 const NAMES = ["overview", "plan", "settings", "diag"];
 const TABS = await Promise.all(NAMES.map(n => import(`./tabs/${n}.js${V}`)));
 
@@ -107,7 +107,7 @@ class EmsDashboard extends HTMLElement {
     try { body = T.render(this); } catch (e) { body = `<div class="box err">Błąd zakładki „${T.title}”: ${esc(e.message)}</div>`; console.error("[EMS]", e); }
     const last = S(this._hass, this.e("bateria_soc"))?.last_updated;
     const tx = this.shadowRoot.querySelector(".tabs")?.scrollLeft || 0;
-    this.shadowRoot.innerHTML = `<style>${CSS}</style><main class="pf"><div class="wrap">
+    this.shadowRoot.innerHTML = `<style>${CSS}</style><main class="pf"><div class="pf-bg" style="background-image:url(${BG})"></div><div class="wrap">
       <div class="pf-head ${this._narrow ? "mob" : ""}"><div class="pf-brand"><button class="menu" data-menu title="Menu Home Assistant">☰</button><img class="brand" src="${LOGO}" alt="EMS – Energy Management System"><div><div class="pf-sub">datalogger ${esc(this.dev)} · ostatni odczyt ${last ? new Date(last).toLocaleTimeString("pl-PL") : "–"} · v${ver}</div></div></div>
       <div class="tabs">${TABS.map((t, i) => `<button class="tab ${i === this.tab ? "on" : ""}" data-tab="${i}">${t.title}</button>`).join("")}</div>${(() => { const ps = S(this._hass, "sensor.ems_plan")?.state; const M = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", block: "Blokada eksportu", wylaczony: "Algorytm wyłączony", brak_planu: "Brak planu", reczne_buy: "Ręczne kupno", reczne_sell: "Ręczna sprzedaż" }; return ps ? `<span class="pf-mode">🍃 Tryb: <b>${esc(M[ps] || ps)}</b></span>` : ""; })()}</div>${body}</div></main>
       <div class="toasts">${this.toasts.map(t => `<div class="toast ${t.kind}" data-toast="${t.id}"><b>${esc(t.title)}</b>${t.lines.slice(0, 8).map(l => `<div>${esc(l)}</div>`).join("")}${t.lines.length > 8 ? `<div>… i ${t.lines.length - 8} więcej</div>` : ""}<span class="x">✕</span></div>`).join("")}</div>`;

@@ -47,6 +47,8 @@ class Engine:
         self._last_exec: datetime | None = None
         self.manual_log: list[dict] = []             # historia recznych zadan (14 dni)
         self._mstore = Store(hass, 1, f"ems_reczne_{entry_id}")
+        self.fc_log: dict = {}                       # slot ISO -> {"rano": {...}, "ost": {...}} (14 dni) – prognoza vs fakt
+        self._fstore = Store(hass, 1, f"ems_prognozy_{entry_id}")
 
     # --- odczyty z dataloggera -----------------------------------------------------------------
     def r(self, key: str, default=None):
@@ -75,6 +77,7 @@ class Engine:
     # --- historia recznych ----------------------------------------------------------------------
     async def _load_log(self) -> None:
         self.manual_log = (await self._mstore.async_load() or {}).get("wpisy", [])
+        self.fc_log = (await self._fstore.async_load() or {}).get("sloty", {})
         self.push()
 
     def _price_now(self, kind: str) -> float | None:
@@ -94,6 +97,20 @@ class Engine:
         self.manual_log = [r for r in self.manual_log if r["od"] >= cut] + [rec]
         self._mstore.async_delay_save(lambda: {"wpisy": self.manual_log}, 1)
         self.manual = None
+
+    def _log_forecast(self, now: datetime) -> None:
+        """Zapamietuje prognoze kazdego przyszlego slotu: 'rano' = pierwsza (najwczesniejsza), 'ost' = ostatnia przed slotem."""
+        cur = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
+        for s in self.plan:
+            if datetime.fromisoformat(s["start"]) < cur:
+                continue
+            rec = {k: s.get(k) for k in ("pv", "load", "soc", "action", "grid_kwh", "imp", "exp", "price")}
+            e = self.fc_log.setdefault(s["start"], {})
+            e.setdefault("rano", {**rec, "o": now.isoformat()})
+            e["ost"] = {**rec, "o": now.isoformat()}
+        cut = (now - timedelta(days=15)).isoformat()
+        self.fc_log = {k: v for k, v in self.fc_log.items() if k >= cut}
+        self._fstore.async_delay_save(lambda: {"sloty": self.fc_log}, 30)
 
     def manual_today(self) -> dict:
         """Suma recznych dzis (z zadaniem w toku): {kup: {kwh, zl, n}, sprzedaj: {...}, wpisy: [...]}."""
@@ -179,6 +196,7 @@ class Engine:
             res, summ = plan(slots, self._prices, pvk, ldk, self._weather, soc, self.p,
                              self.p["pojemnosc_wh"] / 1000, ch_w, sell_w)
             self.plan = as_dicts(res)
+            self._log_forecast(now)
             self.summary = {**summ, "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2)}
             self.last_plan = now
             self.error = None

@@ -2,6 +2,7 @@ import { S, num, fmt, tip, esc } from "../core.js";
 import { T } from "../tips.js";
 import { GROUPS } from "../inverter_spec.js";
 import { INV } from "../inverter_tips.js";
+import { tou } from "../tou.js";
 export const title = "Ustawienia";
 const PAIRS = [["Próg sprzedaży – tania", "prog_tania", "zł"], ["Próg sprzedaży – droga", "prog_droga", "zł"], ["Próg „za bezcen”", "prog_bezcen", "zł"],
   ["Mnożnik PV – słonecznie", "mn_slonecznie", "×"], ["Mnożnik PV – pochmurno", "mn_pochmurno", "×"], ["Mnożnik PV – deszcz", "mn_deszcz", "×"], ["Mnożnik PV – śnieg", "mn_snieg", "×"]];
@@ -64,7 +65,7 @@ export function render(c) {
       <button class="btn" data-rawread style="align-self:flex-end">Odczytaj</button><button class="btn off" data-rawwrite style="align-self:flex-end">Zapisz do falownika</button>
       <span class="pill b" style="align-self:flex-end">Wynik: ${esc(res || "–")}</span></div>
       <p class="note">Każdy surowy zapis jest logowany w ESP i w Diagnostyce. Blokada wraca sama po 5 min.</p>` : `<p class="note">Zablokowane. Wszystkie znane rejestry mają swoje pola wyżej.</p>`}</div>`;
-  return `<div class="anchor"><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div>${ems}${limits}${inv}${rawbox}`;
+  return `<div class="anchor"><button class="btn" data-go="s-tou">🗓 Harmonogram</button><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div><div id="s-tou">${tou(c)}</div>${ems}${limits}${inv}${rawbox}`;
 }
 export function bind(c, r) {
   r.querySelectorAll("[data-ntog]").forEach(el => el.onclick = () => { const id = el.dataset.ntog; c.zapisz([{ entity_id: id, value: num(c.hass, id, 0) >= 0.5 ? 0 : 1 }]); });

@@ -13,7 +13,7 @@ from . import diag
 from .const import CONF_DEVICE, DOMAIN, VERSION
 from .backtest import BacktestView
 from .engine import Engine
-from .manual import ManualView
+from .manual import DayView, ManualView
 from .verify import ReadView, WriteView
 
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SWITCH, Platform.BUTTON]
@@ -32,6 +32,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.http.register_view(WriteView)
     hass.http.register_view(ReadView)
     hass.http.register_view(ManualView)
+    hass.http.register_view(DayView)
     return True
 
 
