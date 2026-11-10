@@ -33,6 +33,12 @@ const raw = { unlocked: 0, addr: "", val: "" };
 const arbMin = (c, z) => 0.61 / (num(c.hass, "number.ems_sprawnosc_ladowania", 93) / 100 * num(c.hass, "number.ems_sprawnosc_rozladowania", 93) / 100) + num(c.hass, "number.ems_koszt_cyklu_zl", 0.15) + num(c.hass, `number.ems_arbitraz_zysk_${z}`, 0.1);
 // przelacznik na encji number 0/1 (parametry EMS sa liczbami)
 const ntog = (c, id) => { const on = num(c.hass, id, 0) >= 0.5; return `<div class="sw" data-ntog="${id}" title="${esc(id)}"><div class="tg ${on ? "on" : ""}"></div>${on ? "Włączone" : "Wyłączone"}</div>`; };
+function pmaxBox(c) {
+  const p = S(c.hass, "sensor.ems_plan")?.attributes?.pmax_zakupu;
+  const st = !p || p.wlaczony == null ? "nieodczytany (EMS czyta rejestr 278 przy sprzedaży)" : p.wlaczony ? "<b class=\"t-o\">włączony</b>" : `<b class="t-g">wyłączony</b>${p.przez_ems ? " – przez EMS na czas sprzedaży" : ""}`;
+  return `<div class="box"><div class="h"><span>⚡ Pmax zakupu (Tryb pracy na LCD)${tip({ co: "Grid Peak Shaving – rejestr 278 bity 5:4, wartość w „Moc szczytowa sieci” (291). Zaznaczony blokuje sprzedaż.", jak: "EMS wyłącza go na czas każdej sprzedaży (ręcznej i z planu) i przywraca po sprzedaży, ze sprawdzeniem odczytem. W trakcie sprzedaży sprawdza co 5 min." })}</span></div>
+    <div>Stan: ${st}${p?.r278 ? ` <span class="lab">(278 = ${esc(p.r278)}, odczyt ${esc((p.odczyt || "").slice(11))})</span>` : ""}</div>${p?.ostrzezenie ? `<div class="box err" style="margin:8px 0 0">⚠ ${esc(p.ostrzezenie)}</div>` : ""}</div>`;
+}
 export function render(c) {
   const winter = !c.zone.summer, d = c.dev;
   const f = (id, u, o) => c.field(id, u, o);
@@ -78,7 +84,7 @@ export function render(c) {
       <button class="btn" data-rawread style="align-self:flex-end">Odczytaj</button><button class="btn off" data-rawwrite style="align-self:flex-end">Zapisz do falownika</button>
       <span class="pill b" style="align-self:flex-end">Wynik: ${esc(res || "–")}</span></div>
       <p class="note">Każdy surowy zapis jest logowany w ESP i w Diagnostyce. Blokada wraca sama po 5 min.</p>` : `<p class="note">Zablokowane. Wszystkie znane rejestry mają swoje pola wyżej.</p>`}</div>`;
-  return `<div class="anchor"><button class="btn" data-go="s-tou">🗓 Harmonogram</button><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-src">📚 Historia</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div><div id="s-tou">${tou(c)}</div>${ems}${srcBox(c)}${limits}${inv}${rawbox}`;
+  return `<div class="anchor"><button class="btn" data-go="s-tou">🗓 Harmonogram</button><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-src">📚 Historia</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div><div id="s-tou">${tou(c)}</div>${ems}${srcBox(c)}${limits}${pmaxBox(c)}${inv}${rawbox}`;
 }
 export function bind(c, r) {
   r.querySelectorAll("[data-src]").forEach(el => { el.onfocus = () => { c._hold = true; }; el.onblur = () => { c._hold = false; }; el.onchange = () => { SRC.edit[el.dataset.src] = el.value.trim(); }; });

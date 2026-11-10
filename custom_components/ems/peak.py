@@ -24,6 +24,7 @@ class PeakShave:
         self.hass, self.dev = hass, dev
         self.store = Store(hass, 1, f"ems_pmax_zakupu_{entry_id}")
         self.saved: int | None = None          # Twoja wartosc 278 sprzed wylaczenia (None = nic nie zmienialismy)
+        self.status: dict = {}                  # dla panelu: stan, ostrzezenie
         self._loaded = False
 
     async def _load(self) -> None:
@@ -55,28 +56,71 @@ class PeakShave:
         await self.hass.services.async_call("esphome", f"{self.dev}_raw_write", {"address": REG, "value": v}, blocking=True)
         LOG.info("ZAPIS rejestr %d (Pmax zakupu): %d (0x%04X) – %s", REG, v, v, why)
 
+    def _state(self, v: int | None, err: str | None = None) -> None:
+        from datetime import datetime
+        self.status = {"r278": f"0x{v:04X}" if v is not None else None, "wlaczony": None if v is None else (v & MASK) == ON,
+                       "przez_ems": self.saved is not None, "ostrzezenie": err, "odczyt": datetime.now().isoformat(timespec="seconds")}
+
+    async def _set(self, v: int, why: str) -> bool:
+        """Zapis 278 ze sprawdzeniem: odczyt po zapisie, porownanie bitow 5:4, jedna ponowna proba."""
+        for attempt in (1, 2):
+            await self._write(v, why if attempt == 1 else why + " (ponownie)")
+            await asyncio.sleep(1.5)
+            got = await self._read()
+            if got is not None and (got & MASK) == (v & MASK):
+                LOG.info("POTWIERDZONO rejestr %d = 0x%04X (Pmax zakupu %s)", REG, got, "włączony" if (got & MASK) == ON else "wyłączony")
+                self._state(got)
+                return True
+            LOG.warning("Rejestr %d po zapisie: %s (chcialem 0x%04X)", REG, f"0x{got:04X}" if got is not None else "brak odczytu", v)
+        self._state(got, "Nie udało się " + ("wyłączyć" if (v & MASK) == OFF else "przywrócić") + " Pmax zakupu – sprawdź na LCD (Tryb pracy)")
+        LOG.error("Pmax zakupu: zapis 0x%04X NIE potwierdzony po 2 probach", v)
+        return False
+
     async def off_for_sell(self) -> None:
-        """Sprzedaz: wylacz Pmax zakupu (zapamietaj Twoja wartosc)."""
+        """Sprzedaz: wylacz Pmax zakupu (zapamietaj Twoja wartosc). W trakcie sprzedazy co 5 min sprawdza, czy nikt go nie wlaczyl."""
+        import time
         await self._load()
         if self.saved is not None or getattr(self, "_off_ok", False):
-            return                                            # juz wylaczone (przez EMS albo bylo wylaczone) – nie czytamy co cykl
+            if time.monotonic() - getattr(self, "_chk", 0) < 300:
+                return
+            self._chk = time.monotonic()
+            v = await self._read()
+            if v is None:
+                return
+            if (v & MASK) == ON:
+                LOG.warning("Pmax zakupu znowu WLACZONY w trakcie sprzedazy (278 = 0x%04X) – wylaczam", v)
+                if self.saved is None:
+                    self.saved = v
+                    await self.store.async_save({"r278": v})
+                await self._set((v & ~MASK) | OFF, "sprzedaz: ktos wlaczyl Pmax zakupu")
+            else:
+                self._state(v)
+            return
+        self._chk = time.monotonic()
         v = await self._read()
         if v is None:
+            self._state(None, "Brak odczytu Pmax zakupu (rejestr 278) – sprzedaż może nie ruszyć")
             return
         if v & MASK != ON:
             LOG.info("Pmax zakupu juz wylaczony (278 = 0x%04X) – nic nie zmieniam", v)
             self._off_ok = True
+            self._state(v)
             return
         self.saved = v
         await self.store.async_save({"r278": v})
-        await self._write((v & ~MASK) | OFF, "sprzedaz: Pmax zakupu blokuje eksport")
+        await self._set((v & ~MASK) | OFF, "sprzedaz: Pmax zakupu blokuje eksport")
 
     async def restore(self) -> None:
-        """Po sprzedazy: przywroc Twoja wartosc 278."""
+        """Po sprzedazy: przywroc Twoja wartosc 278 (ze sprawdzeniem)."""
         await self._load()
         self._off_ok = False
         if self.saved is None:
             return
-        v, self.saved = self.saved, None
-        await self._write(v, "koniec sprzedazy: przywracam Pmax zakupu")
-        await self.store.async_save({})
+        v = self.saved
+        if await self._set(v, "koniec sprzedazy: przywracam Pmax zakupu"):
+            self.saved = None
+            await self.store.async_save({})
+            self._state(v)
+        else:
+            self.saved = None                       # nie ponawiamy w petli; ostrzezenie zostaje w panelu
+            await self.store.async_save({})

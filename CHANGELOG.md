@@ -1,5 +1,12 @@
 # Zmiany EMS
 
+## v0.6.13
+
+**Dodane – sprawdzanie „Pmax zakupu” (rejestr 278)**
+- Każdy zapis 278 (wyłączenie na sprzedaż i przywrócenie po) jest sprawdzany odczytem: zgodne bity 5:4 → `POTWIERDZONO` w logu; niezgodne → jedna ponowna próba, potem błąd w logu i ⚠ w Przeglądzie oraz w Ustawieniach.
+- W trakcie sprzedaży EMS co 5 min sprawdza, czy Pmax zakupu nie został znowu włączony (np. z LCD) – jeśli tak, wyłącza go ponownie.
+- Ustawienia: ramka „Pmax zakupu (Tryb pracy na LCD)” – stan (włączony / wyłączony przez EMS), wartość 278 i godzina odczytu. Atrybut `pmax_zakupu` w `sensor.ems_plan`.
+
 ## v0.6.12
 
 **Poprawione**
