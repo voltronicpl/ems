@@ -1,5 +1,14 @@
 # Zmiany EMS
 
+## v0.6.0
+
+**Dodane**
+- Przegląd: animowane linie przesyłu na scenie (PV → dom, bateria ↔ dom, sieć ↔ dom; linia do auta wygaszona). Neon z poświatą i biegnącymi impulsami, kierunek wg znaku mocy, prędkość w 3 progach (< 500 W, < 1500 W, więcej), poniżej 20 W linia gaśnie (szary kabel). Kolory: PV zielony; sieć – pobór czerwony, oddawanie niebieskie; bateria – ładowanie pomarańczowe, rozładowanie zielone. Bez animacji przy „ograniczonym ruchu” w systemie (`frontend/flow.js`).
+- Karta na pulpit `custom:ems-card` (mały kafelek: PV, Bateria z SOC/mocą/ład.-rozł./V/°C, Dom, Sieć z importem/eksportem dziś) z tymi samymi animowanymi liniami. Rejestrowana automatycznie przez integrację; opcje `device` (domyślnie `ecobss`) i `navigate` (domyślnie `/ems`, kliknięcie otwiera panel).
+
+**Zmienione**
+- Nowe tło sceny Przeglądu (`frontend/scene.jpg`) – grafika użytkownika bez namalowanych linii, czerwone auto; kafelki dopasowane do nowego obrazka.
+
 ## v0.5.9
 
 **Dodane**

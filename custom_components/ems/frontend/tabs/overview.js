@@ -1,12 +1,20 @@
 import { S, num, fmt, tip, esc } from "../core.js";
 import { T } from "../tips.js";
 import { ic, icR } from "../icons.js";
+import { flowSvg, lines, FLOW_CSS } from "../flow.js";
 export const title = "Przegląd";
 export const ACT = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", block: "Blokada eksportu", wylaczony: "Algorytm wyłączony", brak_planu: "Brak planu", reczne_buy: "Ręczne kupno", reczne_sell: "Ręczna sprzedaż" };
 const WX = { sunny: "sun", "clear-night": "moon", partlycloudy: "cloudSun", cloudy: "cloud", fog: "cloud", rainy: "rain", pouring: "rain", snowy: "snow", "snowy-rainy": "snow", lightning: "storm", "lightning-rainy": "storm", hail: "snow", windy: "cloud", "windy-variant": "cloudSun", exceptional: "cloudSun" };
 const SCENE = new URL("../scene.jpg", import.meta.url).href;
-// Scena = obrazek uzytkownika; kafelki nakladane DOKLADNIE na miejsca liczb wpisanych w obrazek (procenty kadru 1672x367).
-const POS = { pv: [1.8, 8.2, 15.8, 35.6], bat: [2.0, 49.0, 15.8, 48.8], dom: [41.2, 45.6, 16.2, 33.2], grid: [84.0, 8.2, 15.2, 35.6], top: [35.2, 0.6, 32.6, 12.6] };
+// Scena = obrazek uzytkownika (bez linii przesylu); kafelki nakladane DOKLADNIE na miejsca kafelkow wpisanych w obrazek (procenty kadru 1672x367).
+const POS = { pv: [1.7, 8.0, 15.7, 36.5], bat: [1.8, 46.8, 15.6, 52.0], dom: [41.5, 48.2, 16.8, 32.5], grid: [84.1, 8.0, 15.9, 37.0], top: [35.5, 0.4, 32.2, 12.6] };
+// Linie przesylu (od zrodla do domu) w ukladzie 1672x367
+const FLOW = {
+  pv: "M300 162 L440 162 C500 162 500 245 560 250 L700 252",
+  bat: "M470 300 L560 298 C610 296 610 266 650 264 L700 263",
+  grid: "M1345 172 L1180 172 C1120 172 1110 238 1060 240 L972 240",
+  car: "M972 268 L1080 268 C1130 268 1150 298 1200 299 L1258 299",
+};
 const sp = n => n == null || isNaN(n) ? "–" : Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0");   // 1 807 (z odstepem jak na wzorze)
 const box = (k, html, cls = "") => { const [l, t, w, h] = POS[k]; return `<div class="sc-card ${cls}" style="left:${l}%;top:${t}%;width:${w}%;height:${h}%">${html}</div>`; };
 const tile = (ic, cls, lab, val, sub, subc, t) => `<div class="ov-tile"><div class="ov-ic ${cls}">${ic}</div><div><div class="ov-lab">${lab}${tip(t)}</div><div class="ov-val">${val}</div><div class="ov-sub" ${subc ? `style="color:${subc}"` : ""}>${sub}</div></div></div>`;
@@ -54,7 +62,8 @@ export function render(c) {
   const nxt = (pa.plan || []).find(s => new Date(s.start) > now && s.action !== "self");
   const L3 = ["l1", "l2", "l3"], kw = w => `${sp(w)} W`;
   const card = (ic, cls, lab, val, sub, sub2, sub3) => `<div class="sc-ic ${cls}">${ic}</div><div class="sc-tx"><div class="sc-lab">${lab}</div><div class="sc-val">${val}</div>${sub ? `<div class="sc-sub">${sub}</div>` : ""}${sub2 || ""}${sub3 ? `<div class="sc-sm">${sub3}</div>` : ""}</div>`;
-  const scene = `<div class="sc"><img src="${SCENE}" alt="Dom, PV, bateria i sieć">
+  const scene = `<style>${FLOW_CSS}</style><div class="sc"><img src="${SCENE}" alt="Dom, PV, bateria i sieć">
+    ${flowSvg("0 -2.4 1672 367", FLOW, lines(pv, bp, grid), [13, 9, 3.5], "flov")}
     ${box("top", `<span>${icR(WX[wx?.state] || "cloudSun", 30)}${wx ? ` ${fmt(wx.attributes.temperature, 1, wx.attributes.temperature_unit || "°C")}` : " –"}</span><i></i><span>${icR("calendar", 26)} ${now.toLocaleDateString("pl-PL", { weekday: "short" }).replace(/^./, x => x.toUpperCase())}, ${now.toLocaleDateString("pl-PL")}</span><i></i><span>${icR("clock", 26)} ${now.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}</span>`, "sc-top")}
     ${box("pv", card(icR("sun", 34), "y", "PV", kw(pv), `Dziś: ${fmt(pvd, 1, "kWh")}`))}
     ${box("bat", card(icR("batteryBolt", 34), "g", "Bateria", fmt(soc, 0, "%"), `${fmt(bl, 1)} / ${fmt(br, 1, "kWh")}`, `<div class="sc-sub" style="color:${chg > 0 ? "#3ee07a" : bp > 0 ? "#ffad2e" : "#9fb0c3"}">± ${kw(Math.abs(bp))} ${chg > 0 ? ic("arrowUR", 16) : bp > 0 ? ic("arrowDR", 16) : ""}</div>`, toFull))}

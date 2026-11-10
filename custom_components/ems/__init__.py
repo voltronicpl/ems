@@ -25,6 +25,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(STATIC, str(Path(__file__).parent / "frontend"), False)]
     )
+    frontend.add_extra_js_url(hass, f"{STATIC}/ems-card.js")   # karta Lovelace custom:ems-card
     diag.setup(hass)
     hass.http.register_view(BacktestView)
     hass.http.register_view(WriteView)
