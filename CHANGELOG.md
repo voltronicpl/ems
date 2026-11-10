@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## v0.6.17
+
+**Dodane**
+- Diagnostyka: **zrzut wszystkich rejestrów falownika (0–1099)** – przyciski „Zrzut: pusto / sprzedaż / kupno”. Datalogger (pakiet `ems_zrzut.yaml`) czyta 22 bloki po 50 rejestrów (~35 s) i wysyła je zdarzeniami do HA; EMS zapisuje `/config/ems_logs/zrzut-<etykieta>-<czas>.json` i pokazuje tabelę rejestrów, które różnią się między ostatnimi zrzutami (dziesiętnie i hex). Tylko odczyt. API `GET /api/ems/zrzuty`.
+
 ## v0.6.16
 
 **Zmienione**

@@ -9,7 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from . import diag
+from . import diag, dump
 from .const import CONF_DEVICE, DOMAIN, VERSION
 from .backtest import BacktestView, BillView
 from .engine import Engine
@@ -29,6 +29,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     )
     frontend.add_extra_js_url(hass, f"{STATIC}/ems-card.js")   # karta Lovelace custom:ems-card
     diag.setup(hass)
+    dump.setup(hass)
     hass.http.register_view(BacktestView)
     hass.http.register_view(BillView)
     hass.http.register_view(WriteView)
