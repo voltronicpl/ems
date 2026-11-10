@@ -1,5 +1,20 @@
 # Zmiany EMS
 
+## v0.5.9
+
+**Dodane**
+- Dymek (i) przy każdym polu Części Inwerter (sieć, bateria, port GEN, tryb pracy, czas) – co robi ustawienie, jak działa, na co uważać (`frontend/inverter_tips.js`).
+- Nowe logo EMS w nagłówku panelu (`frontend/logo.png`).
+- Plan: okienka „Kup energię teraz” / „Sprzedaj teraz” (jak w Przeglądzie) pod wykresem, z postępem i „Przerwij”.
+- Przegląd wg wzoru użytkownika: scena (dom, PV, bateria, sieć – obrazek użytkownika `frontend/scene.jpg`) z żywymi kafelkami PV / Bateria (SOC, ład./rozł. dziś, moc, „do pełna”) / Dom / Sieć oraz pogoda, data i godzina; rząd kafelków SOC, Moc baterii, PV, Dom, Sieć, Autokonsumpcja; sterowanie w Przeglądzie (Algorytm z najbliższą akcją, Kup / Sprzedaj z postępem i Przerwij, Szybkie akcje: Przelicz plan, Odczytaj falownik, Ustaw czas + ostatni odczyt/zapis); Energia dziś, Profil mocy (dziś, z historii HA co 15 min), Autokonsumpcja PV → dom / bateria / sieć; Sieć (3F), Przetwornica, PV (stringi).
+- Ikony zamiast emoji (`frontend/icons.js`): kolorowe z gradientami i poświatą (słońce, bateria z ogniwami, piorun, dom ze światłem w oknie, słup, liść, monety) na kafelkach, scenie i pasach wykresu planu; liniowe w nagłówkach ramek, przyciskach i pasku pogody.
+- Pasek pogody: kolorowa ikona zależna od pogody w HA (słońce, słońce z chmurą, chmura, deszcz, śnieg, burza, księżyc), kalendarz i zegar.
+- Plakietka „Tryb: …” w nagłówku panelu (bieżąca akcja planu) na każdej zakładce.
+
+**Zmienione**
+- Wykres planu wg wzoru użytkownika: pasy w ramkach z ikoną i opisem po lewej („Ceny energii zł/kWh”, „Moc kW (± sieć / bateria)”, „SOC baterii”), progi i „min 25%” jako kolorowe pigułki po prawej, oś mocy symetryczna (np. ±10 co 2,5), kropki na liniach cen i SOC pod kursorem, dymek obok kursora z kolorowymi kropkami (RCE, G12, ładowanie kW, sprzedaż kW, PV / dom kW, SOC).
+- Plan: „Teraz + 24 h” / „Wstecz” i „przeliczono … / Przelicz” w jednym rzędzie, „taryfa: G12” w nagłówku wykresu.
+
 ## v0.5.8
 
 **Poprawione**

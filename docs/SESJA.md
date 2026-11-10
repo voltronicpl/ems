@@ -1,4 +1,4 @@
-# Notatka dla nowej sesji (kontekst projektu EMS) – stan na v0.5.8
+# Notatka dla nowej sesji (kontekst projektu EMS) – stan na v0.5.9
 
 > **Aktualizować ten plik przy KAŻDEJ nowej wersji** (prośba użytkownika) – nowa sesja ma z niego wiedzieć wszystko.
 
@@ -27,7 +27,8 @@
 - **v0.5.5** – `core.pwChart()` = 3 pasy na wspólnej osi czasu (ceny zł/kWh | moc kW | SOC %), każdy z jedną osią; `areas` = słupki, `lines[0]` = schodki z wypełnieniem (PV, `nofill` wyłącza), linia minimum SOC przez `setSocMin()`. Makieta zatwierdzona przez użytkownika.
 - **v0.5.6** – `panel.rid(id, etykieta)`: encja dataloggera pod innym ID (sufiks, prefiks, nazwa) – używane w Części Inwerter; pasek potwierdzeń odczytu/zapisu z `sensor.<dev>_ostatni_odczyt_pomiarow|ostatni_odczyt_ustawien|ostatni_zapis` + lista brakujących encji.
 - **v0.5.7** – „Odczyt” = `POST /api/ems/odczyt` → `esphome.<dev>_odczytaj_ustawienia` (YAML v5.4) → czeka na zmianę `sensor.<dev>_ostatni_odczyt_ustawien` → toast „Odczytano o …”. Zapis: potwierdzenie z pierwszego odczytu ustawień po zapisie (ESP czyta od razu po 0x10), fallback licznik +2.
-- **v0.5.8** – `verify.dev_entity()`: encje dataloggera szukane w rejestrze HA (platform esphome, `original_name`), bo u użytkownika HA nadał nowym encjom inne ID (ESP czytał OK, EMS nie widział). Panel: `rid()` dla paska potwierdzeń.
+- **v0.5.8** – `verify.dev_entity()`: encje dataloggera szukane w rejestrze HA (platform esphome, `original_name`), bo u użytkownika HA nadał nowym encjom inne ID (ESP czytał OK, EMS nie widział). Panel: `rid()` dla paska potwierdzeń. + „📋 Kopiuj” w Diagnostyce, debug zapisu/odczytu.
+- **v0.5.9** – dymki (i) dla wszystkich pól Inwertera (`inverter_tips.js`, klucz = ID bez `domena.<dev>_`; nowe pole w `inverter_spec.js` → dopisać opis), logo użytkownika `frontend/logo.png` w nagłówku (owal wycięty z jego obrazka, przezroczyste tło). Wykres planu 1:1 wg obrazka użytkownika (ramki pasów z ikoną i opisem, pigułki progów, kropki pod kursorem `CHARTS[id].dots`, dymek obok kursora); okienka Kup/Sprzedaj także w zakładce Plan. Przegląd 1:1 wg obrazka użytkownika: tło `scene.jpg` (wycinek jego grafiki 1672×367 → 1400 px), kafelki nakładane na miejsca liczb w obrazku (`POS` w % w `tabs/overview.js`, czcionki w `cqw`), sterowanie wcielone do Przeglądu (bez osobnej zakładki Sterowanie – decyzja użytkownika), samochód zostaje tylko jako grafika.
 
 ## Ustalenia (decyzje użytkownika)
 - **Dzienny limit sprzedaży** obejmuje wszystko (nadwyżka PV + dokupione): PV × `limit_sprzedazy_<sezon>` (zima 1,5× – np. PV 4 kWh → sprzedaż 6, czyli 2 kWh dokupione); dzień bez PV → losowo **2000–4567 Wh** (`los_min_wh_*`, `los_max_wh_*`, ziarno = data).

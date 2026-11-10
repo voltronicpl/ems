@@ -1,6 +1,7 @@
 import { S, num, fmt, tip, esc } from "../core.js";
 import { T } from "../tips.js";
 import { GROUPS } from "../inverter_spec.js";
+import { INV } from "../inverter_tips.js";
 export const title = "Ustawienia";
 const PAIRS = [["Próg sprzedaży – tania", "prog_tania", "zł"], ["Próg sprzedaży – droga", "prog_droga", "zł"], ["Próg „za bezcen”", "prog_bezcen", "zł"],
   ["Mnożnik PV – słonecznie", "mn_slonecznie", "×"], ["Mnożnik PV – pochmurno", "mn_pochmurno", "×"], ["Mnożnik PV – deszcz", "mn_deszcz", "×"], ["Mnożnik PV – śnieg", "mn_snieg", "×"]];
@@ -49,10 +50,11 @@ export function render(c) {
   const inv = `<div class="sec" id="s-inv"><div class="ic ic-b">🔌</div>Część Inwerter</div>${status}
     <div class="g2">${GROUPS.map(g => c.group(g.title.replace("Siec", "Sieć"), `<div class="g3">${g.fields.map(x => {
       const id = c.rid(x.id.replace("ecobss", d), x.l), rr = x.r ? `<span class="lab" style="margin-left:auto">rej. ${x.r}</span>` : "";
-      if (x.t === "n") return `<div><label class="f">${x.lock ? "🔒 " : ""}${esc(x.l)}${rr}</label>${f(id, x.u, { lock: x.lock })}</div>`;
-      if (x.t === "s") return `<div><label class="f">${esc(x.l)}${rr}</label>${c.sw(id, "")}</div>`;
-      if (x.t === "o") return `<div><label class="f">${esc(x.l)}${rr}</label>${c.sel(id)}</div>`;
-      if (x.t === "b") return `<div><label class="f">Czas falownika</label><button class="btn pri" data-svc="button.press" data-ent="${id}">${esc(x.l)}</button></div>`;
+      const ti = tip(INV[x.id.split(".")[1].replace(/^ecobss_/, "")]);
+      if (x.t === "n") return `<div><label class="f">${x.lock ? "🔒 " : ""}${esc(x.l)}${ti}${rr}</label>${f(id, x.u, { lock: x.lock })}</div>`;
+      if (x.t === "s") return `<div><label class="f">${esc(x.l)}${ti}${rr}</label>${c.sw(id, "")}</div>`;
+      if (x.t === "o") return `<div><label class="f">${esc(x.l)}${ti}${rr}</label>${c.sel(id)}</div>`;
+      if (x.t === "b") return `<div><label class="f">Czas falownika${ti}</label><button class="btn pri" data-svc="button.press" data-ent="${id}">${esc(x.l)}</button></div>`;
       return ""; }).join("")}</div>`, g.fields.filter(x => x.t !== "b").map(x => c.rid(x.id.replace("ecobss", d), x.l)))).join("")}</div>`;
   const on = raw.unlocked > Date.now(), res = S(c.hass, `sensor.${d}_surowy_odczyt`)?.state;
   const rawbox = `<div class="box ${on ? "warn" : ""}"><div class="h"><span>🧪 Surowy rejestr Modbus${tip(T.raw)}</span>

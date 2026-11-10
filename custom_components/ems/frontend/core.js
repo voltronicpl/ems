@@ -1,3 +1,4 @@
+import { icP, icRP } from "./icons.js";
 // EMS – wspolne narzedzia panelu: styl PGE, dymki (i), wykresy SVG z kursorem.
 export const S = (h, id) => h && h.states[id];
 export const num = (h, id, d = null) => { const s = S(h, id); const v = s ? parseFloat(s.state) : NaN; return isNaN(v) ? d : v; };
@@ -68,61 +69,68 @@ export const G12_ZL = { cheap: 0.61, expensive: 1.25 };   // jak tariff.py (brut
 export const g12Price = t => cheapAt(t) ? G12_ZL.cheap : G12_ZL.expensive;
 const OFF = {};
 const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100].find(s => span / s <= n) || 200;
+const ICC = { coins: "#facc15", bolt: "#facc15", batteryBolt: "#3ee07a" };
 export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
-  // Trzy pasy na wspolnej osi czasu (kazdy z jedna osia): ceny zl/kWh | moc kW | SOC %.
-  const off = OFF[key] = OFF[key] || {};
-  const id = "c" + (++CH), W = vbW(), L = ui.mob ? 44 : 56, R = ui.mob ? 10 : 16, T = 22, B = 28, GAP = 30, n = rows.length, bw = (W - L - R) / n;
+  // Trzy pasy na wspolnej osi czasu (kazdy z jedna osia): ceny zl/kWh | moc kW | SOC %. Na komputerze opis pasa z ikona po lewej.
+  const off = OFF[key] = OFF[key] || {}, mob = ui.mob;
+  const id = "c" + (++CH), W = vbW(), L = mob ? 44 : 150, R = mob ? 10 : 18, T = mob ? 22 : 14, B = 30, GAP = mob ? 30 : 18, n = rows.length, bw = (W - L - R) / n;
   const hasP = prices.some(p => !off[p.name]) || hlines.length, hasS = socs.some(s => !off[s.name]);
-  const free = h - T - B - GAP * 2, hP = hasP ? free * 0.32 : 0, hS = hasS ? free * 0.2 : 0, hM = free - hP - hS;
+  const free = h - T - B - GAP * 2, hP = hasP ? free * 0.36 : 0, hS = hasS ? free * 0.24 : 0, hM = free - hP - hS;
   const tP = T, tM = tP + (hasP ? hP + GAP : 0), tS = tM + hM + GAP, bot = hasS ? tS + hS : tM + hM;
   const x = i => L + i * bw, val = (s, r) => { const v = s.f ? s.f(r) : r[s.k]; return v == null || isNaN(v) ? null : (s.sign || 1) * v * (s.raw ? 1 : 4); };
-  // --- osie
   const kw = [...areas, ...lines].filter(s => !off[s.name]).flatMap(s => rows.map(r => val(s, r))).filter(v => v != null);
-  let lo = Math.min(0, ...kw), hi = Math.max(1, ...kw); const st = niceStep(hi - lo, ui.mob ? 4 : 6); lo = Math.floor(lo / st) * st; hi = Math.ceil(hi / st) * st;
-  const Y = v => tM + (hi - v) / (hi - lo) * hM, YS = p => tS + (100 - p) / 100 * hS;
+  let mag = Math.max(1, ...kw.map(Math.abs)); const st = [0.25, 0.5, 1, 2.5, 5, 10, 25].find(q => mag / q <= (mob ? 2 : 4)) || 50; mag = Math.ceil(mag / st) * st;
+  const lo = Math.min(0, ...kw) < 0 ? -mag : 0, hi = mag;
+  const Y = v => tM + (hi - v) / (hi - lo) * hM, YS = p => tS + (100 - Math.min(100, Math.max(0, p))) / 100 * hS;
   const pv = prices.filter(p => !off[p.name]).flatMap(p => rows.map(r => p.f ? p.f(r) : r[p.k])).concat(hlines.map(l => l.v)).filter(v => v != null && !isNaN(v));
   const pTop = Math.max(1, Math.ceil(Math.max(0, ...pv) * 2) / 2), YP = v => tP + (pTop - Math.max(0, v)) / pTop * hP;
-  let g = `<defs><filter id="gl${id}" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
-  // --- tanie strefy G12: pas przez wszystkie panele + podpis
+  const nf = v => String(+v.toFixed(2)).replace(".", ",");
+  let g = `<defs><filter id="gl${id}" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+  // tlo pasow + opis z ikona po lewej
+  const pane = (t, hh, ic, name, unit, sub) => { g += `<rect x="2" y="${t - 7}" width="${W - 4}" height="${hh + 14}" rx="10" class="pw-pane"/>`;
+    if (mob) { g += `<text x="${L}" y="${t - 11}" class="pw-pn">${name}${unit ? " " + unit : ""}</text>`; return; }
+    const cy = t + hh / 2, lines2 = name.split("|"), y0 = cy - (lines2.length - 1) * 9 - (unit ? 8 : 0);
+    g += `<rect x="12" y="${cy - 17}" width="34" height="34" rx="8" class="pw-ic"/><svg x="16" y="${cy - 13}" width="26" height="26" viewBox="0 0 32 32" style="filter:drop-shadow(0 0 3px ${ICC[ic]})">${icRP(ic)}</svg>`;
+    lines2.forEach((l, k) => g += `<text x="54" y="${y0 + k * 15}" class="pw-pt">${l}</text>`);
+    if (unit) g += `<text x="54" y="${y0 + lines2.length * 15}" class="pw-pu">${unit}</text>`;
+    if (sub) g += `<text x="12" y="${y0 + lines2.length * 15 + 16}" class="pw-pu">${sub}</text>`; };
+  // tanie strefy G12
   let z0 = -1; rows.forEach((r, i) => { const c = cheapAt(r.t); if (c && z0 < 0) z0 = i; if ((!c || i === n - 1) && z0 >= 0) { const e = c ? i + 1 : i;
-    g += `<rect x="${x(z0)}" y="${T}" width="${x(e) - x(z0)}" height="${bot - T}" class="pw-night"/>`; if (x(e) - x(z0) > 50) g += `<text x="${(x(z0) + x(e)) / 2}" y="${T - 7}" text-anchor="middle" class="pw-zt">tania G12</text>`; z0 = -1; } });
-  const pane = (t, hh, name) => `<text x="${L}" y="${t - 6}" class="unit pw-pn">${name}</text><line x1="${L}" x2="${W - R}" y1="${t + hh}" y2="${t + hh}" class="grid"/>`;
-  // ceny
-  if (hasP) { g += pane(tP, hP, "Ceny zł/kWh"); const pst = pTop > 3 ? 1 : 0.5;
-    for (let v = 0; v <= pTop + 1e-9; v += pst) g += `<line x1="${L}" x2="${W - R}" y1="${YP(v)}" y2="${YP(v)}" class="grid"/><text x="${L - 7}" y="${YP(v) + 4}" text-anchor="end" class="ax">${fmt(v, 2)}</text>`; }
-  // moc
-  g += pane(tM, hM, "Moc kW");
-  for (let v = lo; v <= hi + st / 1e6; v += st) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="${Math.abs(v) < st / 1e6 ? "zero" : "grid"}"/><text x="${L - 7}" y="${Y(v) + 4}" text-anchor="end" class="ax">${(v > 0 ? "+" : "") + String(+v.toFixed(2)).replace(".", ",")}</text>`;
-  if (!ui.mob && lo < 0) g += `<text x="${L + 6}" y="${tM + 13}" class="pw-hint">↑ z sieci do baterii</text><text x="${L + 6}" y="${tM + hM - 6}" class="pw-hint">↓ oddanie do sieci</text>`;
-  // SOC
-  if (hasS) { g += pane(tS, hS, "SOC baterii"); for (const p of [0, 50, 100]) g += `<line x1="${L}" x2="${W - R}" y1="${YS(p)}" y2="${YS(p)}" class="grid"/><text x="${L - 7}" y="${YS(p) + 4}" text-anchor="end" class="ax">${p}%</text>`; }
-  // os czasu (pod ostatnim panelem)
+    g += `<rect x="${x(z0)}" y="${T - 7}" width="${x(e) - x(z0)}" height="${bot - T + 14}" class="pw-night"/>`; z0 = -1; } });
+  const pill = (y, c, txt) => { const w = txt.length * 6.6 + 16, x0 = W - R - w - 4; return `<rect x="${x0}" y="${y - 11}" width="${w}" height="22" rx="11" fill="#0b1828"/><rect x="${x0}" y="${y - 11}" width="${w}" height="22" rx="11" fill="${c}" fill-opacity=".2" stroke="${c}" stroke-opacity=".85"/><text x="${x0 + w / 2}" y="${y + 4}" text-anchor="middle" style="fill:${c};font-size:12px;font-weight:600">${txt}</text>`; };
+  if (hasP) { pane(tP, hP, "coins", "Ceny|energii", "zł/kWh"); const pst = pTop > 3 ? 0.5 : 0.25;
+    for (let v = 0; v <= pTop + 1e-9; v += pst) g += `<line x1="${L}" x2="${W - R}" y1="${YP(v)}" y2="${YP(v)}" class="grid"/><text x="${L - 8}" y="${YP(v) + 4}" text-anchor="end" class="ax">${fmt(v, 2)}</text>`; }
+  pane(tM, hM, "bolt", "Moc", "kW", lo < 0 ? "(± sieć / bateria)" : "");
+  for (let v = lo; v <= hi + st / 1e6; v += st) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="${Math.abs(v) < st / 1e6 ? "zero" : "grid"}"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" class="ax">${(v > 0 ? "+" : "") + nf(v)}</text>`;
+  if (hasS) { pane(tS, hS, "batteryBolt", "SOC|baterii", ""); for (const p of [0, 25, 50, 75, 100]) g += `<line x1="${L}" x2="${W - R}" y1="${YS(p)}" y2="${YS(p)}" class="grid"/><text x="${L - 8}" y="${YS(p) + 4}" text-anchor="end" class="ax">${p}%</text>`; }
   const span = rows[n - 1].t - rows[0].t, every = Math.max(span > 26 * 36e5 ? 3 : 2, xEvery(span / 36e5, W - L - R));
-  rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % every === 0) g += `${d.getHours() === 0 ? `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="vgrid"/>` : ""}<text x="${x(i)}" y="${bot + 18}" text-anchor="middle" class="xl">${d.getHours() === 0 && span > 26 * 36e5 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0") + ":00"}</text>`; });
+  rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % every === 0) g += `${d.getHours() === 0 ? `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="vgrid"/>` : ""}<text x="${x(i)}" y="${bot + 22}" text-anchor="middle" class="xl">${d.getHours() === 0 && span > 26 * 36e5 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0") + ":00"}</text>`; });
   const steps = (f, y) => { let d = "", on = false; rows.forEach((r, i) => { const v = f(r); if (v == null) { on = false; return; } d += on ? `V${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}` : `M${x(i).toFixed(1)} ${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; on = true; }); return d; };
-  // moc: ladowanie / sprzedaz jako slupki (od zera), PV / dom jako schodki (PV z wypelnieniem)
-  const gp = bw > 5 ? 1 : 0;
+  const gp = bw > 5 ? 1.5 : 0;
   for (const s of areas) { if (off[s.name]) continue; rows.forEach((r, i) => { const v = val(s, r); if (!v) return; const y0 = Y(0), y1 = Y(v);
-    g += `<rect x="${(x(i) + gp / 2).toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}" width="${Math.max(bw - gp, 0.6).toFixed(1)}" height="${Math.max(Math.abs(y1 - y0), 0.5).toFixed(1)}" fill="${s.c}" opacity=".85"/>`; }); }
+    g += `<rect x="${(x(i) + gp / 2).toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}" width="${Math.max(bw - gp, 0.6).toFixed(1)}" height="${Math.max(Math.abs(y1 - y0), 0.5).toFixed(1)}" rx="1.5" fill="${s.c}" opacity=".9"/>`; }); }
   lines.forEach((s, j) => { if (off[s.name]) return; const d = steps(r => val(s, r), Y); if (!d) return;
     if (j === 0 && !s.nofill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${Y(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".16"/>`).join("");
-    g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 1.8}" stroke-linejoin="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""}/>`; });
-  // ceny: progi + ciagle schodki, gruba swiecaca linia gdy kupuje / sprzedaje
+    g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 2.2}" stroke-linejoin="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""}/>`; });
   if (hasP) {
-    hlines.forEach(l => { if (l.v > pTop) return; g += `<line x1="${L}" x2="${W - R}" y1="${YP(l.v)}" y2="${YP(l.v)}" stroke="${l.c}" stroke-dasharray="6 5" stroke-width="1.2" opacity=".75"/><text x="${W - R - 4}" y="${YP(l.v) - 4}" text-anchor="end" style="fill:${l.c};font-size:11px">${l.name}</text>`; });
-    for (const p of prices) { if (off[p.name]) continue; const f = r => { const v = p.f ? p.f(r) : r[p.k]; return v == null || isNaN(v) ? null : v; }; const d = steps(f, YP); let hh = "";
+    hlines.forEach(l => { if (l.v > pTop) return; g += `<line x1="${L}" x2="${W - R}" y1="${YP(l.v)}" y2="${YP(l.v)}" stroke="${l.c}" stroke-dasharray="7 6" stroke-width="1.6" opacity=".85"/>`; });
+    prices.forEach((p, j) => { if (off[p.name]) return; const f = r => { const v = p.f ? p.f(r) : r[p.k]; return v == null || isNaN(v) ? null : v; }; const d = steps(f, YP); let hh = "";
       rows.forEach((r, i) => { const v = f(r); if (v != null && p.act && p.act(r)) hh += `M${x(i).toFixed(1)} ${YP(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; });
-      g += (d ? `<path d="${d}" fill="none" stroke="${p.c}" stroke-width="1.8" stroke-linejoin="round" opacity=".8"/>` : "") + (hh ? `<path d="${hh}" fill="none" stroke="${p.c}" stroke-width="4.5" stroke-linecap="round" filter="url(#gl${id})"/>` : ""); } }
-  // SOC + linia minimum
-  if (hasS) { const mn = OFF.socMin; if (mn != null) g += `<line x1="${L}" x2="${W - R}" y1="${YS(mn)}" y2="${YS(mn)}" stroke="#a78bfa" stroke-dasharray="3 4" opacity=".6"/><text x="${W - R - 4}" y="${YS(mn) - 3}" text-anchor="end" style="fill:#a78bfa;font-size:11px">min ${mn}%</text>`;
-    for (const s of socs) { if (off[s.name]) continue; const d = steps(r => r[s.k] == null ? null : r[s.k], YS); if (!d) continue;
-      if (s.fill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${YS(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".14"/>`).join("");
-      g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 2.5}" stroke-linejoin="round"/>`; } }
+      if (j === 0 && d) g += d.split("M").filter(Boolean).map(q => `<path d="M${q}V${YP(0).toFixed(1)}H${q.split(" ")[0]}Z" fill="${p.c}" opacity=".07"/>`).join("");
+      g += (d ? `<path d="${d}" fill="none" stroke="${p.c}" stroke-width="2.6" stroke-linejoin="round"/>` : "") + (hh ? `<path d="${hh}" fill="none" stroke="${p.c}" stroke-width="5" stroke-linecap="round" filter="url(#gl${id})"/>` : ""); });
+    hlines.forEach(l => { if (l.v <= pTop) g += pill(YP(l.v), l.c, l.name); }); }
+  if (hasS) { for (const s of socs) { if (off[s.name]) continue; const d = steps(r => r[s.k] == null ? null : r[s.k], YS); if (!d) continue;
+      if (s.fill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${YS(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".22"/>`).join("");
+      g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 2.6}" stroke-linejoin="round"/>`; }
+    const mn = OFF.socMin; if (mn != null) g += `<line x1="${L}" x2="${W - R}" y1="${YS(mn)}" y2="${YS(mn)}" stroke="#d8b4fe" stroke-dasharray="7 6" stroke-width="1.4" opacity=".8"/>` + pill(YS(mn), "#d8b4fe", `min ${mn}%`); }
   if (now) { const t = Date.now(), i = rows.findIndex(r => r.t.getTime() > t); if (i > 0) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="nowl"/><text x="${x(i) + 5}" y="${T + 12}" class="nowt">teraz</text>`; }
-  CHARTS[id] = { key, rows, P: { l: L }, bw, W, tipf };
+  // kropki na liniach w miejscu kursora
+  const dots = rows.map(r => [...prices.filter(p => !off[p.name]).map(p => { const v = p.f ? p.f(r) : r[p.k]; return v == null || isNaN(v) ? null : { y: YP(v), c: p.c }; }),
+    ...socs.filter(s => !off[s.name]).map(s => r[s.k] == null ? null : { y: YS(r[s.k]), c: s.c })].filter(Boolean));
+  CHARTS[id] = { key, rows, P: { l: L }, bw, W, tipf, dots };
   const legend = [...prices, ...areas, ...lines, ...socs].map(s => `<button class="pw-lg${off[s.name] ? " off" : ""}" data-lg="${esc(key)}|${esc(s.name)}"><i style="background:${s.c}"></i>${s.name}</button>`).join("");
-  return `<div class="pw-legend">${legend}</div><div class="fc-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T}" y2="${bot}" style="display:none"/></svg>${tipBox()}</div>`;
+  return `<div class="pw-legend">${legend}</div><div class="fc-plot pw-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T - 7}" y2="${bot + 7}" style="display:none"/><g class="cd"></g></svg>${tipBox()}</div>`;
 }
 export const setSocMin = v => { OFF.socMin = v; };
 
@@ -134,12 +142,13 @@ export function bindCharts(root, rerender) {
   root.querySelectorAll("[data-chart]").forEach(el => {
     const c = CHARTS[el.dataset.chart]; if (!c) return;
     const svg = el.querySelector("svg"), cl = svg.querySelector(".cl"), tp = el.querySelector(".fc-tip");
-    const hide = () => { cl.style.display = "none"; if (!ui.mob) tp.style.display = "none"; if (c.key) delete SEL[c.key]; };
+    const hide = () => { cl.style.display = "none"; const cd = svg.querySelector(".cd"); if (cd) cd.innerHTML = ""; if (!ui.mob) tp.style.display = "none"; if (c.key) delete SEL[c.key]; };
     const show = i => {
       if (i < 0 || i >= c.rows.length) { hide(); return; }
       const cx = c.P.l + (i + 0.5) * c.bw; cl.setAttribute("x1", cx); cl.setAttribute("x2", cx); cl.style.display = "";
+      const cd = svg.querySelector(".cd"); if (cd && c.dots) cd.innerHTML = (c.dots[i] || []).map(d => `<circle cx="${cx}" cy="${d.y}" r="6" fill="${d.c}" stroke="#0b1828" stroke-width="2.5"/>`).join("");
       tp.innerHTML = c.tipf ? c.tipf(c.rows[i]) : ""; tp.style.display = "";
-      if (!ui.mob) tp.style.left = Math.min(Math.max(cx / c.W * 100, 12), 88) + "%";
+      if (!ui.mob) { const pc = cx / c.W * 100; if (c.dots) { tp.style.left = pc + "%"; tp.style.top = "56px"; tp.style.transform = pc > 60 ? "translateX(calc(-100% - 14px))" : "translateX(14px)"; } else tp.style.left = Math.min(Math.max(pc, 12), 88) + "%"; }
       if (c.key) SEL[c.key] = i;
     };
     const at = e => { const b = svg.getBoundingClientRect(); return Math.floor(((e.clientX - b.left) / b.width * c.W - c.P.l) / c.bw); };
@@ -150,6 +159,32 @@ export function bindCharts(root, rerender) {
 }
 
 export const CSS = `
+.ico{display:inline-block;vertical-align:-0.2em;flex:none}.sc-top .ico{vertical-align:-0.25em;margin-right:.3cqw}.sc-top span{display:inline-flex;align-items:center;gap:.6cqw}.sc-top .icr{width:2.1cqw;height:2.1cqw}.sc-ic .ico,.sc-ic .icr{width:2.3cqw;height:2.3cqw}.icr{display:block;filter:drop-shadow(0 0 5px #ffffff22)}
+.sc-ic.y,.ov-ic.y{color:#facc15}.sc-ic.g,.ov-ic.g{color:#3ee07a}.sc-ic.b,.ov-ic.b{color:#60a5fa}.sc-ic.r,.ov-ic.r{color:#ff5d6c}.sc-ic.o,.ov-ic.o{color:#ffad2e}
+.sc-ic,.ov-ic{box-shadow:inset 0 0 0 1px color-mix(in srgb,currentColor 30%,transparent),0 0 16px color-mix(in srgb,currentColor 28%,transparent)}.sc-ic .ico,.ov-ic .ico{filter:drop-shadow(0 0 4px currentColor)}
+.ov-h .ico{color:#60a5fa}.ov-box .btn{display:inline-flex;align-items:center;gap:6px}.btn .ico{margin:0}.sc-sub .ico{vertical-align:-0.15em}
+.sc{position:relative;container-type:inline-size;border-radius:16px;overflow:hidden;margin-bottom:14px;border:1px solid #1d3a55}.sc img{display:block;width:100%;height:auto}
+.sc-card{position:absolute;box-sizing:border-box;display:flex;align-items:center;gap:1.1cqw;padding:1cqw 1.2cqw;background:#0b1a2b;border:1px solid #2a4560;border-radius:1cqw;box-shadow:0 0 1.4cqw #000a}
+.sc-dom{background:#0d1d30f5;border-color:#3b5a73}.sc-top{background:#08121e;border:0;box-shadow:none;justify-content:center;gap:1.4cqw;font-size:1.25cqw;color:#e8eef5;font-weight:600}.sc-top i{width:1px;height:55%;background:#3b5a73}
+.sc-ic{flex:none;width:3.6cqw;height:3.6cqw;border-radius:50%;display:grid;place-items:center;font-size:2cqw}.sc-ic.y{background:#3a2f0a}.sc-ic.g{background:#0d3a22}.sc-ic.b{background:#0f2c4d}.sc-ic.r{background:#3a1218}.sc-ic.o{background:#3a250a}
+.sc-tx{min-width:0;line-height:1.15}.sc-lab{font-size:1.25cqw;font-weight:700;color:#f1f5f9}.sc-val{font-size:2.2cqw;font-weight:700;color:#fff;margin:.2cqw 0}.sc-sub{font-size:1.15cqw;color:#cbd5e1;white-space:nowrap}.sc-sm{font-size:.85cqw;color:#cbd5e1;margin-top:.3cqw}
+.ov-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.ov-tile{display:flex;align-items:center;gap:14px;background:linear-gradient(150deg,#0f2236,#0b1a2b);border:1px solid #1f3d5c;border-radius:14px;padding:14px 16px;box-shadow:0 0 12px #2a8cff14}
+.ov-ic{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:26px}.ov-ic.y{background:#3a2f0a}.ov-ic.g{background:#0d3a22}.ov-ic.b{background:#0f2c4d}.ov-ic.r{background:#3a1218}.ov-ic.o{background:#3a250a}
+.ov-lab{font-size:14px;font-weight:600;color:#e8eef5;display:flex;align-items:center}.ov-val{font-size:27px;font-weight:700;color:#fff;line-height:1.2}.ov-sub{font-size:14px;color:#cbd5e1}
+.ov-box{background:linear-gradient(150deg,#0f2236,#0b1a2b);border:1px solid #1f3d5c;border-radius:14px;padding:14px 18px;min-width:0}.ov-h{font-size:16px;font-weight:700;color:#f1f5f9;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.ov-mut{color:#8fa6bd;font-size:13px;font-weight:400}.ov-row{display:flex;justify-content:space-between;gap:12px;padding:5px 10px;font-size:15px;color:#e2e8f0;border-radius:6px}.ov-row:nth-child(even){background:#ffffff06}.ov-row b{font-weight:600}
+.ov-3{display:grid;grid-template-columns:1fr 1.3fr 1.2fr;gap:12px;margin-bottom:14px}.ov-mid{display:grid;grid-template-columns:1fr 1.75fr 1.1fr;gap:12px;margin-bottom:14px}.ov-bot{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:12px}
+.ov-ac{display:grid;grid-template-columns:110px 1fr 54px;align-items:center;gap:12px;padding:9px 0;font-size:15px;color:#e2e8f0}.ov-ac b{text-align:right}.ov-bar{height:14px;border-radius:7px;background:#1e3347;overflow:hidden}.ov-bar i{display:block;height:100%;border-radius:7px;box-shadow:0 0 10px #3ee07a88}
+.ov-prof .ov-ax{fill:#cbd5e1;font-size:11px}.ov-leg{display:flex;justify-content:center;gap:18px;font-size:13px;color:#e2e8f0;margin-top:4px}.ov-leg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.pf-mode{margin-left:auto;display:inline-flex;align-items:center;gap:8px;border:1px solid #1f3d5c;background:#0f2236;border-radius:12px;padding:8px 14px;font-size:14px;color:#cbd5e1;white-space:nowrap}.pf-mode b{color:#fff}
+@media(max-width:1100px){.ov-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.ov-3,.ov-mid,.ov-bot{grid-template-columns:1fr}}
+@media(max-width:700px){.ov-tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ov-tile{padding:10px;gap:10px}.ov-ic{width:38px;height:38px;font-size:19px}.ov-val{font-size:20px}.sc-sm{display:none}.pf-mode{margin-left:0}}
+.pw-svg .pw-pane{fill:#0e2234;fill-opacity:.55;stroke:#1d3a55}.pw-svg .pw-ic{fill:#13314c;stroke:#2b5b86}.pw-svg .pw-ict{font-size:17px}.pw-svg .pw-pt{fill:#e8eef5;font-size:14.5px;font-weight:700}.pw-svg .pw-pu{fill:#8fa6bd;font-size:11.5px}
+.pw-svg .cl{stroke:#e8eef5;stroke-dasharray:4 4;stroke-width:1.5}.fc-tip i.d{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:middle}
+.pw-plot .fc-tip{min-width:290px;border-color:#3b5a73;border-radius:12px;font-size:14px;padding:11px 14px}.pw-plot .fc-tip div{margin-top:4px}
+.pw-legend .pw-lg{border-radius:20px;padding:6px 14px;background:#0e2234}
+.pf-brand img.brand{height:64px;width:auto;display:block;margin:-6px 4px -6px 0;flex:none}@media(max-width:700px){.pf-brand img.brand{height:44px}}
 :host{display:block;--bg:#06111b;--card1:#0c1f2e;--card2:#081826;--line:#14293a;--txt:#eaf2f9;--mut:#9bb3c6;--mut2:#6f8ba1;--o:#ffaa22;--g:#1fe090;--b:#3d8dff;--r:#ff4757;--v:#a78bfa;color:var(--txt);font-family:var(--paper-font-body1_-_font-family,Roboto),Roboto,"Segoe UI",Arial,sans-serif}
 *{box-sizing:border-box}
 .pf{min-height:100vh;background:radial-gradient(ellipse at 40% -10%,#0b2233 0%,var(--bg) 60%);padding:16px 18px 30px}
