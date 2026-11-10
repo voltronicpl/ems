@@ -342,6 +342,8 @@ class Engine:
             await self.exec.snapshot()
         key = "energia_bateria_ladowanie_dzisiaj" if kind == "buy" else "energia_siec_export_dzisiaj"
         self.manual = ManualJob(kind, kwh, self.r(key, 0.0))
+        if self.enabled:
+            LOG.info("Algorytm w czuwaniu (standby) do konca recznego zlecenia – reczne ma pierwszenstwo")
         await self.execute()
 
     async def stop_manual(self) -> None:

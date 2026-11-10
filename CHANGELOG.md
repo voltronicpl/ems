@@ -1,5 +1,13 @@
 # Zmiany EMS
 
+## v0.6.11
+
+**Poprawione (sprzedaż – znaleziona przyczyna)**
+- „Pmax zakupu” z menu Tryb pracy na LCD (Grid Peak Shaving, rejestr 278 bity 5:4, wartość w 291) blokował sprzedaż – falownik sam wracał z „Sprzedaż włączona” na „Limit wbudowany”. EMS na czas sprzedaży (ręcznej i z planu) **wyłącza ten checkbox**, po sprzedaży **przywraca Twoją wartość** (zapamiętaną na dysku – przeżywa restart HA). Odczyt/zapis przez akcje dataloggera `raw_read` / `raw_write`.
+
+**Zmienione**
+- Ręczne kupno / sprzedaż mają pierwszeństwo: algorytm czuwa (standby) do końca zlecenia i co cykl pilnuje ustawień zlecenia; w Przeglądzie „Czuwa (ręczne ma pierwszeństwo)”.
+
 ## v0.6.10
 
 **Poprawione (sprzedaż)**

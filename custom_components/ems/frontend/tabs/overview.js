@@ -69,7 +69,7 @@ export function render(c) {
     ${tile(icR("leaf", 32), "g", "Autokonsumpcja", `${auto} %`, "PV w domu", "", T.autokons)}</div>`;
   const ster = `<div class="ov-3 ov-ster">
     <div class="ov-box"><div class="ov-h">${ic("robot", 20)} Algorytm EMS${tip(T.algorytm)}</div>
-      <div class="sw" data-svc="switch.toggle" data-ent="switch.ems_algorytm" style="cursor:pointer;margin:8px 0"><div class="tg ${on ? "on" : ""}"></div><b style="color:${on ? "#3ee07a" : "#ff6b6b"};font-size:16px">${on ? "Włączony" : "Wyłączony"}</b></div>
+      <div class="sw" data-svc="switch.toggle" data-ent="switch.ems_algorytm" style="cursor:pointer;margin:8px 0"><div class="tg ${on ? "on" : ""}"></div><b style="color:${on ? (man ? "#ffad2e" : "#3ee07a") : "#ff6b6b"};font-size:16px">${on ? (man ? "Czuwa (ręczne ma pierwszeństwo)" : "Włączony") : "Wyłączony"}</b></div>
       <div class="ov-mut">Teraz: ${ACT[plan?.state] || plan?.state || "–"}${nxt ? ` · następnie ${new Date(nxt.start).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })} ${(ACT[nxt.action] || nxt.action).toLowerCase()}` : ""}</div></div>
     <div class="ov-box"><div class="ov-h">${ic("cart", 20)} Ręcznie teraz${tip(T.kup)}</div><div class="ctrl" style="margin-top:8px">
       <div class="inp wbuy">${c.input("number.ems_kup_wh")}<span>Wh</span></div><button class="btn pri" data-svc="button.press" data-ent="button.ems_kup_teraz">Kup</button>

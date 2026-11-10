@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .diag import get_logger
+from .peak import PeakShave
 
 LOG = get_logger("wykonanie")
 WAW = ZoneInfo("Europe/Warsaw")
@@ -31,6 +32,7 @@ class Executor:
         self.last_points: list | None = None
         self.last_write: datetime | None = None       # ostatni zapis EMS do TOU
         self._pmax_saved: float | None = None          # Twoja wartosc "Pmax sprzedazy" sprzed slotu sprzedazy
+        self.peak = PeakShave(hass, dev, entry_id)      # "Pmax zakupu" (Grid Peak Shaving) – wylaczany na czas sprzedazy
 
     # --- encje -------------------------------------------------------------------------------
     def eid(self, dom: str, key: str) -> str:
@@ -99,6 +101,10 @@ class Executor:
             LOG.warning("Brak snapshotu - nic do przywrocenia")
             return
         LOG.info("Przywracam ustawienia uzytkownika ze snapshotu")
+        try:
+            await self.peak.restore()
+        except Exception as err:  # noqa: BLE001
+            LOG.warning("Pmax zakupu: blad przywracania (%s)", err)
         for e, v in data.items():
             if v is None:
                 continue
@@ -165,6 +171,13 @@ class Executor:
         await self.set(self.eid("switch", "ladowanie_z_sieci_dozwolone"), True, "EMS")
         act = (current or {}).get("action", "self")
         pmax = self.eid("number", "max_moc_sprzedazy_z_pv")   # w panelu "Pmax sprzedazy (eksport)" – ogranicza CALY eksport (Deye "Max Sell Power")
+        try:
+            if act == "sell":
+                await self.peak.off_for_sell()
+            else:
+                await self.peak.restore()
+        except Exception as err:  # noqa: BLE001
+            LOG.warning("Pmax zakupu: blad (%s)", err)
         if act == "sell":                                   # glowny wlacznik eksportu (jak "Solar Sell" w Deye) – bez niego nic nie idzie do sieci
             await self.set(self.eid("switch", "sprzedaj_nadwyzke_pv"), True, "sprzedaz: eksport musi byc wlaczony")
             if self._pmax_saved is None:
