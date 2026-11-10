@@ -1,5 +1,22 @@
 # Zmiany EMS
 
+## v0.5.1
+
+**Dodane**
+- Panel na telefon (≤ 700 px, też Galaxy Fold złożony i rozłożony):
+  - przycisk ☰ – otwiera menu Home Assistant (wcześniej na telefonie nie dało się wyjść z panelu),
+  - nagłówek z zakładkami przyklejony u góry, zakładki przewijane w bok,
+  - wykresy skalowane do szerokości ekranu (czytelne podpisy, mniej etykiet godzin),
+  - dotyk na wykresach: dotknij albo przesuń palcem – szczegóły slotu pod wykresem (zostają po puszczeniu palca i po odświeżeniu),
+  - dymki (i) jako plansza na dole ekranu,
+  - tabele (przeliczniki lato/zima, dokupienie pod sprzedaż, TOU, zaplanowane akcje, miesiące) jako karty; „Dzień po dniu” przewijana w bok z podpowiedzią,
+  - kafelki 2 w rzędzie, większe przyciski i pola (16 px – bez przybliżania przy wpisywaniu),
+  - przerysowanie przy złożeniu / rozłożeniu telefonu.
+
+**Zmienione**
+- Siatki kafelków i ramek nie wychodzą poza ekran na wąskich telefonach (< 360 px).
+- Kup / Sprzedaj teraz, filtr logów i surowy rejestr bez stałych szerokości na telefonie.
+
 ## v0.5.0
 
 **Dodane**

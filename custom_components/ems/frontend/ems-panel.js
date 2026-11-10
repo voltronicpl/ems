@@ -1,5 +1,5 @@
 // EMS – panel boczny Home Assistant w stylu PGE Net-Billing. Rdzen + zakladki jako osobne moduly (tabs/*.js).
-import { S, num, g12, CSS, esc, bindCharts } from "./core.js";
+import { S, num, g12, CSS, esc, bindCharts, ui } from "./core.js";
 const V = new URL(import.meta.url).search;             // ?v=wersja -> takze dla modulow zakladek
 const NAMES = ["overview", "plan", "settings", "diag"];
 const TABS = await Promise.all(NAMES.map(n => import(`./tabs/${n}.js${V}`)));
@@ -7,7 +7,14 @@ const TABS = await Promise.all(NAMES.map(n => import(`./tabs/${n}.js${V}`)));
 class EmsDashboard extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this.tab = 0; this.dirty = {}; }
   set panel(p) { this.dev = (p && p.config && p.config.device) || "ecobss"; }
-  set narrow(n) { this._narrow = n; }
+  set narrow(n) { const ch = this._narrow !== n; this._narrow = n; if (ch && this._hass) this.render(true); }
+  // Telefon / Fold: przerysuj, gdy szerokosc zmieni sie wyraznie (zlozenie, obrot) – wykresy licza viewBox z szerokosci.
+  connectedCallback() {
+    if (this._ro) return;
+    this._ro = new ResizeObserver(() => { const w = this.clientWidth; if (w && Math.abs(w - (this._w || 0)) > 40) { this._w = w; if (this._hass && !this._hold) this.render(true); } });
+    this._ro.observe(this);
+  }
+  disconnectedCallback() { this._ro?.disconnect(); this._ro = null; }
   set hass(h) { this._hass = h; if (!this._hold && (!this._t || Date.now() - this._t > 2000)) this.render(); }
   get hass() { return this._hass; }
   get zone() { return g12(); }
@@ -41,13 +48,15 @@ class EmsDashboard extends HTMLElement {
     if (!this._hass) return;
     this._t = Date.now();
     const T = TABS[this.tab], ver = new URLSearchParams(V).get("v") || "";
+    ui.w = this.clientWidth || window.innerWidth; ui.mob = ui.w <= 700; this._w = ui.w;
     let body;
     try { body = T.render(this); } catch (e) { body = `<div class="box err">Błąd zakładki „${T.title}”: ${esc(e.message)}</div>`; console.error("[EMS]", e); }
     const last = S(this._hass, this.e("bateria_soc"))?.last_updated;
-    const y = this.shadowRoot.host.scrollTop;
+    const tx = this.shadowRoot.querySelector(".tabs")?.scrollLeft || 0;
     this.shadowRoot.innerHTML = `<style>${CSS}</style><main class="pf"><div class="wrap">
-      <div class="pf-head"><div class="pf-brand"><div class="logo">⚡</div><div><h1>EMS</h1><div class="pf-sub">datalogger ${esc(this.dev)} · ostatni odczyt ${last ? new Date(last).toLocaleTimeString("pl-PL") : "–"} · v${ver}</div></div></div>
+      <div class="pf-head ${this._narrow ? "mob" : ""}"><div class="pf-brand"><button class="menu" data-menu title="Menu Home Assistant">☰</button><div class="logo">⚡</div><div><h1>EMS</h1><div class="pf-sub">datalogger ${esc(this.dev)} · ostatni odczyt ${last ? new Date(last).toLocaleTimeString("pl-PL") : "–"} · v${ver}</div></div></div>
       <div class="tabs">${TABS.map((t, i) => `<button class="tab ${i === this.tab ? "on" : ""}" data-tab="${i}">${t.title}</button>`).join("")}</div></div>${body}</div></main>`;
+    const tb = this.shadowRoot.querySelector(".tabs"); if (tb) tb.scrollLeft = tx;
     this.bind();
     bindCharts(this.shadowRoot, () => this.render(true));
     if (T.bind) T.bind(this, this.shadowRoot);
@@ -55,7 +64,9 @@ class EmsDashboard extends HTMLElement {
 
   bind() {
     const r = this.shadowRoot;
-    r.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => { this.tab = +el.dataset.tab; this.render(); });
+    r.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => { this.tab = +el.dataset.tab; this.render(); if (ui.mob) this.scrollIntoView?.({ block: "start" }); });
+    // ☰ – na waskim ekranie HA chowa pasek boczny; bez tego przycisku nie da sie wyjsc z panelu
+    r.querySelector("[data-menu]")?.addEventListener("click", () => this.dispatchEvent(new Event("hass-toggle-menu", { bubbles: true, composed: true })));
     r.querySelectorAll("[data-num]").forEach(el => {
       el.onfocus = () => { this._hold = true; };
       el.onblur = () => { setTimeout(() => { this._hold = false; }, 300); };

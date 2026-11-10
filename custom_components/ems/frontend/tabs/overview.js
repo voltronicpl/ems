@@ -13,12 +13,12 @@ export function render(c) {
   return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}
   <div class="box"><div class="h"><span>🤖 Sterowanie${tip(T.algorytm)}</span><span class="pill ${on ? "g" : "r"}">Teraz: ${ACT[plan?.state] || plan?.state || "–"}</span></div>
     <div class="ctrl">
-      <button class="btn ${on ? "ok" : "off"}" data-svc="switch.toggle" data-ent="switch.ems_algorytm">Algorytm: ${on ? "WŁĄCZONY" : "WYŁĄCZONY"}</button>
-      <span style="width:12px"></span>
-      <div><label class="f">Kup energię teraz${tip(T.kup)}</label><div class="inp" style="width:160px">${c.input("number.ems_kup_wh")}<span>Wh</span></div></div>
-      <button class="btn pri" data-svc="button.press" data-ent="button.ems_kup_teraz" style="align-self:flex-end">Kup</button>
-      <div><label class="f">Sprzedaj teraz${tip(T.sprzedaj)}</label><div class="inp" style="width:160px">${c.input("number.ems_sprzedaj_wh")}<span>Wh</span></div></div>
-      <button class="btn pri" data-svc="button.press" data-ent="button.ems_sprzedaj_teraz" style="align-self:flex-end">Sprzedaj</button>
+      <button class="btn full ${on ? "ok" : "off"}" data-svc="switch.toggle" data-ent="switch.ems_algorytm">Algorytm: ${on ? "WŁĄCZONY" : "WYŁĄCZONY"}</button>
+      <span class="gap" style="width:12px"></span>
+      <div class="ms"><div><label class="f">Kup energię teraz${tip(T.kup)}</label><div class="inp wbuy">${c.input("number.ems_kup_wh")}<span>Wh</span></div></div>
+      <button class="btn pri" data-svc="button.press" data-ent="button.ems_kup_teraz">Kup</button></div>
+      <div class="ms"><div><label class="f">Sprzedaj teraz${tip(T.sprzedaj)}</label><div class="inp wbuy">${c.input("number.ems_sprzedaj_wh")}<span>Wh</span></div></div>
+      <button class="btn pri" data-svc="button.press" data-ent="button.ems_sprzedaj_teraz">Sprzedaj</button></div>
       ${man ? `<span class="pill b">${man.typ}: ${fmt(man.zrobione_kwh, 2)} / ${fmt(man.kwh, 2, "kWh")}</span><button class="btn" data-svc="button.press" data-ent="button.ems_przerwij_reczne">Przerwij</button>` : ""}
     </div></div>
   <div class="h"><span></span><span class="pill ${z.cheap ? "g" : "o"}">${z.cheap ? "Tania" : "Droga"} strefa G12 · tania ${z.label} · ${z.summer ? "lato" : "zima"}${tip(T.strefa)}</span></div>

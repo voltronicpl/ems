@@ -7,7 +7,7 @@ export function render(c) {
   const lines = cache.lines.filter(l => !filter || l.toLowerCase().includes(filter));
   const col = l => / ERROR /.test(l) ? "#ff8c97" : / WARNING /.test(l) ? "#ffd58a" : /ZAPIS|SUROWY/.test(l) ? "#7fb3ff" : "";
   return `<div class="box"><div class="h"><span>🩺 Logi na żywo${tip(TIP)}</span>
-      <span class="ctrl"><div class="inp" style="width:260px"><input placeholder="filtr: plan, pv, ZAPIS, blad…" data-filter value="${esc(filter)}"></div><button class="btn" data-reload>↻ Odśwież</button></span></div>
+      <span class="ctrl"><div class="inp wflt"><input placeholder="filtr: plan, pv, ZAPIS, blad…" data-filter value="${esc(filter)}"></div><button class="btn" data-reload>↻ Odśwież</button></span></div>
       <div class="log" id="log">${lines.map(l => `<span style="color:${col(l)}">${esc(l)}</span>`).join("\n") || "Brak logów."}</div></div>
     <div class="box"><div class="h"><span>💾 Pobierz log z całego dnia</span><span class="lab">/config/ems_logs/ · 14 dni</span></div>
       ${cache.days.map(d => `<div class="row"><span>${d}</span><button class="btn" data-dl="${d}">Pobierz</button></div>`).join("") || `<p class="note">Brak plików.</p>`}</div>`;

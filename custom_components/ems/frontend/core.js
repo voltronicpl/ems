@@ -21,11 +21,18 @@ export function tip(t) {
   return `<span class="ti" tabindex="0">i<span class="tt">${body}</span></span>`;
 }
 
+// Stan ekranu: ustawiany przez panel przed kazdym renderem (w = szerokosc panelu w px, mob = telefon).
+export const ui = { w: 1200, mob: false };
+// Szerokosc viewBox wykresu: na waskim ekranie mniejsza, zeby tekst 13 j. dawal ~10 px zamiast mrowek.
+const vbW = () => Math.max(420, Math.min(1000, Math.round(ui.w * 1.3)));
+// Co ile godzin podpis osi X, zeby sie nie nakladaly (~45 j. na podpis).
+const xEvery = (hours, room) => [1, 2, 3, 4, 6, 12, 24].find(e => hours / e <= room / 45) || 24;
+
 // Wykres w stylu PGE. rows: [{t: Date, ...}], bars/lines: [{k, c, name, unit, axis:"r"}]
 let CH = 0;
-export function chart({ rows, bars = [], lines = [], hlines = [], zones = true, now = true, h = 260, unit = "kWh", runit = "", tipf }) {
+export function chart({ key, rows, bars = [], lines = [], hlines = [], zones = true, now = true, h = 260, unit = "kWh", runit = "", tipf }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
-  const id = "c" + (++CH), W = 1000, P = { l: 52, r: runit ? 52 : 14, t: 14, b: 26 }, iw = W - P.l - P.r, ih = h - P.t - P.b, n = rows.length, bw = iw / n;
+  const id = "c" + (++CH), W = vbW(), P = { l: 52, r: runit ? 52 : 14, t: 14, b: 26 }, iw = W - P.l - P.r, ih = h - P.t - P.b, n = rows.length, bw = iw / n;
   const vals = rows.flatMap(r => bars.map(b => (b.sign || 1) * (r[b.k] || 0))).concat(lines.filter(l => l.axis !== "r").flatMap(l => rows.map(r => r[l.k] || 0)));
   let mx = Math.max(0.1, ...vals), mn = Math.min(0, ...vals); const span = mx - mn || 1; mx += span * 0.08; if (mn < 0) mn -= span * 0.08;
   const y = v => P.t + ih - (v - mn) / (mx - mn) * ih;
@@ -37,15 +44,16 @@ export function chart({ rows, bars = [], lines = [], hlines = [], zones = true, 
   for (let k = 0; k <= 4; k++) { const v = mn + (mx - mn) * k / 4; g += `<line class="grid" x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${P.l - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v, 1)}</text>`; if (runit) { const w = rmn + (rmx - rmn) * k / 4; g += `<text x="${W - P.r + 6}" y="${ry(w) + 4}">${fmt(w, 2)}</text>`; } }
   g += `<text x="${P.l - 6}" y="${P.t - 2}" text-anchor="end" class="unit">${unit}</text>${runit ? `<text x="${W - P.r + 6}" y="${P.t - 2}" class="unit">${runit}</text>` : ""}`;
   if (mn < 0) g += `<line class="zero" x1="${P.l}" x2="${W - P.r}" y1="${y(0)}" y2="${y(0)}"/>`;
-  rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % 3 === 0) g += `<line class="vgrid" x1="${x(i)}" x2="${x(i)}" y1="${P.t}" y2="${P.t + ih}"/><text x="${x(i)}" y="${h - 8}" text-anchor="middle">${d.getHours() === 0 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0")}</text>`; });
+  const ev = Math.max(3, xEvery((rows[n - 1].t - rows[0].t) / 36e5, iw * 1.6));
+  rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % ev === 0) g += `<line class="vgrid" x1="${x(i)}" x2="${x(i)}" y1="${P.t}" y2="${P.t + ih}"/><text x="${x(i)}" y="${h - 8}" text-anchor="middle">${d.getHours() === 0 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0")}</text>`; });
   const nb = bars.length || 1, gap = bw > 6 ? bw * 0.12 : 0, sw = (bw - gap) / nb;
   rows.forEach((r, i) => bars.forEach((b, j) => { const v = (b.sign || 1) * (r[b.k] || 0); if (!v) return; const y0 = y(0), y1 = y(v); g += `<rect x="${x(i) + gap / 2 + j * sw}" y="${Math.min(y0, y1)}" width="${Math.max(sw, 0.8)}" height="${Math.max(Math.abs(y1 - y0), 0.5)}" rx="1.5" fill="${typeof b.c === "function" ? b.c(r) : b.c}"/>`; }));
   hlines.forEach(l => g += `<line x1="${P.l}" x2="${W - P.r}" y1="${ry(l.v)}" y2="${ry(l.v)}" stroke="${l.c}" stroke-dasharray="6 5" stroke-width="1.3"/><text x="${W - P.r - 4}" y="${ry(l.v) - 4}" text-anchor="end" fill="${l.c}" style="fill:${l.c}">${l.name}</text>`);
   lines.forEach(l => { const f = l.axis === "r" ? ry : y; const pts = rows.map((r, i) => r[l.k] == null ? null : `${x(i) + bw / 2},${f(r[l.k])}`); let d = "", on = false; pts.forEach(p => { if (!p) { on = false; return; } d += (on ? "L" : "M") + p; on = true; }); g += `<path d="${d}" fill="none" stroke="${l.c}" stroke-width="${l.w || 2.2}" ${l.dash ? `stroke-dasharray="${l.dash}"` : ""}/>`; });
   if (now) { const t = Date.now(), i = rows.findIndex(r => r.t.getTime() > t); if (i > 0) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${P.t}" y2="${P.t + ih}" stroke="#fff" stroke-width="1.5"/><text x="${x(i) + 4}" y="${P.t + 12}" style="fill:#fff">teraz</text>`; }
   const legend = [...bars, ...lines].map(s => `<span><b style="background:${typeof s.c === "function" ? s.lc || "#888" : s.c}"></b>${s.name}</span>`).join("");
-  CHARTS[id] = { rows, P, bw, W, tipf };
-  return `<div class="fc-plot" data-chart="${id}"><svg class="fc-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="none">${g}<line class="cl" x1="0" x2="0" y1="${P.t}" y2="${P.t + ih}" style="display:none"/></svg><div class="fc-tip" style="display:none"></div></div><div class="legend">${legend}</div>`;
+  CHARTS[id] = { key, rows, P, bw, W, tipf };
+  return `<div class="fc-plot" data-chart="${id}"><svg class="fc-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="none">${g}<line class="cl" x1="0" x2="0" y1="${P.t}" y2="${P.t + ih}" style="display:none"/></svg>${tipBox()}</div><div class="legend">${legend}</div>`;
 }
 const CHARTS = {};
 
@@ -62,7 +70,7 @@ const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50
 export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
   const off = OFF[key] = OFF[key] || {};
-  const id = "c" + (++CH), W = 1000, L = 50, R = 60, T = 16, B = 34, n = rows.length, bw = (W - L - R) / n, ih = h - T - B;
+  const id = "c" + (++CH), W = vbW(), L = ui.mob ? 40 : 50, R = ui.mob ? 50 : 60, T = 16, B = 34, n = rows.length, bw = (W - L - R) / n, ih = h - T - B;
   const x = i => L + i * bw, val = (s, r) => { const v = s.f ? s.f(r) : r[s.k]; return v == null || isNaN(v) ? null : (s.sign || 1) * v * (s.raw ? 1 : 4); };
   const kw = [...areas, ...lines].filter(s => !off[s.name]).flatMap(s => rows.map(r => val(s, r))).filter(v => v != null);
   let lo = Math.min(0, ...kw), hi = Math.max(1, ...kw); const st = niceStep(hi - lo, 6); lo = Math.floor(lo / st) * st; hi = Math.ceil(hi / st) * st;
@@ -74,7 +82,7 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   for (let v = lo; v <= hi + st / 1e6; v += st) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="${Math.abs(v) < st / 1e6 ? "zero" : "grid"}"/><text x="${L - 7}" y="${Y(v) + 4}" text-anchor="end" class="ax">${String(+v.toFixed(2)).replace(".", ",")}</text>`;
   const pst = pTop > 4 ? 1 : 0.5; for (let v = 0; v <= pTop + 1e-9; v += pst) g += `<text x="${W - R + 6}" y="${YP(v) + 4}" class="ax pw-pax">${fmt(v, 2)}</text>`;
   g += `<text x="4" y="12" class="unit">kW</text><text x="${W - R + 4}" y="12" class="unit pw-pax">zł/kWh</text>`;
-  const span = rows[n - 1].t - rows[0].t, every = span > 26 * 36e5 ? 3 : 2;
+  const span = rows[n - 1].t - rows[0].t, every = Math.max(span > 26 * 36e5 ? 3 : 2, xEvery(span / 36e5, W - L - R));
   rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % every === 0) g += `${d.getHours() === 0 ? `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${T + ih}" class="vgrid"/>` : ""}<text x="${x(i)}" y="${h - 12}" text-anchor="middle" class="xl">${d.getHours() === 0 && span > 26 * 36e5 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0") + ":00"}</text>`; });
   // schodki: jeden poziom na slot, przerwa gdy brak wartosci
   const steps = (f, y) => { let d = "", on = false; rows.forEach((r, i) => { const v = f(r); if (v == null) { on = false; return; } d += on ? `V${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}` : `M${x(i).toFixed(1)} ${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; on = true; }); return d; };
@@ -91,23 +99,31 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
     g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 3}" stroke-linejoin="round"/>`; }
   if (socs.some(s => !off[s.name])) for (let p = 0; p <= 100; p += 25) g += `<text x="${L + 4}" y="${YS(p) - 3}" class="ax pw-sax">${p}%</text>`;
   if (now) { const t = Date.now(), i = rows.findIndex(r => r.t.getTime() > t); if (i > 0) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${T + ih}" class="nowl"/><text x="${x(i) + 5}" y="${T + 12}" class="nowt">teraz</text>`; }
-  CHARTS[id] = { rows, P: { l: L }, bw, W, tipf };
+  CHARTS[id] = { key, rows, P: { l: L }, bw, W, tipf };
   const legend = [...prices, ...socs, ...areas, ...lines].map(s => `<button class="pw-lg${off[s.name] ? " off" : ""}" data-lg="${esc(key)}|${esc(s.name)}"><i style="background:${s.c}"></i>${s.name}</button>`).join("");
-  return `<div class="pw-legend">${legend}</div><div class="fc-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T}" y2="${T + ih}" style="display:none"/></svg><div class="fc-tip" style="display:none"></div></div>`;
+  return `<div class="pw-legend">${legend}</div><div class="fc-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T}" y2="${T + ih}" style="display:none"/></svg>${tipBox()}</div>`;
 }
 
+// Dymek wykresu: na komputerze plywa nad wykresem, na telefonie stoi pod wykresem (nie zaslania danych).
+const tipBox = () => ui.mob ? `<div class="fc-tip">👆 Dotknij albo przesuń palcem po wykresie</div>` : `<div class="fc-tip" style="display:none"></div>`;
+const SEL = {};                                         // wybrany slot per wykres (key) – przezywa odswiezenie panelu
 export function bindCharts(root, rerender) {
   root.querySelectorAll("[data-lg]").forEach(b => b.onclick = () => { const [k, nm] = b.dataset.lg.split("|"); const o = OFF[k] = OFF[k] || {}; o[nm] = !o[nm]; if (rerender) rerender(); });
   root.querySelectorAll("[data-chart]").forEach(el => {
     const c = CHARTS[el.dataset.chart]; if (!c) return;
     const svg = el.querySelector("svg"), cl = svg.querySelector(".cl"), tp = el.querySelector(".fc-tip");
-    svg.onmousemove = e => {
-      const b = svg.getBoundingClientRect(), xs = (e.clientX - b.left) / b.width * c.W, i = Math.floor((xs - c.P.l) / c.bw);
-      if (i < 0 || i >= c.rows.length) { cl.style.display = tp.style.display = "none"; return; }
+    const hide = () => { cl.style.display = "none"; if (!ui.mob) tp.style.display = "none"; if (c.key) delete SEL[c.key]; };
+    const show = i => {
+      if (i < 0 || i >= c.rows.length) { hide(); return; }
       const cx = c.P.l + (i + 0.5) * c.bw; cl.setAttribute("x1", cx); cl.setAttribute("x2", cx); cl.style.display = "";
-      tp.innerHTML = c.tipf ? c.tipf(c.rows[i]) : ""; tp.style.display = ""; tp.style.left = Math.min(Math.max(cx / c.W * 100, 12), 88) + "%";
+      tp.innerHTML = c.tipf ? c.tipf(c.rows[i]) : ""; tp.style.display = "";
+      if (!ui.mob) tp.style.left = Math.min(Math.max(cx / c.W * 100, 12), 88) + "%";
+      if (c.key) SEL[c.key] = i;
     };
-    svg.onmouseleave = () => { cl.style.display = tp.style.display = "none"; };
+    const at = e => { const b = svg.getBoundingClientRect(); return Math.floor(((e.clientX - b.left) / b.width * c.W - c.P.l) / c.bw); };
+    svg.onpointermove = svg.onpointerdown = e => show(at(e));
+    svg.onpointerleave = e => { if (e.pointerType === "mouse") hide(); };   // palec: dymek zostaje po puszczeniu
+    if (c.key && SEL[c.key] != null) show(SEL[c.key]);
   });
 }
 
@@ -128,8 +144,8 @@ export const CSS = `
 .box.err{border-color:#6b2a36;color:#ffb3bd}.box.warn{border-color:#6b4f12;color:#ffd58a}
 .h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}.h>span:first-child{font-size:15.5px;font-weight:700;display:flex;align-items:center;gap:8px}
 .sec{display:flex;align-items:center;gap:12px;margin:22px 0 12px;font-size:19px;font-weight:700}.sec .ic{width:40px;height:40px}
-.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px}.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:12px}
 .tile{border:1px solid #17304a;border-radius:12px;background:linear-gradient(150deg,#0d2131,#0a1a27);padding:12px 14px;display:flex;gap:12px;align-items:flex-start;min-width:0}
 .ic{flex:0 0 auto;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;font-size:20px}
 .ic-o{color:#ffaa22;background:linear-gradient(145deg,#3a2c12,#271f12)}.ic-g{color:#1fe090;background:linear-gradient(145deg,#0c3a2c,#0a2a22)}.ic-b{color:#3d8dff;background:linear-gradient(145deg,#0e2f63,#0b2246)}.ic-r{color:#ff4757;background:linear-gradient(145deg,#3c1820,#2a141a)}.ic-v{color:#a78bfa;background:linear-gradient(145deg,#2a2150,#1c1838)}
@@ -165,5 +181,45 @@ input[type=range]{width:100%;accent-color:#2a8cff}
 .date{display:flex;align-items:center;gap:8px;height:38px;padding:0 10px;border:1px solid #2a4f70;border-radius:9px;background:#0c1f30}.date input{background:transparent;border:0;color:var(--txt);color-scheme:dark;font-size:13.5px}
 .log{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#06121c;border:1px solid #14293a;border-radius:10px;padding:10px;max-height:60vh;overflow:auto;color:#cfe0ee}
 .anchor{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap}
-@media(max-width:600px){.pf{padding:10px}.val{font-size:20px}.ti .tt{width:260px}}
+.scroll-hint{display:none;font-size:11.5px;color:var(--mut2);margin:-4px 0 6px}
+.menu{display:none}.w140{width:140px}.wflt{width:260px}.wbuy{width:160px}.ms{display:flex;gap:8px;align-items:flex-end}
+.pf-head.mob .menu{all:unset;box-sizing:border-box;display:grid;place-items:center;width:42px;height:42px;border-radius:10px;border:1px solid #1d3a54;background:#0c1f30;font-size:20px;cursor:pointer;flex:none}
+/* ---------- telefon ---------- */
+@media(max-width:700px){
+  .pf{padding:0 8px 28px}
+  .pf-head{position:sticky;top:0;z-index:30;margin:0 -8px 12px;padding:8px 8px 6px;gap:8px;background:#06111bee;backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .pf-brand{gap:10px;width:100%;min-width:0}.pf-brand h1{font-size:20px}.pf-sub{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pf-brand>div:last-child{min-width:0}
+  .logo{width:40px;height:40px;font-size:21px;border-radius:11px;flex:none}
+  .tabs{flex-wrap:nowrap;overflow-x:auto;width:100%;scrollbar-width:none;gap:6px}.tabs::-webkit-scrollbar{display:none}.tab{flex:1 0 auto;height:40px;padding:0 9px;font-size:13px}
+  .btn{height:42px}
+  .box{padding:12px;border-radius:13px;margin-bottom:10px}
+  .g2,.g3{gap:10px}.sec{font-size:17px;margin:16px 0 10px}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .tile{padding:10px;gap:8px}.tile .ic{width:32px;height:32px;font-size:16px;border-radius:9px}.val{font-size:18px}.lab,.sub{font-size:11.5px}
+  .inp input,select,.date input{font-size:16px}
+  .ctrl{gap:6px}.ctrl>.date{flex:1 1 140px}.ctrl>.btn{flex:1 0 auto}
+  .ms{width:100%}.ms>div{flex:1;min-width:0}.wbuy,.w140,.wflt{width:auto}.ctrl>.raw{flex:1 1 45%}
+  .gap{display:none}.ctrl>.btn.full{flex:1 1 100%}
+  .h>.ctrl{width:100%}
+  .btns .btn{flex:1}
+  /* (i) na telefonie: dymek jako plansza na dole ekranu */
+  .ti{width:24px;height:24px}
+  .ti .tt{position:fixed;left:8px;right:8px;top:auto;bottom:8px;transform:none;width:auto;max-width:none;max-height:60vh;overflow:auto;z-index:100;font-size:13.5px;padding:12px 14px;box-shadow:0 -6px 30px #000c}
+  /* wykresy: dymek pod wykresem, przesuwanie palcem w poziomie = kursor */
+  .fc-svg{touch-action:pan-y}
+  .fc-tip{position:static;transform:none;min-width:0;margin-top:6px;box-shadow:none;color:var(--mut)}
+  .fc-tip .tt2{color:var(--txt)}.fc-tip b{color:var(--txt)}
+  .pw-legend{gap:5px}.pw-lg{font-size:12px;padding:5px 9px}
+  .legend{gap:10px}
+  /* tabele .rt -> karty: wiersz = karta, kolumna = "etykieta: wartosc" */
+  table.rt,.rt tbody,.rt tr,.rt td{display:block;width:100%}
+  .rt tr:first-child{display:none}
+  .rt tr{border:1px solid #17304a;border-radius:11px;padding:6px 10px;margin-bottom:8px;background:#0a1a27}
+  .rt td{border:0;padding:5px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:right}
+  .rt td[data-l]::before{content:attr(data-l);color:var(--mut);font-size:12px;text-align:left;flex:none;max-width:45%}
+  .rt td>.inp,.rt td>div{flex:0 1 60%;min-width:0}.rt td.wide{display:block;text-align:left}.rt td.wide::before{display:block;margin-bottom:4px}
+  .rt td.hd{font-weight:700;justify-content:flex-start;text-align:left;border-bottom:1px solid #17304a;margin-bottom:2px}
+  .scroll-hint{display:block}.tbl td a{white-space:nowrap}
+  .log{font-size:11px;max-height:55vh}
+}
 `;

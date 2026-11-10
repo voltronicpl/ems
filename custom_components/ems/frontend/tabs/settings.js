@@ -22,11 +22,11 @@ export function render(c) {
   const winter = !c.zone.summer, d = c.dev;
   const f = (id, u, o) => c.field(id, u, o);
   const ems = `<div class="sec" id="s-ems"><div class="ic ic-v">🤖</div>Część EMS</div>
-    ${c.group(`🔁 Przeliczniki lato / zima`, `<div style="overflow:auto"><table class="tbl"><tr><th>Parametr</th><th>☀ Lato (1.04–30.09)${winter ? "" : ' <span class="pill g">aktywne</span>'}</th><th>❄ Zima (1.10–31.03)${winter ? ' <span class="pill g">aktywne</span>' : ""}</th></tr>
-      ${PAIRS.map(([n, k, u]) => `<tr><td>${n}${tip(T[k])}</td><td>${f(`number.ems_${k}_lato`, u, { act: !winter })}</td><td>${f(`number.ems_${k}_zima`, u, { act: winter })}</td></tr>`).join("")}</table></div>`,
+    ${c.group(`🔁 Przeliczniki lato / zima`, `<div style="overflow:auto"><table class="tbl rt"><tr><th>Parametr</th><th>☀ Lato (1.04–30.09)${winter ? "" : ' <span class="pill g">aktywne</span>'}</th><th>❄ Zima (1.10–31.03)${winter ? ' <span class="pill g">aktywne</span>' : ""}</th></tr>
+      ${PAIRS.map(([n, k, u]) => `<tr><td class="hd">${n}${tip(T[k])}</td><td data-l="☀ Lato">${f(`number.ems_${k}_lato`, u, { act: !winter })}</td><td data-l="❄ Zima">${f(`number.ems_${k}_zima`, u, { act: winter })}</td></tr>`).join("")}</table></div>`,
       PAIRS.flatMap(([, k]) => [`number.ems_${k}_lato`, `number.ems_${k}_zima`]))}
-    ${c.group(`⚡ Planowanie energii – dokupienie pod sprzedaż${tip(T.arbitraz_box)}`, `<div style="overflow:auto"><table class="tbl"><tr><th>Parametr</th><th>☀ Lato${winter ? "" : ' <span class="pill g">aktywne</span>'}</th><th>❄ Zima${winter ? ' <span class="pill g">aktywne</span>' : ""}</th></tr>
-      ${ARB.map(([n, k, u, sw]) => `<tr><td>${n}${tip(T[k])}</td>${["lato", "zima"].map(z => `<td>${sw ? ntog(c, `number.ems_${k}_${z}`) : f(`number.ems_${k}_${z}`, u, { act: (z === "zima") === winter })}</td>`).join("")}</tr>`).join("")}</table></div>
+    ${c.group(`⚡ Planowanie energii – dokupienie pod sprzedaż${tip(T.arbitraz_box)}`, `<div style="overflow:auto"><table class="tbl rt"><tr><th>Parametr</th><th>☀ Lato${winter ? "" : ' <span class="pill g">aktywne</span>'}</th><th>❄ Zima${winter ? ' <span class="pill g">aktywne</span>' : ""}</th></tr>
+      ${ARB.map(([n, k, u, sw]) => `<tr><td class="hd">${n}${tip(T[k])}</td>${["lato", "zima"].map(z => `<td data-l="${z === "lato" ? "☀ Lato" : "❄ Zima"}">${sw ? ntog(c, `number.ems_${k}_${z}`) : f(`number.ems_${k}_${z}`, u, { act: (z === "zima") === winter })}</td>`).join("")}</tr>`).join("")}</table></div>
       <div class="g3" style="margin-top:12px">${ARB1.map(([n, id, u, k]) => `<div><label class="f">${n}${tip(T[k])}</label>${f(id, u)}</div>`).join("")}</div>
       <div class="note">Opłaca się, gdy RCE × ${fmt(num(c.hass, "number.ems_depozyt_mnoznik", 1.23), 2)} ≥ ${fmt(arbMin(c, winter ? "zima" : "lato"), 2, "zł")} (tania G12 0,61 / sprawność + zużycie + min. zysk) → próg RCE teraz ≈ <b>${fmt(arbMin(c, winter ? "zima" : "lato") / num(c.hass, "number.ems_depozyt_mnoznik", 1.23), 2, "zł")}</b>.</div>`,
       ARB.filter(x => !x[3]).flatMap(([, k]) => [`number.ems_${k}_lato`, `number.ems_${k}_zima`]).concat(ARB1.map(x => x[1])))}
@@ -47,8 +47,8 @@ export function render(c) {
   const on = raw.unlocked > Date.now(), res = S(c.hass, `sensor.${d}_surowy_odczyt`)?.state;
   const rawbox = `<div class="box ${on ? "warn" : ""}"><div class="h"><span>🧪 Surowy rejestr Modbus${tip(T.raw)}</span>
       <button class="btn ${on ? "off" : ""}" data-unlock>${on ? `🔓 Odblokowane (${Math.ceil((raw.unlocked - Date.now()) / 60000)} min) – zablokuj` : "🔒 Odblokuj"}</button></div>
-    ${on ? `<div class="ctrl"><div><label class="f">Adres (dziesiętnie)</label><div class="inp" style="width:140px"><input data-raw="addr" value="${esc(raw.addr)}" inputmode="numeric"></div></div>
-      <div><label class="f">Wartość (0–65535)</label><div class="inp" style="width:140px"><input data-raw="val" value="${esc(raw.val)}" inputmode="numeric"></div></div>
+    ${on ? `<div class="ctrl"><div class="raw"><label class="f">Adres (dziesiętnie)</label><div class="inp w140"><input data-raw="addr" value="${esc(raw.addr)}" inputmode="numeric"></div></div>
+      <div class="raw"><label class="f">Wartość (0–65535)</label><div class="inp w140"><input data-raw="val" value="${esc(raw.val)}" inputmode="numeric"></div></div>
       <button class="btn" data-rawread style="align-self:flex-end">Odczytaj</button><button class="btn off" data-rawwrite style="align-self:flex-end">Zapisz do falownika</button>
       <span class="pill b" style="align-self:flex-end">Wynik: ${esc(res || "–")}</span></div>
       <p class="note">Każdy surowy zapis jest logowany w ESP i w Diagnostyce. Blokada wraca sama po 5 min.</p>` : `<p class="note">Zablokowane. Wszystkie znane rejestry mają swoje pola wyżej.</p>`}</div>`;
