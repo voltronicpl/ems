@@ -185,7 +185,9 @@ export function bind(c, r) {
   bindProfile(c, r);
   r.querySelectorAll("[data-pday]").forEach(b => b.onclick = () => { st.sel = b.dataset.pday || null; c.render(true); });
   const cal = r.querySelector("[data-pcal]"); if (cal) cal.onchange = () => { if (cal.value) { st.sel = cal.value; c.render(true); } };
-  const pd = r.querySelector("[data-pdays] .on"); if (pd && !st.scrolled) { pd.scrollIntoView({ inline: "center", block: "nearest" }); st.scrolled = true; }
+  // przewin tylko pasek dni w poziomie (bez scrollIntoView – ten przewijal cala strone na srodek)
+  const bar = r.querySelector("[data-pdays]"), pd = bar?.querySelector(".on");
+  if (bar && pd && !st.scrolled && bar.scrollWidth > bar.clientWidth) { bar.scrollLeft = pd.offsetLeft - bar.offsetLeft - (bar.clientWidth - pd.clientWidth) / 2; st.scrolled = true; }
   const d0 = r.querySelector("[data-d0]"), d1 = r.querySelector("[data-d1]");
   if (d0) d0.onchange = () => { st.d0 = d0.value; if (st.d1 < st.d0) st.d1 = st.d0; };
   if (d1) d1.onchange = () => { st.d1 = d1.value; };

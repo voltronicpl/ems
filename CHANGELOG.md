@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## v0.6.14
+
+**Poprawione**
+- Plan: strona sama przewijała się na środek (przewijanie paska dni do „Teraz” przesuwało całą kartę). Teraz przewija się tylko pasek dni w poziomie, i tylko gdy się nie mieści.
+
 ## v0.6.13
 
 **Dodane – sprawdzanie „Pmax zakupu” (rejestr 278)**
