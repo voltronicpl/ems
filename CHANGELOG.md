@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.23
+- Przegląd: kafle PGE i depozyt zaraz pod kaflami, potem Energia + Profil mocy, Sterowanie pod wykresem.
+
 ## 0.6.22
 - Handel: „Zakup pod sprzedaż” jako kWh · zł (na czerwono).
 - Kolumny kupno / sprzedaż mocniejsze (16 %).
