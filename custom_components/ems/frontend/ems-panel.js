@@ -80,6 +80,8 @@ class EmsDashboard extends HTMLElement {
   field(id, unit, o = {}) {
     const cur = num(this._hass, id), d = this.dirty[id], val = d !== undefined ? d : cur, miss = !S(this._hass, id);
     const st = this.pend[id] ? "pend" : this.bad[id] ? "bad" : d !== undefined ? "chg" : "";
+    if (o.time) { const hm = val == null ? "" : `${String(Math.floor(val / 100)).padStart(2, "0")}:${String(Math.round(val % 100)).padStart(2, "0")}`;   // HHMM -> "HH:MM"
+      return `<div class="inp ${st}" title="${esc(this.bad[id] || id)}"><input type="time" step="300" data-num="${id}" data-hhmm="1" value="${hm}" ${o.ro || miss ? "disabled" : ""}><span>godz.</span></div>`; }
     return `<div class="inp ${st} ${o.lock ? "lk" : ""} ${o.act ? "act" : ""}" title="${esc(this.bad[id] || id)}"><input type="number" step="any" data-num="${id}" value="${val ?? ""}" ${o.ro || miss ? "disabled" : ""} placeholder="${miss ? "brak encji" : ""}"><span>${unit}</span></div>`;
   }
   range(id, label, ro) {
@@ -128,7 +130,7 @@ class EmsDashboard extends HTMLElement {
       el.oninput = () => { if (el.type === "range") { const b = el.previousElementSibling?.querySelector("b"); if (b) b.textContent = el.value + "%"; } };
       el.onchange = () => {
         this._hold = false;
-        const id = el.dataset.num, v = parseFloat(el.value);
+        const id = el.dataset.num, v = el.dataset.hhmm ? (([h, m]) => h * 100 + m)(el.value.split(":").map(Number)) : parseFloat(el.value);
         if (isNaN(v)) return;
         if (el.dataset.now) { this.call("number", "set_value", { entity_id: id, value: v }); return; }
         this.dirty[id] = v; this.render();

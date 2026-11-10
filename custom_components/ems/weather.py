@@ -50,3 +50,33 @@ async def fetch(hass, lat: float, lon: float, tilt: float, azimuth: float) -> di
     LOG.info("Open-Meteo: %d slotow, burze w prognozie: %d", len(out),
              sum(1 for v in out.values() if v["storm"] and True))
     return out
+
+
+ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
+_ARCH: dict = {"day": None, "data": {}}
+
+
+async def fetch_archive(hass, lat: float, lon: float, tilt: float, azimuth: float, days: int = 365) -> dict[datetime, dict]:
+    """Pogoda wstecz do nauki (rok): {slot_15min_utc: {gti, temp}} z danych godzinowych (archiwum Open-Meteo), cache na dobe."""
+    from datetime import date, timedelta
+    today = date.today()
+    if _ARCH["day"] == today and _ARCH["data"]:
+        return _ARCH["data"]
+    params = {"latitude": lat, "longitude": lon, "timezone": "UTC", "hourly": "global_tilted_irradiance,temperature_2m",
+              "tilt": tilt, "azimuth": azimuth, "start_date": (today - timedelta(days=days)).isoformat(), "end_date": (today - timedelta(days=2)).isoformat()}
+    try:
+        async with async_get_clientsession(hass).get(ARCHIVE, params=params, timeout=60) as r:
+            r.raise_for_status()
+            j = (await r.json())["hourly"]
+    except Exception as err:  # noqa: BLE001
+        LOG.warning("Open-Meteo archiwum: blad (%s)", err)
+        return _ARCH["data"]
+    out = {}
+    for i, t in enumerate(j["time"]):
+        h = datetime.fromisoformat(t).replace(tzinfo=timezone.utc)
+        rec = {"gti": j["global_tilted_irradiance"][i] or 0.0, "temp": j["temperature_2m"][i], "code": 0, "cat": "slonecznie", "storm": False}
+        for q in range(4):
+            out[h + timedelta(minutes=15 * q)] = rec
+    _ARCH.update(day=today, data=out)
+    LOG.info("Open-Meteo archiwum: %d godzin (%d dni) do nauki", len(j["time"]), days)
+    return out

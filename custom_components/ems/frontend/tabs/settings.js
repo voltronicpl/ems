@@ -3,6 +3,19 @@ import { T } from "../tips.js";
 import { GROUPS } from "../inverter_spec.js";
 import { INV } from "../inverter_tips.js";
 import { tou } from "../tou.js";
+
+// Stare encje z HA do nauki (/api/ems/zrodla)
+const SRC = { d: null, busy: false, edit: {}, msg: "" };
+function srcBox(c) {
+  if (!SRC.d && !SRC.busy) { SRC.busy = true; c.hass.callApi("GET", "ems/zrodla").then(r => { SRC.d = r; SRC.edit = { ...r.encje }; }).catch(e => { SRC.msg = "Błąd: " + (e.message || e); }).finally(() => { SRC.busy = false; c.render(true); }); }
+  const d = SRC.d; if (!d) return `<div class="box" id="s-src"><div class="h"><span>📚 Historia do nauki (stare encje)</span></div><div class="lab">${SRC.msg || "Wczytuję…"}</div></div>`;
+  const opts = `<datalist id="src-ents">${d.kandydaci.map(x => `<option value="${esc(x.id)}">${esc(x.nazwa)} [${esc(x.jedn)}]</option>`).join("")}</datalist>`;
+  const rows = Object.entries(d.klucze).map(([k, lab]) => { const inf = d.info[k] || {}, v = SRC.edit[k] || "";
+    return `<div><label class="f">${esc(lab)}${k === "pompa" ? " (opcjonalnie)" : ""}</label><div class="inp"><input type="text" list="src-ents" data-src="${k}" value="${esc(v)}" placeholder="sensor.…" style="width:100%"></div>
+      <div class="lab" style="margin-top:3px">${v ? (inf.blad ? `<span class="t-r">${esc(inf.blad)}</span>` : inf.od ? `statystyki od ${inf.od} (${inf.dni} dni) · ${esc(inf.jednostka || "?")}` : d.encje[k] === v ? "brak statystyk w HA" : "zapisz, żeby sprawdzić") : "–"}</div></div>`; }).join("");
+  return `<div class="box" id="s-src"><div class="h"><span>📚 Historia do nauki (stare encje)${tip({ co: "Liczniki narastające kWh (lub moc W) z HA sprzed dataloggera. EMS uczy się z nich: konsumpcja domu → prognoza zużycia (do 365 dni), pompa ciepła → osobny model wg temperatury, produkcja PV → kalibracja prognozy PV. Dane z dataloggera mają pierwszeństwo." })}</span><span class="lab">${esc(SRC.msg)}</span></div>
+    ${opts}<div class="g3">${rows}</div><div class="btns"><button class="btn pri" data-srcsave>Zapisz</button></div></div>`;
+}
 export const title = "Ustawienia";
 const PAIRS = [["Próg sprzedaży – tania", "prog_tania", "zł"], ["Próg sprzedaży – droga", "prog_droga", "zł"], ["Próg „za bezcen”", "prog_bezcen", "zł"],
   ["Mnożnik PV – słonecznie", "mn_slonecznie", "×"], ["Mnożnik PV – pochmurno", "mn_pochmurno", "×"], ["Mnożnik PV – deszcz", "mn_deszcz", "×"], ["Mnożnik PV – śnieg", "mn_snieg", "×"]];
@@ -65,9 +78,17 @@ export function render(c) {
       <button class="btn" data-rawread style="align-self:flex-end">Odczytaj</button><button class="btn off" data-rawwrite style="align-self:flex-end">Zapisz do falownika</button>
       <span class="pill b" style="align-self:flex-end">Wynik: ${esc(res || "–")}</span></div>
       <p class="note">Każdy surowy zapis jest logowany w ESP i w Diagnostyce. Blokada wraca sama po 5 min.</p>` : `<p class="note">Zablokowane. Wszystkie znane rejestry mają swoje pola wyżej.</p>`}</div>`;
-  return `<div class="anchor"><button class="btn" data-go="s-tou">🗓 Harmonogram</button><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div><div id="s-tou">${tou(c)}</div>${ems}${limits}${inv}${rawbox}`;
+  return `<div class="anchor"><button class="btn" data-go="s-tou">🗓 Harmonogram</button><button class="btn" data-go="s-ems">🤖 EMS</button><button class="btn" data-go="s-src">📚 Historia</button><button class="btn" data-go="s-lim">🔒 Limity</button><button class="btn" data-go="s-inv">🔌 Inwerter</button></div><div id="s-tou">${tou(c)}</div>${ems}${srcBox(c)}${limits}${inv}${rawbox}`;
 }
 export function bind(c, r) {
+  r.querySelectorAll("[data-src]").forEach(el => { el.onfocus = () => { c._hold = true; }; el.onblur = () => { c._hold = false; }; el.onchange = () => { SRC.edit[el.dataset.src] = el.value.trim(); }; });
+  r.querySelector("[data-srcsave]")?.addEventListener("click", async () => {
+    r.querySelectorAll("[data-src]").forEach(el => { SRC.edit[el.dataset.src] = el.value.trim(); });
+    SRC.msg = "Zapisuję…"; c.render(true);
+    try { await c.hass.callApi("POST", "ems/zrodla", { encje: SRC.edit }); SRC.msg = "✅ Zapisano – EMS przelicza historię"; SRC.d = null; }
+    catch (e) { SRC.msg = "❌ " + (e.message || e); }
+    c.render(true);
+  });
   r.querySelectorAll("[data-ntog]").forEach(el => el.onclick = () => { const id = el.dataset.ntog; c.zapisz([{ entity_id: id, value: num(c.hass, id, 0) >= 0.5 ? 0 : 1 }]); });
   r.querySelectorAll("[data-go]").forEach(b => b.onclick = () => r.getElementById(b.dataset.go)?.scrollIntoView({ behavior: "smooth" }));
   r.querySelector("[data-unlock]")?.addEventListener("click", () => { raw.unlocked = raw.unlocked > Date.now() ? 0 : Date.now() + 300000; c.log(`Surowy rejestr ${raw.unlocked ? "ODBLOKOWANY" : "zablokowany"}`); c.render(true); });

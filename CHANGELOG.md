@@ -1,5 +1,17 @@
 # Zmiany EMS
 
+## v0.6.8
+
+**Dodane**
+- Ustawienia → „📚 Historia do nauki (stare encje)”: wybór encji z HA (liczniki narastające kWh albo moc W): konsumpcja domu łączna, produkcja PV łączna, import, eksport, bateria ładowanie / rozładowanie, pompa ciepła (opcjonalnie). Przy każdej: od kiedy HA ma statystyki. API `GET/POST /api/ems/zrodla`.
+- Prognoza zużycia uczy się na historii do 365 dni (stara konsumpcja domu uzupełnia dane dataloggera, datalogger ma pierwszeństwo).
+- Pompa ciepła liczona osobno (własny licznik): model kWh/h = a + b × temperatura zewnętrzna, dom bez pompy wg podobnych dni + pompa wg prognozy temperatury.
+- Kalibracja prognozy PV: fakt z licznika PV / prognoza z pogody za rok → mnożnik sprawności (0,5–1,5), widoczny w podsumowaniu planu i w logu.
+- **Nauka z całego roku wstecz**: historia zużycia (datalogger i stara konsumpcja) 365 dni, model pompy ciepła z 365 dni, kalibracja PV z 365 dni. Pogoda do nauki z archiwum Open-Meteo (temperatura i nasłonecznienie na panele, godzinowo, raz na dobę z cache) – osobno od prognozy do planu.
+
+**Zmienione**
+- Harmonogram TOU: start jako godzina „HH:MM” (pole czasu) zamiast liczby HHMM.
+
 ## v0.6.7
 
 **Zmienione**

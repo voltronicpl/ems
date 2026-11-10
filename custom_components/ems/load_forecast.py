@@ -166,3 +166,43 @@ def forecast(slots: list[datetime], hist: dict, weather: dict, p: dict, coeff: f
     LOG.info("Zuzycie prognoza: %.2f kWh w horyzoncie (wsp. temp %.3f, korekta biezaca x%.2f z 3 h: fakt %.0f / prognoza %.0f W)",
              sum(out.values()), coeff, corr, fact / 3, pred / 3)
     return out
+
+
+def _hour_temps(weather: dict) -> dict:
+    t: dict = defaultdict(list)
+    for ts, v in weather.items():
+        if v.get("temp") is not None:
+            t[ts.replace(minute=0, second=0, microsecond=0)].append(v["temp"])
+    return {h: sum(a) / len(a) for h, a in t.items()}
+
+
+def split_pump(hist: dict, pump: dict, weather: dict):
+    """Pompa ciepla osobno: zwraca (historia domu bez pompy [W], model pompy (a, b) kWh/h = a + b*T albo None)."""
+    if not pump:
+        return hist, None
+    temps = _hour_temps(weather)
+    pts = [(temps[h], pump[h] / 1000) for h in pump if h in temps]
+    if len(pts) < 48:
+        LOG.info("Pompa ciepla: za malo godzin z temperatura (%d) – liczona razem z domem", len(pts))
+        return hist, None
+    mt = sum(t for t, _ in pts) / len(pts)
+    mk = sum(k for _, k in pts) / len(pts)
+    var = sum((t - mt) ** 2 for t, _ in pts)
+    b = sum((t - mt) * (k - mk) for t, k in pts) / var if var else 0.0
+    a = mk - b * mt
+    base = {h: max(w - pump.get(h, 0.0), 0.0) for h, w in hist.items()}
+    LOG.info("Pompa ciepla: model %.3f %+.3f×T kWh/h (z %d h; przy 0°C %.2f kWh/h, przy -10°C %.2f kWh/h)", a, b, len(pts), max(a, 0), max(a - 10 * b, 0))
+    return base, (a, b)
+
+
+def pump_forecast(slots: list[datetime], weather: dict, model) -> dict[datetime, float]:
+    """kWh na slot 15 min z modelu pompy i prognozy temperatury."""
+    if not model:
+        return {}
+    a, b = model
+    temps = _hour_temps(weather)
+    out = {}
+    for s in slots:
+        t = temps.get(s.replace(minute=0, second=0, microsecond=0))
+        out[s] = max(a + b * t, 0.0) / 4 if t is not None else 0.0
+    return out

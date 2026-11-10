@@ -19,6 +19,7 @@ from .const import MANUAL, PARAMS
 from .diag import get_logger
 from .executor import Executor
 from .manual import ManualJob
+from .sources import Sources
 from .planner import as_dicts, plan
 
 LOG = get_logger("silnik")
@@ -47,6 +48,10 @@ class Engine:
         self._last_exec: datetime | None = None
         self.manual_log: list[dict] = []             # historia recznych zadan (14 dni)
         self._mstore = Store(hass, 1, f"ems_reczne_{entry_id}")
+        self.src = Sources(hass, entry_id)                 # stare encje z HA do nauki
+        self._pump: dict = {}
+        self._pv_cal = 1.0
+        self._wx_learn: dict = {}
         self.fc_log: dict = {}                       # slot ISO -> {"rano": {...}, "ost": {...}} (14 dni) – prognoza vs fakt
         self._fstore = Store(hass, 1, f"ems_prognozy_{entry_id}")
 
@@ -78,6 +83,7 @@ class Engine:
     async def _load_log(self) -> None:
         self.manual_log = (await self._mstore.async_load() or {}).get("wpisy", [])
         self.fc_log = (await self._fstore.async_load() or {}).get("sloty", {})
+        await self.src.load()
         self.push()
 
     def _price_now(self, kind: str) -> float | None:
@@ -178,7 +184,19 @@ class Engine:
             lat, lon = self.hass.config.latitude, self.hass.config.longitude
             self._weather = await weather.fetch(self.hass, lat, lon, self.p["pv_nachylenie"], self.p["pv_azymut"]) or self._weather
             if not self._hist_at or now - self._hist_at > timedelta(hours=1):
-                self._hist = await load_forecast.history(self.hass, f"sensor.{self.dev}_obciazenie_moc_suma")
+                lat, lon = self.hass.config.latitude, self.hass.config.longitude
+                arch = await weather.fetch_archive(self.hass, lat, lon, self.p["pv_nachylenie"], self.p["pv_azymut"], 365)
+                self._wx_learn = {**arch, **self._weather}          # pogoda do nauki: rok archiwum + 28 dni z prognozy (nowsze wygrywa)
+                self._hist = await load_forecast.history(self.hass, f"sensor.{self.dev}_obciazenie_moc_suma", 365)
+                old = await self.src.hourly("dom", now - timedelta(days=365), now)        # stare encje: dluzsza historia
+                if old:
+                    merged = {h: v * 1000 for h, v in old.items()}
+                    n_dl = len(self._hist)
+                    merged.update(self._hist)                                          # datalogger ma pierwszenstwo
+                    self._hist = merged
+                    LOG.info("Historia zuzycia: %d h (datalogger %d h + stara encja %d h)", len(merged), n_dl, len(old))
+                self._pump = {h: v * 1000 for h, v in (await self.src.hourly("pompa", now - timedelta(days=365), now)).items()}
+                self._pv_cal = await self._pv_calibration(now)
                 self._hist_at = now
 
             start = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
@@ -191,13 +209,20 @@ class Engine:
 
             # korekta PV w trakcie dnia
             prev = [start - timedelta(minutes=15 * i) for i in range(1, 9)]
-            pv_prev = pv_forecast.forecast(prev, self._weather, self.p)
+            pp = {**self.p, "pv_sprawnosc": self.p["pv_sprawnosc"] * self._pv_cal}     # kalibracja z produkcji PV (stara encja)
+            pv_prev = pv_forecast.forecast(prev, self._weather, pp)
             pv_now_w = self.r("pv_moc_suma", None)
             fact = pv_forecast.intraday_factor((pv_now_w or 0) / 1000 * 2, sum(pv_prev.values())) if pv_now_w is not None else 1.0
-            pvk = pv_forecast.forecast(slots, self._weather, self.p, fact)
+            pvk = pv_forecast.forecast(slots, self._weather, pp, fact)
 
-            coeff = self.p["wsp_temp"] or load_forecast.temp_coeff(self._hist, self._weather, self.p["weekend_od_godz"])
-            ldk = load_forecast.forecast(slots, self._hist, self._weather, self.p, coeff)
+            wl = self._wx_learn or self._weather
+            base_hist, pump_model = load_forecast.split_pump(self._hist, self._pump, wl)
+            coeff = self.p["wsp_temp"] or load_forecast.temp_coeff(base_hist, wl, self.p["weekend_od_godz"])
+            ldk = load_forecast.forecast(slots, base_hist, {**wl, **self._weather}, self.p, coeff)
+            if pump_model:
+                pmp = load_forecast.pump_forecast(slots, self._weather, pump_model)
+                ldk = {k: v + pmp.get(k, 0.0) for k, v in ldk.items()}
+                LOG.info("Pompa ciepla w prognozie: %.2f kWh w horyzoncie", sum(pmp.values()))
 
             soc = self.r("bateria_soc", 50.0)
             ch_w, sell_w = self.limits()
@@ -207,7 +232,8 @@ class Engine:
                              self.p["pojemnosc_wh"] / 1000, ch_w, sell_w)
             self.plan = as_dicts(res)
             self._log_forecast(now)
-            self.summary = {**summ, "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2)}
+            self.summary = {**summ, "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2), "kalibracja_pv": round(self._pv_cal, 2),
+                            "pompa_model": [round(x, 3) for x in pump_model] if pump_model else None}
             self.last_plan = now
             self.error = None
         except Exception as err:  # noqa: BLE001
@@ -241,6 +267,28 @@ class Engine:
                 self._check_sell(cur)
         except Exception as err:  # noqa: BLE001
             LOG.exception("Blad wykonania: %s", err)
+
+    async def _pv_calibration(self, now: datetime) -> float:
+        """Fakt PV (stara encja 'pv') / prognoza PV z pogody wstecz (rok, archiwum Open-Meteo) -> mnoznik sprawnosci, 0,5-1,5."""
+        act = await self.src.hourly("pv", now - timedelta(days=365), now - timedelta(hours=1))
+        wl = self._wx_learn or self._weather
+        if not act or not wl:
+            return 1.0
+        slots = [h + timedelta(minutes=15 * i) for h in act for i in range(4)]
+        slots = [s for s in slots if s in wl]
+        fc = pv_forecast.forecast(slots, wl, self.p)
+        fh: dict = {}
+        for s, v in fc.items():
+            h = s.replace(minute=0)
+            fh[h] = fh.get(h, 0.0) + v
+        pairs = [(act[h], fh[h]) for h in act if h in fh and (act[h] > 0.02 or fh[h] > 0.02)]
+        sa, sf = sum(a for a, _ in pairs), sum(f for _, f in pairs)
+        if sf < 5:
+            LOG.info("Kalibracja PV: za malo danych (prognoza %.1f kWh) – bez zmian", sf)
+            return 1.0
+        k = min(1.5, max(0.5, sa / sf))
+        LOG.info("Kalibracja PV z %d h: fakt %.1f kWh / prognoza %.1f kWh -> x%.2f", len(pairs), sa, sf, k)
+        return k
 
     def _check_sell(self, cur: dict | None) -> None:
         """Slot sprzedazy z planu: po 3 min sprawdza, czy cos faktycznie idzie do sieci; jesli nie - jeden wpis w logu ze stanem TOU."""
