@@ -13,7 +13,7 @@ from . import diag
 from .const import CONF_DEVICE, DOMAIN, VERSION
 from .backtest import BacktestView
 from .engine import Engine
-from .verify import WriteView
+from .verify import ReadView, WriteView
 
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SWITCH, Platform.BUTTON]
 STATIC = f"/ems_static/{VERSION}"                    # wersja w sciezce -> wszystkie importy (core.js, tips.js, tabs/) tez nowe
@@ -28,6 +28,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     diag.setup(hass)
     hass.http.register_view(BacktestView)
     hass.http.register_view(WriteView)
+    hass.http.register_view(ReadView)
     return True
 
 

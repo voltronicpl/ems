@@ -1,5 +1,14 @@
 # Zmiany EMS
 
+## v0.5.7
+
+**Dodane**
+- Przycisk „Odczyt” w grupach naprawdę czyta z falownika: EMS każe dataloggerowi przeczytać ustawienia od razu (akcja `esphome.<dev>_odczytaj_ustawienia`), czeka na odczyt i pokazuje „✅ Odczytano z falownika o HH:MM:SS” z listą wartości; pola dostają świeże wartości. W trakcie „⏳ odczytuję z falownika…”. `POST /api/ems/odczyt`, w logu `[zapis] ODCZYTANO`.
+
+**Zmienione**
+- Potwierdzenie zapisu po kilku sekundach: datalogger (`ecobss.yaml` v5.4) czyta ustawienia zaraz po zapisie, EMS porównuje z tym odczytem (wcześniej czekał 2 cykle, przy interwale 60 s ~2 min albo „nie potwierdzono”).
+- „Odczyt” obejmuje też przełączniki i listy wyboru grupy.
+
 ## v0.5.6
 
 **Dodane**

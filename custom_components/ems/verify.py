@@ -9,6 +9,7 @@ Sprawdzenie = poczekac, az datalogger zrobi pelny cykl odczytu PO zapisie, i dop
 Brak dowodu odczytu do konca czasu -> "nie potwierdzono" (blad). Parametry EMS (number.ems_*) - od razu.
 Encja dataloggera, ktora juz ma wysylana wartosc, NIE jest zapisywana (wynik "bez zmian", log [zapis] BEZ ZMIAN).
 
+POST /api/ems/odczyt {"dev": "ecobss", "ids": [...]} -> datalogger czyta ustawienia od razu (akcja esphome.<dev>_odczytaj_ustawienia)
 POST /api/ems/zapis {"dev": "ecobss", "items": [{"entity_id": "...", "value": 5000}]}
   value: liczba (number), true/false (switch), tekst opcji (select)
   -> {"ok": bool, "items": [{"entity_id", "ok", "want", "got", "msg"}]}
@@ -50,6 +51,14 @@ def _counter(hass: HomeAssistant, dev: str) -> float | None:
         return float(st.state)
     except (AttributeError, TypeError, ValueError):
         return None
+
+
+def _cfg_read_at(hass: HomeAssistant, dev: str) -> float | None:
+    """Kiedy datalogger (v5.3+) skonczyl ostatni odczyt ustawien (czas zmiany sensora 'Ostatni odczyt ustawien')."""
+    st = hass.states.get(f"sensor.{dev}_ostatni_odczyt_ustawien")
+    if st is None or st.state in BAD:
+        return None
+    return st.last_updated.timestamp()
 
 
 def _alive_since(hass: HomeAssistant, dev: str, t: float) -> bool:
@@ -96,8 +105,10 @@ async def _confirm(hass: HomeAssistant, dev: str, entity: str, want, t0: float, 
     iv, timeout = _interval(hass, dev), _timeout(hass, dev)
     end, check_at = time.monotonic() + timeout, t0 + 2 * iv + 3
     while True:
-        st, now, c = hass.states.get(entity), time.time(), _counter(hass, dev)
-        if c0 is not None and c is not None:
+        st, now, c, rc = hass.states.get(entity), time.time(), _counter(hass, dev), _cfg_read_at(hass, dev)
+        if rc is not None and rc > t0 + 0.3:            # v5.4: ESP czyta ustawienia od razu po zapisie
+            read, how = True, "odczyt ustawień po zapisie"
+        elif c0 is not None and c is not None:
             read = c >= c0 + 2                          # licznik: dwa cykle = jeden caly po zapisie
             how = "licznik cykli"
         else:
@@ -146,6 +157,36 @@ async def write_verified(hass: HomeAssistant, dev: str, items: list[dict]) -> li
         (LOG.info if r["ok"] else LOG.error)("%s %s = %s -> %s", "BEZ ZMIAN" if r.get("same") else "ZAPISANO" if r["ok"] else "NIE ZAPISANO",
                                              r["entity_id"].split(".", 1)[1], r["want"], r["msg"])
     return out
+
+
+async def read_now(hass: HomeAssistant, dev: str, ids: list[str], timeout: float = 25.0) -> dict:
+    """Przycisk "Odczyt": datalogger czyta ustawienia z falownika OD RAZU, czekamy na potwierdzenie i zwracamy wartosci."""
+    svc = f"{dev}_odczytaj_ustawienia"
+    if not hass.services.has_service("esphome", svc):
+        return {"ok": False, "msg": f"datalogger nie ma akcji esphome.{svc} – wgraj ecobss.yaml v5.4", "items": []}
+    t0 = time.time()
+    await hass.services.async_call("esphome", svc, {}, blocking=True)
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        rc = _cfg_read_at(hass, dev)
+        if rc is not None and rc > t0:
+            items = [{"entity_id": i, "got": _show(hass.states.get(i))} for i in ids]
+            at = hass.states.get(f"sensor.{dev}_ostatni_odczyt_ustawien").state
+            LOG.info("ODCZYTANO z falownika o %s (%d pol)", at, len(items))
+            return {"ok": True, "at": at, "items": items, "msg": f"odczytano z falownika o {at}"}
+        await asyncio.sleep(POLL)
+    LOG.error("NIE ODCZYTANO – brak odpowiedzi dataloggera w %.0f s", timeout)
+    return {"ok": False, "msg": f"brak odczytu z falownika w {timeout:.0f} s", "items": []}
+
+
+class ReadView(HomeAssistantView):
+    url = "/api/ems/odczyt"
+    name = "api:ems:odczyt"
+
+    async def post(self, request):
+        hass: HomeAssistant = request.app["hass"]
+        body = await request.json()
+        return self.json(await read_now(hass, body.get("dev") or "ecobss", [i for i in body.get("ids", []) if i]))
 
 
 class WriteView(HomeAssistantView):

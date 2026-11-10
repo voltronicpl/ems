@@ -52,7 +52,7 @@ export function render(c) {
       if (x.t === "s") return `<div><label class="f">${esc(x.l)}${rr}</label>${c.sw(id, "")}</div>`;
       if (x.t === "o") return `<div><label class="f">${esc(x.l)}${rr}</label>${c.sel(id)}</div>`;
       if (x.t === "b") return `<div><label class="f">Czas falownika</label><button class="btn pri" data-svc="button.press" data-ent="${id}">${esc(x.l)}</button></div>`;
-      return ""; }).join("")}</div>`, g.fields.filter(x => x.t === "n").map(x => c.rid(x.id.replace("ecobss", d), x.l)))).join("")}</div>`;
+      return ""; }).join("")}</div>`, g.fields.filter(x => x.t !== "b").map(x => c.rid(x.id.replace("ecobss", d), x.l)))).join("")}</div>`;
   const on = raw.unlocked > Date.now(), res = S(c.hass, `sensor.${d}_surowy_odczyt`)?.state;
   const rawbox = `<div class="box ${on ? "warn" : ""}"><div class="h"><span>🧪 Surowy rejestr Modbus${tip(T.raw)}</span>
       <button class="btn ${on ? "off" : ""}" data-unlock>${on ? `🔓 Odblokowane (${Math.ceil((raw.unlocked - Date.now()) / 60000)} min) – zablokuj` : "🔒 Odblokuj"}</button></div>
