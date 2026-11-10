@@ -12,8 +12,9 @@ from zoneinfo import ZoneInfo
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.storage import Store
 
-from . import load_forecast, prices, pv_forecast, weather
+from . import load_forecast, prices, pv_forecast, tariff, weather
 from .const import MANUAL, PARAMS
 from .diag import get_logger
 from .executor import Executor
@@ -44,6 +45,8 @@ class Engine:
         self._hist_at: datetime | None = None
         self._busy = False
         self._last_exec: datetime | None = None
+        self.manual_log: list[dict] = []             # historia recznych zadan (14 dni)
+        self._mstore = Store(hass, 1, f"ems_reczne_{entry_id}")
 
     # --- odczyty z dataloggera -----------------------------------------------------------------
     def r(self, key: str, default=None):
@@ -69,8 +72,47 @@ class Engine:
         sell_w = min(n("limit_twardy_max_moc_sprzedazy", 3000), n("limit_twardy_max_prad_rozladowania_baterii", 50) * v)
         return a_ch * v, sell_w
 
+    # --- historia recznych ----------------------------------------------------------------------
+    async def _load_log(self) -> None:
+        self.manual_log = (await self._mstore.async_load() or {}).get("wpisy", [])
+        self.push()
+
+    def _price_now(self, kind: str) -> float | None:
+        now = datetime.now(timezone.utc)
+        if kind == "buy":
+            return tariff.buy_price(now)
+        slot = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
+        rce = self._prices.get(slot)
+        return None if rce is None else rce * self.p["depozyt_mnoznik"]
+
+    def _finish_manual(self, reason: str | None = None) -> None:
+        if not self.manual:
+            return
+        rec = self.manual.record(reason)
+        LOG.info("Reczne zapisane: %s", rec)
+        cut = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+        self.manual_log = [r for r in self.manual_log if r["od"] >= cut] + [rec]
+        self._mstore.async_delay_save(lambda: {"wpisy": self.manual_log}, 1)
+        self.manual = None
+
+    def manual_today(self) -> dict:
+        """Suma recznych dzis (z zadaniem w toku): {kup: {kwh, zl, n}, sprzedaj: {...}, wpisy: [...]}."""
+        d0 = datetime.now(WAW).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
+        rows = [r for r in self.manual_log if r["od"] >= d0]
+        if self.manual:
+            rows = rows + [{**self.manual.record("w toku"), "do": None}]
+        out = {"kup": {"kwh": 0.0, "zl": 0.0, "n": 0}, "sprzedaj": {"kwh": 0.0, "zl": 0.0, "n": 0}}
+        for r in rows:
+            o = out[r["typ"]]
+            o["kwh"] += r["zrobione_kwh"]; o["zl"] += r["zl"]; o["n"] += 1
+        for o in out.values():
+            o["kwh"], o["zl"] = round(o["kwh"], 3), round(o["zl"], 2)
+        out["wpisy"] = rows
+        return out
+
     # --- cykle --------------------------------------------------------------------------------
     def start(self) -> None:
+        self.hass.async_create_task(self._load_log())
         self._unsubs.append(async_track_time_interval(self.hass, self._tick, timedelta(seconds=10)))
         self.hass.async_create_task(self.replan("start"))
 
@@ -153,8 +195,8 @@ class Engine:
             ch_w, sell_w = self.limits()
             if self.manual:
                 key = "energia_siec_import_dzisiaj" if self.manual.kind == "buy" else "energia_siec_export_dzisiaj"
-                if self.manual.progress(self.r(key), self.r("bateria_soc"), self.p):
-                    self.manual = None
+                if self.manual.progress(self.r(key), self.r("bateria_soc"), self.p, self._price_now(self.manual.kind)):
+                    self._finish_manual()
                     if self.enabled:
                         await self.exec.apply(self.plan, self.p, ch_w, sell_w, self.current())
                     else:
@@ -195,7 +237,9 @@ class Engine:
         if kwh <= 0:
             LOG.warning("Reczne %s: ilosc 0 kWh - pomijam", kind)
             return
-        if not self.enabled and not self.manual:
+        if self.manual:
+            self._finish_manual("zastapione")
+        elif not self.enabled:
             await self.exec.snapshot()
         key = "energia_siec_import_dzisiaj" if kind == "buy" else "energia_siec_export_dzisiaj"
         self.manual = ManualJob(kind, kwh, self.r(key, 0.0))
@@ -204,7 +248,7 @@ class Engine:
     async def stop_manual(self) -> None:
         if self.manual:
             LOG.info("Reczne zadanie przerwane przez uzytkownika")
-            self.manual = None
+            self._finish_manual("przerwane")
             if self.enabled:
                 await self.execute()
             else:

@@ -2,6 +2,7 @@ import { S, num, fmt, tip, esc } from "../core.js";
 import { T } from "../tips.js";
 import { ic, icR } from "../icons.js";
 import { flowSvg, lines, FLOW_CSS } from "../flow.js";
+import { loadManual, recent, modal, bindManual, today, bands, line, MC, MANUAL_CSS } from "../manual.js";
 export const title = "Przegląd";
 export const ACT = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", block: "Blokada eksportu", wylaczony: "Algorytm wyłączony", brak_planu: "Brak planu", reczne_buy: "Ręczne kupno", reczne_sell: "Ręczna sprzedaż" };
 const WX = { sunny: "sun", "clear-night": "moon", partlycloudy: "cloudSun", cloudy: "cloud", fog: "cloud", rainy: "rain", pouring: "rain", snowy: "snow", "snowy-rainy": "snow", lightning: "storm", "lightning-rainy": "storm", hail: "snow", windy: "cloud", "windy-variant": "cloudSun", exceptional: "cloudSun" };
@@ -19,36 +20,76 @@ const sp = n => n == null || isNaN(n) ? "–" : Math.round(n).toString().replace
 const box = (k, html, cls = "") => { const [l, t, w, h] = POS[k]; return `<div class="sc-card ${cls}" style="left:${l}%;top:${t}%;width:${w}%;height:${h}%">${html}</div>`; };
 const tile = (ic, cls, lab, val, sub, subc, t) => `<div class="ov-tile"><div class="ov-ic ${cls}">${ic}</div><div><div class="ov-lab">${lab}${tip(t)}</div><div class="ov-val">${val}</div><div class="ov-sub" ${subc ? `style="color:${subc}"` : ""}>${sub}</div></div></div>`;
 
-// Profil mocy z historii HA (co 15 min), odswiezany co 5 min
-let hist = { at: 0, rows: [], busy: false };
+// Profil mocy z historii HA – rozdzielczosc 1 min (wartosc z ostatniego odczytu przed dana minuta).
+// Odswiezany, gdy datalogger zglosi nowy odczyt pomiarow (dociagany tylko kawalek od ostatniego punktu).
+const PK = { pv: "pv_moc_suma", bat: "bateria_moc", grid: "siec_moc_suma", dom: "obciazenie_moc_suma", soc: "bateria_soc" };
+let hist = { day: "", pts: {}, last: 0, sig: "", busy: false, hover: null };
 async function loadHist(c) {
-  if (hist.busy || Date.now() - hist.at < 300000) return;
-  hist.busy = true;
-  const keys = { pv: "pv_moc_suma", bat: "bateria_moc", grid: "siec_moc_suma", dom: "obciazenie_moc_suma" }, d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0); const day = d0.toDateString();
+  const sig = S(c.hass, c.rid(c.e("ostatni_odczyt_pomiarow"), "Ostatni odczyt pomiarow"))?.state || S(c.hass, c.e("bateria_soc"))?.last_updated || "";
+  if (hist.busy || (day === hist.day && sig === hist.sig)) return;
+  if (day !== hist.day) hist = { ...hist, day, pts: {}, last: 0 };
+  hist.busy = true; hist.sig = sig;
+  const from = hist.last ? new Date(hist.last - 60000) : d0, ids = Object.fromEntries(Object.entries(PK).map(([k, v]) => [c.e(v), k]));
   try {
-    const ids = Object.values(keys).map(k => c.e(k)), res = await c.hass.callApi("GET", `history/period/${d0.toISOString()}?filter_entity_id=${ids.join(",")}&minimal_response&no_attributes`);
-    const slots = {}; res.forEach(ser => { const k = Object.keys(keys).find(x => c.e(keys[x]) === ser[0]?.entity_id); if (!k) return;
-      ser.forEach(p => { const v = parseFloat(p.state); if (isNaN(v)) return; const t = new Date(p.last_changed || p.lu * 1000); const s = Math.floor((t - d0) / 9e5); const o = slots[s] = slots[s] || {}; (o[k] = o[k] || []).push(v); }); });
-    hist.rows = Object.entries(slots).map(([s, o]) => ({ s: +s, ...Object.fromEntries(Object.entries(o).map(([k, a]) => [k, a.reduce((x, y) => x + y, 0) / a.length / 1000])) })).sort((a, b) => a.s - b.s);
-    hist.at = Date.now();
-  } catch (e) { hist.at = Date.now(); }
+    const res = await c.hass.callApi("GET", `history/period/${from.toISOString()}?filter_entity_id=${Object.keys(ids).join(",")}&minimal_response&no_attributes`);
+    res.forEach(ser => { const k = ids[ser[0]?.entity_id]; if (!k) return; const a = hist.pts[k] = hist.pts[k] || [];
+      ser.forEach(p => { const v = parseFloat(p.state), t = Date.parse(p.last_changed || p.last_updated) || (p.lu * 1000); if (isNaN(v) || !t) return;
+        if (!a.length || t > a[a.length - 1][0]) a.push([t, v]); hist.last = Math.max(hist.last, t); }); });
+  } catch (e) { /* zostaje to, co bylo */ }
   hist.busy = false; c.render(true);
 }
+// tablica 1-min: m -> {pv, bat, grid, dom, soc} (kW / %)
+function minutes() {
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0); const t0 = d0.getTime(), nowM = Math.min(1439, Math.floor((Date.now() - t0) / 6e4)), out = [];
+  const idx = Object.fromEntries(Object.keys(PK).map(k => [k, 0]));
+  for (let m = 0; m <= nowM; m++) { const te = t0 + (m + 1) * 6e4, r = { m };
+    for (const k in PK) { const a = hist.pts[k] || []; while (idx[k] < a.length && a[idx[k]][0] < te) idx[k]++; const p = a[idx[k] - 1]; r[k] = p ? (k === "soc" ? p[1] : p[1] / 1000) : null; }
+    out.push(r); }
+  return { t0, rows: out };
+}
+const PW = 640, PH = 190, PL = 30, PB = 22, PT = 16;
+const PS = [["pv", "#facc15", "PV"], ["bat", "#22e07a", "Bateria"], ["grid", "#ff4d5e", "Sieć"], ["dom", "#2f8cff", "Dom"]];
+let prof = null;
 function profile() {
-  const W = 640, H = 170, L = 30, B = 22, n = 96, bw = (W - L - 6) / n, rows = hist.rows;
-  if (!rows.length) return `<div class="nohist">Ładuję historię…</div>`;
-  const mx = Math.max(2, ...rows.flatMap(r => [r.dom || 0, r.pv || 0, Math.abs(r.bat || 0), Math.abs(r.grid || 0)])), top = Math.ceil(mx / 5) * 5 || 5, y = v => 8 + (top - v) / (2 * top) * (H - B - 8);
+  const { t0, rows } = minutes(); prof = null;
+  if (!rows.some(r => r.dom != null || r.pv != null)) return `<div class="nohist">Ładuję historię…</div>`;
+  const mx = Math.max(2, ...rows.flatMap(r => PS.map(([k]) => Math.abs(r[k] || 0)))), top = Math.ceil(mx / 2.5) * 2.5,
+    X = m => PL + m / 1440 * (PW - PL - 4), Y = v => PT + (top - v) / (2 * top) * (PH - PB - PT);
   let g = "";
-  for (const v of [top, top / 2, 0, -top / 2, -top]) g += `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${v ? "#1a3246" : "#3b5a73"}"/><text x="${L - 5}" y="${y(v) + 4}" text-anchor="end" class="ov-ax">${String(+v.toFixed(1)).replace(".", ",")}</text>`;
-  for (let hh = 0; hh <= 24; hh += 3) if (hh % 3 === 0 && hh) g += `<text x="${L + hh * 4 * bw}" y="${H - 5}" text-anchor="middle" class="ov-ax">${String(hh).padStart(2, "0")}:00</text>`;
-  const bar = (i, v, c, o = 1) => { if (!v || Math.abs(v) < 0.005) return ""; const a = y(0), b = y(v); return `<rect x="${(L + i * bw + 0.6).toFixed(1)}" y="${Math.min(a, b).toFixed(1)}" width="${(bw - 1.2).toFixed(1)}" height="${Math.abs(b - a).toFixed(1)}" rx="1" fill="${c}" opacity="${o}"/>`; };
-  rows.forEach(r => { g += bar(r.s, r.dom, "#2f8cff", .85) + bar(r.s, -Math.max(0, -(r.bat || 0)), "#22e07a", .9) + bar(r.s, Math.max(0, r.bat || 0) * 0, "#22e07a") + bar(r.s, r.pv, "#facc15", .9) + bar(r.s, Math.min(0, r.grid || 0), "#ff4d5e", .9); });
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" class="ov-prof">${g}</svg><div class="ov-leg"><span><i style="background:#facc15"></i>PV</span><span><i style="background:#22e07a"></i>Bateria</span><span><i style="background:#ff4d5e"></i>Sieć</span><span><i style="background:#2f8cff"></i>Dom</span></div>`;
+  for (const v of [top, top / 2, 0, -top / 2, -top]) g += `<line x1="${PL}" x2="${PW}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v ? "#1a3246" : "#3b5a73"}"/><text x="${PL - 5}" y="${Y(v) + 4}" text-anchor="end" class="ov-ax">${String(+v.toFixed(1)).replace(".", ",")}</text>`;
+  for (let hh = 3; hh < 24; hh += 3) g += `<text x="${X(hh * 60)}" y="${PH - 5}" text-anchor="middle" class="ov-ax">${String(hh).padStart(2, "0")}:00</text>`;
+  // reczne kupno / sprzedaz – pasy
+  for (const b of bands(t0, t0 + 864e5)) { const a = X(Math.max(0, (b.a - t0) / 6e4)), e = X(Math.min(1440, (b.b - t0) / 6e4)), w = Math.max(e - a, 2);
+    g += `<rect x="${a}" y="${PT - 2}" width="${w}" height="${PH - PB - PT + 4}" fill="${MC[b.typ]}" opacity=".13"/><rect x="${a}" y="${PT - 2}" width="${w}" height="3" fill="${MC[b.typ]}"/>`
+      + `<text x="${a + 3}" y="${PT - 5}" style="fill:${MC[b.typ]};font-size:10px;font-weight:600">${b.txt}</text>`; }
+  // linie z wypelnieniem (bateria: + rozladowanie w gore, sieć: pobor w dol jak dawniej)
+  const sgn = { pv: 1, bat: 1, grid: -1, dom: 1 };
+  for (const [k, c] of [["dom", "#2f8cff"], ["pv", "#facc15"], ["bat", "#22e07a"], ["grid", "#ff4d5e"]]) {
+    let d = "", on = false; rows.forEach(r => { const v = r[k]; if (v == null) { on = false; return; } const y = Y(sgn[k] * v).toFixed(1); d += on ? `V${y}H${X(r.m + 1).toFixed(1)}` : `M${X(r.m).toFixed(1)} ${y}H${X(r.m + 1).toFixed(1)}`; on = true; });
+    if (!d) continue;
+    g += d.split("M").filter(Boolean).map(q => `<path d="M${q}V${Y(0).toFixed(1)}H${q.split(" ")[0]}Z" fill="${c}" opacity="${k === "dom" ? .22 : .3}"/>`).join("") + `<path d="${d}" fill="none" stroke="${c}" stroke-width="1.4" stroke-linejoin="round"/>`;
+  }
+  prof = { t0, rows, X, PW };
+  return `<div class="ov-pp" data-prof><svg viewBox="0 0 ${PW} ${PH}" width="100%" class="ov-prof">${g}<line class="pcl" x1="0" x2="0" y1="${PT}" y2="${PH - PB}" stroke="#e2e8f0" stroke-width="1" style="display:none"/></svg><div class="ptip" style="display:none"></div></div>
+    <div class="ov-leg">${PS.map(([, c, n]) => `<span><i style="background:${c}"></i>${n}</span>`).join("")}<span><i style="background:${MC.kup}"></i>Ręczne kupno</span><span><i style="background:${MC.sprzedaj}"></i>Ręczna sprzedaż</span></div>`;
+}
+function profTip(box, m) {
+  const svgl = box.querySelector(".pcl"), tip = box.querySelector(".ptip"); if (!prof || m == null || m < 0 || m >= prof.rows.length) { svgl.style.display = tip.style.display = "none"; return; }
+  const r = prof.rows[m], x = prof.X(m + 0.5), t = new Date(prof.t0 + m * 6e4), kv = v => v == null ? "–" : `${fmt(v, 2)} kW`;
+  svgl.setAttribute("x1", x); svgl.setAttribute("x2", x); svgl.style.display = "";
+  const man = bands(prof.t0 + m * 6e4, prof.t0 + (m + 1) * 6e4).map(b => `<div style="color:${MC[b.typ]}">${line(b.r)}</div>`).join("");
+  tip.innerHTML = `<b>${t.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}</b>`
+    + `<div><i style="background:#facc15"></i>PV ${kv(r.pv)}</div><div><i style="background:#22e07a"></i>Bateria ${r.bat == null ? "–" : `${fmt(Math.abs(r.bat), 2)} kW ${r.bat < -0.02 ? "ładowanie" : r.bat > 0.02 ? "rozładowanie" : ""}`}</div>`
+    + `<div><i style="background:#ff4d5e"></i>Sieć ${r.grid == null ? "–" : `${fmt(Math.abs(r.grid), 2)} kW ${r.grid > 0.02 ? "pobór" : r.grid < -0.02 ? "oddawanie" : ""}`}</div><div><i style="background:#2f8cff"></i>Dom ${kv(r.dom)}</div><div><i style="background:#d8b4fe"></i>SOC ${fmt(r.soc, 0, "%")}</div>${man}`;
+  tip.style.display = ""; const pw = box.clientWidth, px = x / prof.PW * pw; tip.style.left = Math.min(Math.max(px + 12, 0), pw - tip.offsetWidth - 4) + "px";
+  if (px + 12 + tip.offsetWidth > pw) tip.style.left = Math.max(px - tip.offsetWidth - 12, 0) + "px";
 }
 
 export function render(c) {
   const h = c.hass, v = (k, d) => c.v(k, d);
-  loadHist(c);
+  loadHist(c); loadManual(c);
+  const mt = today(h);
   const soc = v("bateria_soc"), bp = v("bateria_moc", 0), grid = v("siec_moc_suma", 0), pv = v("pv_moc_suma", 0), domW = v("obciazenie_moc_suma", 0);
   const dom = v("energia_zuzycie_dom_dzisiaj", 0), imp = v("energia_siec_import_dzisiaj", 0), exp = v("energia_siec_export_dzisiaj", 0), pvd = v("energia_pv_produkcja_dzisiaj", 0);
   const bl = v("energia_bateria_ladowanie_dzisiaj"), br = v("energia_bateria_rozladowanie_dzisiaj"), chg = Math.max(0, -bp);
@@ -62,7 +103,7 @@ export function render(c) {
   const nxt = (pa.plan || []).find(s => new Date(s.start) > now && s.action !== "self");
   const L3 = ["l1", "l2", "l3"], kw = w => `${sp(w)} W`;
   const card = (ic, cls, lab, val, sub, sub2, sub3) => `<div class="sc-ic ${cls}">${ic}</div><div class="sc-tx"><div class="sc-lab">${lab}</div><div class="sc-val">${val}</div>${sub ? `<div class="sc-sub">${sub}</div>` : ""}${sub2 || ""}${sub3 ? `<div class="sc-sm">${sub3}</div>` : ""}</div>`;
-  const scene = `<style>${FLOW_CSS}</style><div class="sc"><img src="${SCENE}" alt="Dom, PV, bateria i sieć">
+  const scene = `<style>${FLOW_CSS}${MANUAL_CSS}.ov-pp{position:relative}.ptip{position:absolute;top:4px;z-index:5;background:#0b1622f2;border:1px solid #2a4560;border-radius:8px;padding:6px 9px;font-size:12px;line-height:1.5;pointer-events:none;white-space:nowrap;box-shadow:0 0 12px #000a}.ptip i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}.ov-pp svg{touch-action:pan-y}</style><div class="sc"><img src="${SCENE}" alt="Dom, PV, bateria i sieć">
     ${flowSvg("0 -2.4 1672 367", FLOW, lines(pv, bp, grid), [13, 9, 3.5], "flov")}
     ${box("top", `<span>${icR(WX[wx?.state] || "cloudSun", 30)}${wx ? ` ${fmt(wx.attributes.temperature, 1, wx.attributes.temperature_unit || "°C")}` : " –"}</span><i></i><span>${icR("calendar", 26)} ${now.toLocaleDateString("pl-PL", { weekday: "short" }).replace(/^./, x => x.toUpperCase())}, ${now.toLocaleDateString("pl-PL")}</span><i></i><span>${icR("clock", 26)} ${now.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}</span>`, "sc-top")}
     ${box("pv", card(icR("sun", 34), "y", "PV", kw(pv), `Dziś: ${fmt(pvd, 1, "kWh")}`))}
@@ -84,7 +125,8 @@ export function render(c) {
     <div class="ov-box"><div class="ov-h">${ic("cart", 20)} Ręcznie teraz${tip(T.kup)}</div><div class="ctrl" style="margin-top:8px">
       <div class="inp wbuy">${c.input("number.ems_kup_wh")}<span>Wh</span></div><button class="btn pri" data-svc="button.press" data-ent="button.ems_kup_teraz">Kup</button>
       <div class="inp wbuy">${c.input("number.ems_sprzedaj_wh")}<span>Wh</span></div><button class="btn pri" data-svc="button.press" data-ent="button.ems_sprzedaj_teraz">Sprzedaj</button></div>
-      ${man ? `<div class="ov-mut" style="margin-top:8px">W toku: ${esc(man.typ)} ${fmt(man.zrobione_kwh, 2)} / ${fmt(man.kwh, 2, "kWh")} <button class="btn" data-svc="button.press" data-ent="button.ems_przerwij_reczne">Przerwij</button></div>` : ""}</div>
+      ${man ? `<div class="ov-mut" style="margin-top:8px">W toku: ${esc(man.typ)} ${fmt(man.zrobione_kwh, 2)} / ${fmt(man.kwh, 2, "kWh")}${man.zl != null ? ` · ${fmt(man.zl, 2, "zł")}` : ""} <button class="btn" data-svc="button.press" data-ent="button.ems_przerwij_reczne">Przerwij</button></div>` : ""}
+      <div class="ov-mut" style="margin-top:8px">Dziś: <span style="color:${MC.kup}">kupione ${fmt(mt.kup.kwh, 2, "kWh")} za ${fmt(mt.kup.zl, 2, "zł")}</span> · <span style="color:${MC.sprzedaj}">sprzedane ${fmt(mt.sprzedaj.kwh, 2, "kWh")} za ${fmt(mt.sprzedaj.zl, 2, "zł")}</span></div>${recent()}</div>
     <div class="ov-box"><div class="ov-h">${ic("settings", 20)} Szybkie akcje</div><div class="ctrl" style="margin-top:8px">
       <button class="btn" data-svc="button.press" data-ent="button.ems_przelicz">${ic("refresh", 16)} Przelicz plan</button><button class="btn" data-odczyt>${ic("download", 16)} Odczytaj falownik</button>
       <button class="btn" data-svc="button.press" data-ent="${c.rid(`button.${c.dev}_ustaw_czas_z_ha`, "Ustaw czas z HA")}">${ic("clock", 16)} Ustaw czas</button></div>
@@ -92,15 +134,25 @@ export function render(c) {
   const row = (a, b, cl = "") => `<div class="ov-row"><span>${a}</span><b ${cl ? `style="color:${cl}"` : ""}>${b}</b></div>`;
   const barr = (lab, p, col) => `<div class="ov-ac"><span>${lab}</span><div class="ov-bar"><i style="width:${p}%;background:${col}"></i></div><b>${p} %</b></div>`;
   const mid = `<div class="ov-mid">
-    <div class="ov-box"><div class="ov-h">${ic("stack", 20)} Energia dziś</div>${row("Import z sieci", fmt(imp, 1, "kWh"), "#ff6b6b")}${row("Eksport do sieci", fmt(exp, 1, "kWh"), "#3ee07a")}${row("Bateria ład. / rozł.", `${fmt(bl, 1)} / ${fmt(br, 1, "kWh")}`)}${row("Produkcja PV", fmt(pvd, 1, "kWh"), "#facc15")}</div>
+    <div class="ov-box"><div class="ov-h">${ic("stack", 20)} Energia dziś</div>${row("Import z sieci", fmt(imp, 1, "kWh"), "#ff6b6b")}${row("Eksport do sieci", fmt(exp, 1, "kWh"), "#3ee07a")}${row("Bateria ład. / rozł.", `${fmt(bl, 1)} / ${fmt(br, 1, "kWh")}`)}${row("Produkcja PV", fmt(pvd, 1, "kWh"), "#facc15")}${row("Ręcznie kupione", `${fmt(mt.kup.kwh, 2, "kWh")} · ${fmt(mt.kup.zl, 2, "zł")}`, MC.kup)}${row("Ręcznie sprzedane", `${fmt(mt.sprzedaj.kwh, 2, "kWh")} · ${fmt(mt.sprzedaj.zl, 2, "zł")}`, MC.sprzedaj)}</div>
     <div class="ov-box"><div class="ov-h">${ic("chart", 20)} Profil mocy <span class="ov-mut">(dziś)</span></div>${profile()}</div>
     <div class="ov-box"><div class="ov-h">${ic("gauge", 20)} Autokonsumpcja${tip(T.autokons)}</div>${barr("PV → dom", pc(pvH), "#3ee07a")}${barr("PV → bateria", pc(pvB), "#3ee07a")}${barr("PV → sieć", pc(pvG), "#3ee07a")}</div></div>`;
   const bot = `<div class="ov-bot">
     <div class="ov-box"><div class="ov-h">${ic("tower", 20)} Sieć (3F, ${fmt(v("siec_czestotliwosc"), 1, "Hz")})</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("siec_napiecie_" + l), 1, "V")} · ${kw(v("siec_moc_" + l))}`)).join("")}</div>
     <div class="ov-box"><div class="ov-h">${ic("cpu", 20)} Przetwornica</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("przetwornica_napiecie_" + l), 1, "V")} · ${kw(v("przetwornica_moc_" + l))}`)).join("")}${row("Temp. radiatora", `${fmt(v("temperatura_przetwornicy"), 1)} °C / ${fmt(v("temperatura_radiatora"), 1, "°C")}`)}</div>
     <div class="ov-box"><div class="ov-h">${ic("panel", 20)} PV (stringi)</div>${[1, 2, 3, 4].map(i => row("PV" + i, kw(v("pv" + i + "_moc")))).join("")}</div></div>`;
-  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}${ster}${mid}${bot}`;
+  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}${ster}${mid}${bot}${modal()}`;
 }
 export function bind(c, r) {
+  bindManual(c, r);
+  r.querySelectorAll("[data-prof]").forEach(box => {
+    const svg = box.querySelector("svg"), at = ev => { const p = ev.touches ? ev.touches[0] : ev, b = svg.getBoundingClientRect(), x = (p.clientX - b.left) / b.width * PW;
+      return Math.floor((x - PL) / (PW - PL - 4) * 1440); };
+    const mv = ev => { hist.hover = at(ev); c._hold = true; profTip(box, hist.hover); };
+    svg.addEventListener("mousemove", mv); svg.addEventListener("touchstart", mv, { passive: true }); svg.addEventListener("touchmove", mv, { passive: true });
+    svg.addEventListener("mouseleave", () => { hist.hover = null; c._hold = false; profTip(box, null); });
+    svg.addEventListener("touchend", () => { c._hold = false; });   // na telefonie dymek zostaje po puszczeniu palca
+    if (hist.hover != null) profTip(box, hist.hover);
+  });
   r.querySelectorAll("[data-odczyt]").forEach(b => b.onclick = () => c.odczyt([c.rid(c.e("ostatni_odczyt_ustawien"), "Ostatni odczyt ustawien")]));
 }

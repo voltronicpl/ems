@@ -1,10 +1,12 @@
 import { S, num, fmt, tip, chart, pwChart, setSocMin, PINK, CYAN, g12Price, hm, esc } from "../core.js";
 import { T } from "../tips.js";
+import { loadManual, bands as mBands, MC } from "../manual.js";
 export const title = "Plan";
 const NAME = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", block: "Blokada eksportu" };
 const COL = { charge: "#3d8dff", sell: "#1fe090", self: "#4a6378", block: "#ff4757" };
 const st = { mode: "fwd", day: null, d0: null, d1: null, data: null, fakt: null, loading: false, first: null, err: null };
 const iso = d => d.toLocaleDateString("sv-SE");
+const MB = () => mBands(0, 9e15).map(b => ({ a: b.a, b: b.b, c: MC[b.typ], txt: b.txt }));
 const DOT = c => `<i class="d" style="background:${c}"></i>`;
 const tipRow = r => `<div class="tt2">${r.t.toLocaleString("pl-PL", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</div>
   <div><span>${DOT(CYAN)}Cena sprzedaży (RCE)</span><b>${fmt(r.price, 2, "zł/kWh")}</b></div>
@@ -49,12 +51,12 @@ function manual(c, a) {
 
 function fwd(c) {
   const p = S(c.hass, "sensor.ems_plan"); if (!p) return `<div class="box">Brak sensora planu.</div>`;
-  loadFwd(c);
+  loadFwd(c); loadManual(c);
   const a = p.attributes, s = a.podsumowanie || {}, sez = c.zone.summer ? "lato" : "zima";
   const rows = (a.plan || []).map(x => ({ ...x, t: new Date(x.start), ch: x.action === "charge" ? x.grid_kwh : 0, sl: x.action === "sell" ? x.grid_kwh : 0, loadp: x.load }));
   const thr = [["prog_tania", "#facc15", "tania"], ["prog_droga", "#ff4757", "droga"], ["prog_bezcen", "#cbd5e1", "za bezcen"]].map(([k, col, nm]) => ({ v: num(c.hass, `number.ems_${k}_${sez}`, 0), c: col, name: `${nm} ${fmt(num(c.hass, `number.ems_${k}_${sez}`), 2)}` }));
   setSocMin(num(c.hass, "number.ems_soc_min", null));
-  const main = pwChart({ key: "fwd", rows, h: 560, tipf: tipRow, hlines: thr,
+  const main = pwChart({ key: "fwd", rows, h: 560, tipf: tipRow, hlines: thr, bands: MB(),
     prices: [{ k: "price", c: CYAN, name: "Cena sprzedaży (RCE)", act: r => r.sl > 0 }, { f: r => g12Price(r.t), c: PINK, name: "Cena kupna (G12)", act: r => r.ch > 0 }],
     socs: [{ k: "soc", c: "#a78bfa", name: "SOC (plan)", fill: true }],
     areas: [{ k: "ch", c: "#3d8dff", name: "Ładowanie z sieci" }, { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż" }],
@@ -79,6 +81,7 @@ function fwd(c) {
 
 function money(m, cls = "") { return m ? `<td class="r">${fmt(m.kup_tanio_kwh, 1)} / ${fmt(m.kup_drogo_kwh, 1)}</td><td class="r t-r">${fmt(m.koszt_zl, 2)}</td><td class="r">${fmt(m.sprzedaz_kwh, 1)}</td><td class="r t-g">${fmt(m.przychod_zl, 2)}</td><td class="r" title="SOC ${fmt(m.soc_start, 0)}% → ${fmt(m.soc_koniec, 0)}%"><span class="lab">${fmt(m.soc_start, 0)}→${fmt(m.soc_koniec, 0)}%</span> ${m.bateria_zl >= 0 ? "+" : ""}${fmt(m.bateria_zl, 2)}</td><td class="r"><b class="${cls}">${fmt(m.bilans_zl, 2, "zł")}</b></td>` : ""; }
 function back(c) {
+  loadManual(c);
   if (!st.first) { st.first = "…"; api(c, "").then(r => { st.first = r.pierwszy_dzien || "brak"; c.render(true); }).catch(() => { st.first = "brak"; }); }
   if (!st.d0) { const y = new Date(Date.now() - 864e5); st.d0 = st.d1 = iso(y); }
   const d = st.data, tot = d?.razem, single = st.d0 === st.d1;
@@ -88,7 +91,7 @@ function back(c) {
     const fk = Object.fromEntries(d.szczegoly.fakt.map(f => [new Date(f.start).getTime(), f]));
     sim.forEach(r => { const f = fk[new Date(r.t).setMinutes(0, 0, 0)]; r.soc_f = f?.soc ?? null; r.imp_f = f ? f.imp / 4 : 0; r.exp_f = f ? f.exp / 4 : 0; });
     const tipB = r => tipRow(r) + `<div style="border-top:1px solid #1d3a55;margin-top:5px;padding-top:4px"><span>Stary: pobór / oddanie</span><b>${fmt(r.imp_f, 2)} / ${fmt(r.exp_f, 2, "kWh")}</b></div><div><span>SOC stary</span><b>${fmt(r.soc_f, 0, "%")}</b></div>`;
-    det = `<div class="box"><div class="h"><span>📈 ${st.d0}: nasz EMS (symulacja) vs stary (fakt)</span></div>${pwChart({ key: "back", rows: sim, now: false, h: 560, tipf: tipB,
+    det = `<div class="box"><div class="h"><span>📈 ${st.d0}: nasz EMS (symulacja) vs stary (fakt)</span></div>${pwChart({ key: "back", rows: sim, now: false, h: 560, tipf: tipB, bands: MB(),
       prices: [{ k: "price", c: CYAN, name: "Cena sprzedaży (RCE)", act: r => r.sl > 0 }, { f: r => g12Price(r.t), c: PINK, name: "Cena kupna (G12)", act: r => r.ch > 0 }],
       socs: [{ k: "soc", c: "#a78bfa", name: "SOC nasz", fill: true }, { k: "soc_f", c: "#ffffff", name: "SOC stary (fakt)", w: 2 }],
       areas: [{ k: "ch", c: "#3d8dff", name: "Ładowanie (nasz)" }, { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż (nasz)" }],

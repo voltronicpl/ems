@@ -1,5 +1,17 @@
 # Zmiany EMS
 
+## v0.6.1
+
+**Dodane**
+- Historia ręcznego kupna / sprzedaży (14 dni, Store `ems_reczne_<wpis>`): od–do, zadane i zrobione kWh, **kwota zł** (kupno: stawka G12 w danej chwili, sprzedaż: RCE × mnożnik depozytu, liczone przyrostowo co cykl), powód końca (cel / granica SOC / limit 4 h / przerwane / zastąpione). API `GET /api/ems/reczne?dni=`.
+- Sensory `sensor.ems_reczne_kupione_dzis` i `sensor.ems_reczne_sprzedane_dzis` (kWh, od północy; atrybuty `zl`, `ile_razy`, `wpisy`).
+- Przegląd: „Ręcznie teraz” – podsumowanie dnia (kupione / sprzedane, kWh i zł), 3 ostatnie wpisy z godzinami, kliknięcie → okno z pełną listą (dziś / 7 / 14 dni, sumy). Kwota zł także przy zadaniu w toku.
+- Przegląd: „Energia dziś” – wiersze „Ręcznie kupione” i „Ręcznie sprzedane” (kWh · zł).
+- Wykresy (Profil mocy, Plan „Teraz + 24 h” i „Wstecz”): ręczne kupno / sprzedaż jako zaznaczony pas czasu z opisem (kupno pomarańczowe, sprzedaż niebieska).
+
+**Zmienione**
+- Profil mocy (Przegląd): dane co 1 minutę zamiast średnich 15-min, wypełnione linie zamiast słupków, najechanie / dotyk na każdą minutę (godzina, PV, bateria, sieć, dom, SOC, ręczne w tej minucie). Odświeżany po każdym nowym odczycie pomiarów z dataloggera (dociągany tylko nowy kawałek historii).
+
 ## v0.6.0
 
 **Dodane**

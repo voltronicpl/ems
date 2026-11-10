@@ -70,7 +70,7 @@ export const g12Price = t => cheapAt(t) ? G12_ZL.cheap : G12_ZL.expensive;
 const OFF = {};
 const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100].find(s => span / s <= n) || 200;
 const ICC = { coins: "#facc15", bolt: "#facc15", batteryBolt: "#3ee07a" };
-export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf }) {
+export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [] }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
   // Trzy pasy na wspolnej osi czasu (kazdy z jedna osia): ceny zl/kWh | moc kW | SOC %. Na komputerze opis pasa z ikona po lewej.
   const off = OFF[key] = OFF[key] || {}, mob = ui.mob;
@@ -98,6 +98,10 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   // tanie strefy G12
   let z0 = -1; rows.forEach((r, i) => { const c = cheapAt(r.t); if (c && z0 < 0) z0 = i; if ((!c || i === n - 1) && z0 >= 0) { const e = c ? i + 1 : i;
     g += `<rect x="${x(z0)}" y="${T - 7}" width="${x(e) - x(z0)}" height="${bot - T + 14}" class="pw-night"/>`; z0 = -1; } });
+  // pasy recznego kupna / sprzedazy (bands: [{a, b (ms), c, txt}])
+  if (n > 1) { const t0 = rows[0].t.getTime(), dt = rows[1].t - rows[0].t, xt = t => L + (t - t0) / dt * bw;
+    for (const b of bands) { const a = Math.max(L, xt(b.a)), e = Math.min(W - R, xt(b.b)); if (e <= a) continue;
+      g += `<rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 2).toFixed(1)}" height="${bot - T + 14}" fill="${b.c}" opacity=".12"/><rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 2).toFixed(1)}" height="3" fill="${b.c}"/><text x="${(a + 3).toFixed(1)}" y="${bot + 4}" style="fill:${b.c};font-size:11px;font-weight:600">${b.txt}</text>`; } }
   const pill = (y, c, txt) => { const w = txt.length * 6.6 + 16, x0 = W - R - w - 4; return `<rect x="${x0}" y="${y - 11}" width="${w}" height="22" rx="11" fill="#0b1828"/><rect x="${x0}" y="${y - 11}" width="${w}" height="22" rx="11" fill="${c}" fill-opacity=".2" stroke="${c}" stroke-opacity=".85"/><text x="${x0 + w / 2}" y="${y + 4}" text-anchor="middle" style="fill:${c};font-size:12px;font-weight:600">${txt}</text>`; };
   if (hasP) { pane(tP, hP, "coins", "Ceny|energii", "zł/kWh"); const pst = pTop > 3 ? 0.5 : 0.25;
     for (let v = 0; v <= pTop + 1e-9; v += pst) g += `<line x1="${L}" x2="${W - R}" y1="${YP(v)}" y2="${YP(v)}" class="grid"/><text x="${L - 8}" y="${YP(v) + 4}" text-anchor="end" class="ax">${fmt(v, 2)}</text>`; }
