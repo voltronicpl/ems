@@ -1,6 +1,6 @@
 """Stale integracji EMS."""
 DOMAIN = "ems"
-VERSION = "0.5.2"
+VERSION = "0.5.3"
 CONF_DEVICE = "device"          # prefiks encji ESPHome, np. "ecobss"
 DEFAULT_DEVICE = "ecobss"
 POLL_NUMBER = "interwal_odczytu"
@@ -114,7 +114,8 @@ PARAMS = {
     "arbitraz_noc_zima": ("Sprzedaz w taniej strefie zima (1 = wl.)", 0, 1, 1, "", 1),
     "arbitraz_zysk_lato": ("Min. zysk z dokupienia lato", 0, 2, 0.01, "zl/kWh", 0.10),
     "arbitraz_zysk_zima": ("Min. zysk z dokupienia zima", 0, 2, 0.01, "zl/kWh", 0.10),
-    "sprawnosc_baterii": ("Sprawnosc baterii (ladowanie + rozladowanie)", 50, 100, 1, "%", 87),
+    "sprawnosc_ladowania": ("Sprawnosc ladowania baterii", 50, 100, 1, "%", 93),
+    "sprawnosc_rozladowania": ("Sprawnosc rozladowania baterii", 50, 100, 1, "%", 93),
     "koszt_cyklu_zl": ("Koszt zuzycia baterii", 0, 2, 0.01, "zl/kWh", 0.15),
     "mn_slonecznie_lato": ("Mnoznik PV slonecznie lato", 0, 2, 0.01, "x", 1.0),
     "mn_slonecznie_zima": ("Mnoznik PV slonecznie zima", 0, 2, 0.01, "x", 1.0),

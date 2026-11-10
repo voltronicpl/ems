@@ -44,8 +44,10 @@ class EmsDashboard extends HTMLElement {
     }
     const ok = res.items.filter(r => r.ok), bad = res.items.filter(r => !r.ok);
     const dev = res.items.some(r => !r.entity_id.split(".")[1].startsWith("ems_"));
-    if (!bad.length) this.toast("ok", `✅ Zapisano${dev ? " – falownik potwierdził" : ""} (${ok.length})`, ok.map(r => `${name(r.entity_id)} = ${r.got}`));
-    else this.toast("err", `❌ Nie zapisano ${bad.length} z ${res.items.length}`, [...bad.map(r => `❌ ${name(r.entity_id)}: ${r.msg}`), ...ok.map(r => `✅ ${name(r.entity_id)} = ${r.got} – zapisano`)]);
+    const same = ok.filter(r => r.same), wr = ok.filter(r => !r.same);
+    const okLines = [...wr.map(r => `${name(r.entity_id)} = ${r.got}`), ...same.map(r => `${name(r.entity_id)} = ${r.got} – bez zmian, nie wysyłano`)];
+    if (!bad.length) this.toast("ok", wr.length ? `✅ Zapisano${dev ? " – falownik potwierdził" : ""} (${wr.length})${same.length ? `, bez zmian ${same.length}` : ""}` : `✅ Bez zmian – falownik już ma te wartości (${same.length})`, okLines);
+    else this.toast("err", `❌ Nie zapisano ${bad.length} z ${res.items.length}`, [...bad.map(r => `❌ ${name(r.entity_id)}: ${r.msg}`), ...ok.map(r => `✅ ${name(r.entity_id)} = ${r.got} – ${r.same ? "bez zmian" : "zapisano"}`)]);
   }
 
   // --- pola wspolne: zmiany zbierane w grupie, zapis przyciskiem "Zapisz" ---

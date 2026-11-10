@@ -7,6 +7,7 @@ Sprawdzenie = poczekac, az datalogger zrobi pelny cykl odczytu PO zapisie, i dop
 - z licznikiem cykli w ESP (sensor.<dev>_licznik_odczytow): licznik +2 od zapisu = pelny cykl po zapisie,
 - bez licznika: 2 x interwal odczytu + 3 s i dowod, ze datalogger zyje (inne odczyty zmienialy sie po zapisie).
 Brak dowodu odczytu do konca czasu -> "nie potwierdzono" (blad). Parametry EMS (number.ems_*) - od razu.
+Encja dataloggera, ktora juz ma wysylana wartosc, NIE jest zapisywana (wynik "bez zmian", log [zapis] BEZ ZMIAN).
 
 POST /api/ems/zapis {"dev": "ecobss", "items": [{"entity_id": "...", "value": 5000}]}
   value: liczba (number), true/false (switch), tekst opcji (select)
@@ -120,6 +121,11 @@ async def write_verified(hass: HomeAssistant, dev: str, items: list[dict]) -> li
             res.update(ok=False, got=None, msg="limit twardy – zapis tylko z panelu")
             out.append(res)
             continue
+        cur = hass.states.get(entity)
+        if not _local(entity) and _match(cur, want):  # falownik juz ma te wartosc -> bez zapisu (zapis tylko przy zmianie)
+            res.update(ok=True, got=cur.state, same=True, msg=f"bez zmian – falownik już ma {cur.state}")
+            out.append(res)
+            continue
         try:
             await _write(hass, entity, want)
         except Exception as e:  # noqa: BLE001 - blad jednej encji nie blokuje reszty
@@ -137,7 +143,7 @@ async def write_verified(hass: HomeAssistant, dev: str, items: list[dict]) -> li
     for res, task in wait:                          # sprawdzanie rownolegle - jeden cykl odczytu dla wszystkich
         res.update(await task)
     for r in out:
-        (LOG.info if r["ok"] else LOG.error)("%s %s = %s -> %s", "ZAPISANO" if r["ok"] else "NIE ZAPISANO",
+        (LOG.info if r["ok"] else LOG.error)("%s %s = %s -> %s", "BEZ ZMIAN" if r.get("same") else "ZAPISANO" if r["ok"] else "NIE ZAPISANO",
                                              r["entity_id"].split(".", 1)[1], r["want"], r["msg"])
     return out
 

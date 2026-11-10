@@ -1,4 +1,4 @@
-# EMS – algorytm, moduły i encje (v0.5.0)
+# EMS – algorytm, moduły i encje (v0.5.3)
 
 ## Przepływ
 
@@ -23,11 +23,12 @@ Sloty 15 min, horyzont = do końca znanych cen RCE (min. 12 h).
    - RCE ≥ `prog_droga` → sprzedaje nawet energię potrzebną domowi,
    - RCE ≥ `prog_tania` → sprzedaje nadwyżkę ponad potrzeby domu do następnej taniej strefy,
    - RCE ≥ `prog_bezcen` i po pojawieniu się nadwyżki PV → sprzedaje tylko nadwyżkę PV.
-   - **dokupienie pod sprzedaż** (`arbitraz_<sezon>` = 1): próg „tania” obniżony do progu opłacalności `(0,61 / sprawnosc_baterii + koszt_cyklu_zl + arbitraz_zysk_<sezon>) / depozyt_mnoznik` (domyślnie ≈ 0,77 zł); energia „ponad potrzeby domu” liczona z realnej mocy ładowania w poprzedniej taniej strefie (SOC startu + długość strefy × moc ładowania, max `soc_max`).
+   - **dokupienie pod sprzedaż** (`arbitraz_<sezon>` = 1): próg „tania” obniżony do progu opłacalności `(0,61 / (sprawnosc_ladowania × sprawnosc_rozladowania) + koszt_cyklu_zl + arbitraz_zysk_<sezon>) / depozyt_mnoznik` (domyślnie ≈ 0,77 zł); energia „ponad potrzeby domu” liczona z realnej mocy ładowania w poprzedniej taniej strefie (SOC startu + długość strefy × moc ładowania, max `soc_max`).
 3a. **Sprzedaż w taniej strefie** (`arbitraz_noc_<sezon>` = 1): w taniej strefie (≥ 2 h) wybiera pełne godziny zegarowe z RCE ≥ progu opłacalności, od najdroższej; godzinę bierze, jeśli symulacja (sprzedaż + dom z baterii w tej godzinie, ładowanie pełną mocą w pozostałych) nie zejdzie poniżej zapasu i na koniec strefy dojdzie do celu. W godzinie sprzedaży: dom z baterii, bez ładowania (bilansowanie godzinowe). Limit dzienny zjadają najpierw okna drogie, noc dostaje resztę.
 4. **Cel ładowania** na koniec taniej strefy = zapas + potrzeby domu w następnym oknie + zaplanowana sprzedaż − nadwyżka PV, ograniczony do `soc_max`.
 5. **Symulacja** slot po slocie: SOC, pobór/oddanie z sieci (`imp`/`exp`), akcja (`charge`/`sell`/`self`/`block`) i **powód** (`why`).
-6. **Blokada eksportu**: bateria pełna i RCE < `prog_bezcen` → `block`.
+6. **Straty baterii**: do baterii trafia energia × `sprawnosc_ladowania` (sieć, nadwyżka PV), ubywa energia / `sprawnosc_rozladowania` (dom, sprzedaż). Limit mocy ładowania po stronie baterii; pobór z sieci = energia do baterii / sprawność ładowania.
+7. **Blokada eksportu**: bateria pełna i RCE < `prog_bezcen` → `block`.
 
 Moc ładowania = min(limit prądu ładowania 🔒, prąd ładowania z sieci 🔒, limit BMS z temperatury) × napięcie baterii.
 
@@ -48,7 +49,7 @@ Statystyki godzinowe HA (bezterminowe) dla prefiksów `modbus_falownik` (stary s
 
 ## Zapis z panelu (`verify.py`, `POST /api/ems/zapis`)
 
-Panel (Zapisz, przełączniki, listy) → EMS zapisuje po kolei → czeka na pełny cykl odczytu dataloggera po zapisie → porównuje (liczby z tolerancją pół kroku encji). Wynik per encja: ok / „falownik ma X” / „nie potwierdzono” + linia `[zapis]` w logu. Licznik cykli `sensor.<dev>_licznik_odczytow` (opcjonalny) przyspiesza; bez niego 2 × interwał + 3 s. Parametry `number.ems_*` sprawdzane od razu.
+Panel (Zapisz, przełączniki, listy) → EMS zapisuje po kolei → czeka na pełny cykl odczytu dataloggera po zapisie → porównuje (liczby z tolerancją pół kroku encji). Wynik per encja: ok / „falownik ma X” / „nie potwierdzono” + linia `[zapis]` w logu. Licznik cykli `sensor.<dev>_licznik_odczytow` (opcjonalny) przyspiesza; bez niego 2 × interwał + 3 s. Parametry `number.ems_*` sprawdzane od razu. Encja, która już ma wysyłaną wartość, nie jest zapisywana („bez zmian”, `[zapis] BEZ ZMIAN`).
 
 ## Diagnostyka (`diag.py`)
 

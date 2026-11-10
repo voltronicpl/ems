@@ -1,5 +1,21 @@
 # Zmiany EMS
 
+## v0.5.3
+
+**Dodane**
+- Straty baterii w planie: dwa parametry „Sprawność ładowania” i „Sprawność rozładowania” (domyślnie 93% / 93%, razem ≈ 86,5%).
+  - do baterii trafia energia × sprawność ładowania (z sieci i z nadwyżki PV) – 1 kWh z sieci = 0,93 kWh w baterii,
+  - z baterii ubywa energia / sprawność rozładowania (dom, sprzedaż) – 1 kWh do domu = 1,075 kWh z baterii,
+  - cel ładowania, energia „ponad potrzeby domu” i sprzedaż w taniej strefie liczone po stratach, pobór z sieci przy ładowaniu ze stratami,
+  - symulacja wstecz liczy z tym samym modelem.
+- Zapis z panelu tylko przy zmianie: jeśli falownik już ma tę wartość, EMS nic nie wysyła – „✅ Bez zmian – falownik już ma …”, w logu `[zapis] BEZ ZMIAN`.
+
+**Zmienione**
+- Próg opłacalności dokupienia: 0,61 / (sprawność ładowania × rozładowania) + zużycie + zysk (przy 93 × 93 ≈ 0,78 zł – praktycznie jak dotąd).
+
+**Usunięte**
+- Parametr „Sprawność baterii” (`number.ems_sprawnosc_baterii`) – zastąpiony dwoma powyżej. Starą encję można usunąć w HA (Ustawienia → Encje).
+
 ## v0.5.2
 
 **Dodane**
