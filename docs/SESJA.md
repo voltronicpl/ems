@@ -1,4 +1,4 @@
-# Notatka dla nowej sesji (kontekst projektu EMS) – stan na v0.5.4
+# Notatka dla nowej sesji (kontekst projektu EMS) – stan na v0.5.5
 
 > **Aktualizować ten plik przy KAŻDEJ nowej wersji** (prośba użytkownika) – nowa sesja ma z niego wiedzieć wszystko.
 
@@ -14,7 +14,7 @@
 
 ## Repo `voltronicpl/ems` (publiczne)
 - `custom_components/ems/` – integracja; moduły: `prices tariff weather pv_forecast load_forecast planner executor manual backtest diag engine verify` + encje `sensor switch number button plan_sensor entity`. Parametry: `const.PARAMS` → `number.ems_<klucz>` (RestoreNumber – zapisana wartość wygrywa z nową domyślną).
-- `frontend/` (w `custom_components/ems/frontend/`) – panel boczny (`ems-panel.js` + `core.js` + `tips.js` + `inverter_spec.js` + `tabs/overview|plan|settings|diag.js`), styl z `voltronicpl/PGE-depozyt`. **Telefon** (≤700 px): style w `@media(max-width:700px)` na końcu `CSS` w `core.js`; tabele, które mają się zamieniać w karty, dostają klasę `rt` i `data-l="etykieta"` na `<td>` (`hd` = nagłówek karty, `wide` = tekst pod etykietą). Wykresy planu: `core.pwChart()` = kopia stylu „Moc i bateria” (`pwSvg` z `pge-net-billing.js`); stary `chart()` tylko dla małych wykresów PV/zużycia.
+- `frontend/` (w `custom_components/ems/frontend/`) – panel boczny (`ems-panel.js` + `core.js` + `tips.js` + `inverter_spec.js` + `tabs/overview|plan|settings|diag.js`), styl z `voltronicpl/PGE-depozyt`. **Telefon** (≤700 px): style w `@media(max-width:700px)` na końcu `CSS` w `core.js`; tabele, które mają się zamieniać w karty, dostają klasę `rt` i `data-l="etykieta"` na `<td>` (`hd` = nagłówek karty, `wide` = tekst pod etykietą). Wykresy planu: `core.pwChart()` – 3 pasy (ceny / moc / SOC) w stylu PGE (neonowe ceny, ciemne tło); stary `chart()` tylko dla małych wykresów PV/zużycia.
 - **Release automatyczny**: `.github/workflows/release.yml` – po pushu na main tworzy release `v<manifest.version>` z opisem z `CHANGELOG.md` (HACS pokazuje go w HA). Przy każdej nowej wersji: podbić `const.VERSION` + `manifest.json` (to też `?v=` w URL panelu = cache), dopisać `## vX.Y.Z` do `CHANGELOG.md` i **zaktualizować ten plik**. Sesja sama nie tworzy releasów/tagów – robi to workflow.
 
 ## Historia wersji (skrót)
@@ -24,6 +24,7 @@
 - **v0.5.2** – zapis ze sprawdzeniem (`verify.py`, `POST /api/ems/zapis`): panel nie woła już `number.set_value` sam, tylko przez EMS, który czeka na pełny cykl odczytu po zapisie (ESPHome publikuje wartość „na słowo”, a HA połyka identyczne odczyty – dlatego nie `last_reported`). Z `sensor.<dev>_licznik_odczytow` (do dodania w YAML) – licznik +2; bez – 2 × interwał + 3 s i dowód, że datalogger żyje. Executor (algorytm) jeszcze NIE sprawdza – czeka na decyzję.
 - **v0.5.3** – straty baterii w planie: `sprawnosc_ladowania` / `sprawnosc_rozladowania` (93/93, zastąpiły `sprawnosc_baterii`) – do baterii energia × ładowanie, z baterii energia / rozładowanie; cel ładowania, „spare”, sprzedaż w taniej strefie i backtest po stratach. Zapis z panelu pomija encje, które już mają wartość („bez zmian”).
 - **v0.5.4** – pliki panelu pod `/ems_static/<VERSION>/` (było `/ems_static/`): importy bez `?v=` (`core.js`, `tips.js`, `inverter_spec.js`) brały stary plik z cache → biały ekran. Wersja w ścieżce = automatyczne odświeżenie wszystkich modułów.
+- **v0.5.5** – `core.pwChart()` = 3 pasy na wspólnej osi czasu (ceny zł/kWh | moc kW | SOC %), każdy z jedną osią; `areas` = słupki, `lines[0]` = schodki z wypełnieniem (PV, `nofill` wyłącza), linia minimum SOC przez `setSocMin()`. Makieta zatwierdzona przez użytkownika.
 
 ## Ustalenia (decyzje użytkownika)
 - **Dzienny limit sprzedaży** obejmuje wszystko (nadwyżka PV + dokupione): PV × `limit_sprzedazy_<sezon>` (zima 1,5× – np. PV 4 kWh → sprzedaż 6, czyli 2 kWh dokupione); dzień bez PV → losowo **2000–4567 Wh** (`los_min_wh_*`, `los_max_wh_*`, ziarno = data).

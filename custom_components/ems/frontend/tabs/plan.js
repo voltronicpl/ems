@@ -1,4 +1,4 @@
-import { S, num, fmt, tip, chart, pwChart, PINK, CYAN, g12Price, hm, esc } from "../core.js";
+import { S, num, fmt, tip, chart, pwChart, setSocMin, PINK, CYAN, g12Price, hm, esc } from "../core.js";
 import { T } from "../tips.js";
 export const title = "Plan";
 const NAME = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", block: "Blokada eksportu" };
@@ -37,11 +37,12 @@ function fwd(c) {
   const a = p.attributes, s = a.podsumowanie || {}, sez = c.zone.summer ? "lato" : "zima";
   const rows = (a.plan || []).map(x => ({ ...x, t: new Date(x.start), ch: x.action === "charge" ? x.grid_kwh : 0, sl: x.action === "sell" ? x.grid_kwh : 0, loadp: x.load }));
   const thr = [["prog_tania", "#ffaa22", "tania"], ["prog_droga", "#ff4757", "droga"], ["prog_bezcen", "#9bb3c6", "za bezcen"]].map(([k, col, nm]) => ({ v: num(c.hass, `number.ems_${k}_${sez}`, 0), c: col, name: `${nm} ${fmt(num(c.hass, `number.ems_${k}_${sez}`), 2)}` }));
-  const main = pwChart({ key: "fwd", rows, h: 420, tipf: tipRow, hlines: thr,
+  setSocMin(num(c.hass, "number.ems_soc_min", null));
+  const main = pwChart({ key: "fwd", rows, h: 460, tipf: tipRow, hlines: thr,
     prices: [{ k: "price", c: CYAN, name: "Cena sprzedaży (RCE)", act: r => r.sl > 0 }, { f: r => g12Price(r.t), c: PINK, name: "Cena kupna (G12)", act: r => r.ch > 0 }],
     socs: [{ k: "soc", c: "#a78bfa", name: "SOC (plan)", fill: true }],
     areas: [{ k: "ch", c: "#3d8dff", name: "Ładowanie z sieci" }, { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż" }],
-    lines: [{ k: "pv", c: "#ffad2e", name: "PV (prognoza)" }, { k: "loadp", c: "#ff4757", name: "Dom (prognoza)" }] });
+    lines: [{ k: "pv", c: "#ffad2e", name: "PV (prognoza)" }, { k: "loadp", c: "#ff4757", name: "Dom (prognoza)", nofill: true }] });
   const fk = (st.fakt || []).map(f => ({ t: new Date(f.start), pva: f.pv / 1000, loada: f.load != null ? f.load / 1000 : null }));
   const hourly = (key, fkey) => { const m = {}; rows.forEach(r => { const k = new Date(r.t).setMinutes(0, 0, 0); m[k] = (m[k] || 0) + r[key]; }); const ks = Object.keys(m).map(Number).sort(); fk.forEach(f => { const k = f.t.getTime(); if (!(k in m)) { m[k] = null; ks.push(k); } }); return [...new Set(ks)].sort().map(k => ({ t: new Date(k), [key]: m[k], [fkey]: fk.find(f => f.t.getTime() === k)?.[fkey] ?? null })); };
   const pvc = chart({ key: "pv", rows: hourly("pv", "pva"), bars: [{ k: "pv", c: "#ffaa22", name: "Prognoza PV" }], lines: [{ k: "pva", c: "#fff", name: "Faktyczna produkcja" }], unit: "kWh/h", h: 200, tipf: r => `<div class="tt2">${hm(r.t)}</div><div><span>Prognoza</span><b>${fmt(r.pv, 2, "kWh")}</b></div><div><span>Fakt</span><b>${fmt(r.pva, 2, "kWh")}</b></div>` });
@@ -70,12 +71,12 @@ function back(c) {
     const fk = Object.fromEntries(d.szczegoly.fakt.map(f => [new Date(f.start).getTime(), f]));
     sim.forEach(r => { const f = fk[new Date(r.t).setMinutes(0, 0, 0)]; r.soc_f = f?.soc ?? null; r.imp_f = f ? f.imp / 4 : 0; r.exp_f = f ? f.exp / 4 : 0; });
     const tipB = r => tipRow(r) + `<div style="border-top:1px solid #1d3a55;margin-top:5px;padding-top:4px"><span>Stary: pobór / oddanie</span><b>${fmt(r.imp_f, 2)} / ${fmt(r.exp_f, 2, "kWh")}</b></div><div><span>SOC stary</span><b>${fmt(r.soc_f, 0, "%")}</b></div>`;
-    det = `<div class="box"><div class="h"><span>📈 ${st.d0}: nasz EMS (symulacja) vs stary (fakt)</span></div>${pwChart({ key: "back", rows: sim, now: false, h: 420, tipf: tipB,
+    det = `<div class="box"><div class="h"><span>📈 ${st.d0}: nasz EMS (symulacja) vs stary (fakt)</span></div>${pwChart({ key: "back", rows: sim, now: false, h: 460, tipf: tipB,
       prices: [{ k: "price", c: CYAN, name: "Cena sprzedaży (RCE)", act: r => r.sl > 0 }, { f: r => g12Price(r.t), c: PINK, name: "Cena kupna (G12)", act: r => r.ch > 0 }],
       socs: [{ k: "soc", c: "#a78bfa", name: "SOC nasz", fill: true }, { k: "soc_f", c: "#ffffff", name: "SOC stary (fakt)", w: 2 }],
       areas: [{ k: "ch", c: "#3d8dff", name: "Ładowanie (nasz)" }, { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż (nasz)" }],
-      lines: [{ f: r => r.imp_f - r.exp_f, c: "#ffad2e", name: "Sieć stary (pobór − oddanie)" }] })}
-      <div class="note">Gruba neonowa linia = wtedy nasz EMS kupuje (róż) albo sprzedaje (turkus). Kliknij pigułkę, żeby ukryć serię. Stary EMS: godzinowe liczniki rozłożone na 15 min.</div></div>`;
+      lines: [{ f: r => r.imp_f - r.exp_f, c: "#ffad2e", name: "Sieć stary (pobór − oddanie)", nofill: true }] })}
+      <div class="note">Trzy pasy: ceny, moc i SOC na wspólnej osi czasu. Gruba neonowa linia = wtedy nasz EMS kupuje (róż) albo sprzedaje (turkus). Kliknij pigułkę, żeby ukryć serię. Stary EMS: godzinowe liczniki rozłożone na 15 min.</div></div>`;
   }
   const months = {}; (d?.dni || []).forEach(x => { const m = x.dzien.slice(0, 7); months[m] = months[m] || { s: 0, n: 0, r: 0, d: 0 }; months[m].s += x.stary.bilans_zl; months[m].n += x.nowy.bilans_zl; months[m].r += x.roznica_zl; months[m].d++; });
   return `<div class="box"><div class="h"><span>⏪ Symulacja wstecz – nasz EMS vs poprzedni${tip(T.wstecz)}</span><span class="lab">dane od: ${st.first || "…"}</span></div>

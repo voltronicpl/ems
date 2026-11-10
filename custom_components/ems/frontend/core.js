@@ -59,6 +59,7 @@ const CHARTS = {};
 
 // ---------- Wykres "Moc i bateria" 1:1 jak w PGE Net-Billing (pwSvg) ----------
 // rows: sloty 15 min [{t: Date, ...}]; wartosci energii w kWh/slot -> rysowane jako srednia moc kW (×4).
+// v0.5.5: trzy pasy (ceny | moc | SOC) na wspolnej osi czasu; areas = slupki, lines[0] = schodki z wypelnieniem (PV).
 // areas: schodki z wypelnieniem do zera, lines: schodki bez wypelnienia ({k, c, name, sign, f: r => wartosc}),
 // prices: neonowe schodki na prawej osi zl/kWh ({k|f, c, name, act: r => bool} – gruba swiecaca linia gdy act),
 // socs: linie na osi % ({k, c, name, w, fill}), hlines: progi cenowe ({v, c, name}). key: stan pigulek legendy.
@@ -69,40 +70,61 @@ const OFF = {};
 const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100].find(s => span / s <= n) || 200;
 export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
+  // Trzy pasy na wspolnej osi czasu (kazdy z jedna osia): ceny zl/kWh | moc kW | SOC %.
   const off = OFF[key] = OFF[key] || {};
-  const id = "c" + (++CH), W = vbW(), L = ui.mob ? 40 : 50, R = ui.mob ? 50 : 60, T = 16, B = 34, n = rows.length, bw = (W - L - R) / n, ih = h - T - B;
+  const id = "c" + (++CH), W = vbW(), L = ui.mob ? 44 : 56, R = ui.mob ? 10 : 16, T = 22, B = 28, GAP = 30, n = rows.length, bw = (W - L - R) / n;
+  const hasP = prices.some(p => !off[p.name]) || hlines.length, hasS = socs.some(s => !off[s.name]);
+  const free = h - T - B - GAP * 2, hP = hasP ? free * 0.32 : 0, hS = hasS ? free * 0.2 : 0, hM = free - hP - hS;
+  const tP = T, tM = tP + (hasP ? hP + GAP : 0), tS = tM + hM + GAP, bot = hasS ? tS + hS : tM + hM;
   const x = i => L + i * bw, val = (s, r) => { const v = s.f ? s.f(r) : r[s.k]; return v == null || isNaN(v) ? null : (s.sign || 1) * v * (s.raw ? 1 : 4); };
+  // --- osie
   const kw = [...areas, ...lines].filter(s => !off[s.name]).flatMap(s => rows.map(r => val(s, r))).filter(v => v != null);
-  let lo = Math.min(0, ...kw), hi = Math.max(1, ...kw); const st = niceStep(hi - lo, 6); lo = Math.floor(lo / st) * st; hi = Math.ceil(hi / st) * st;
-  const Y = v => T + (hi - v) / (hi - lo) * ih, YS = p => T + (100 - p) / 100 * ih;
+  let lo = Math.min(0, ...kw), hi = Math.max(1, ...kw); const st = niceStep(hi - lo, ui.mob ? 4 : 6); lo = Math.floor(lo / st) * st; hi = Math.ceil(hi / st) * st;
+  const Y = v => tM + (hi - v) / (hi - lo) * hM, YS = p => tS + (100 - p) / 100 * hS;
   const pv = prices.filter(p => !off[p.name]).flatMap(p => rows.map(r => p.f ? p.f(r) : r[p.k])).concat(hlines.map(l => l.v)).filter(v => v != null && !isNaN(v));
-  const pTop = Math.max(3, Math.ceil(Math.max(0, ...pv) * 2) / 2), YP = v => T + (pTop - Math.max(0, v)) / pTop * ih;
+  const pTop = Math.max(1, Math.ceil(Math.max(0, ...pv) * 2) / 2), YP = v => tP + (pTop - Math.max(0, v)) / pTop * hP;
   let g = `<defs><filter id="gl${id}" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
-  rows.forEach((r, i) => { if (cheapAt(r.t)) g += `<rect x="${x(i)}" y="${T}" width="${bw + 0.3}" height="${ih}" class="pw-night"/>`; });
-  for (let v = lo; v <= hi + st / 1e6; v += st) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="${Math.abs(v) < st / 1e6 ? "zero" : "grid"}"/><text x="${L - 7}" y="${Y(v) + 4}" text-anchor="end" class="ax">${String(+v.toFixed(2)).replace(".", ",")}</text>`;
-  const pst = pTop > 4 ? 1 : 0.5; for (let v = 0; v <= pTop + 1e-9; v += pst) g += `<text x="${W - R + 6}" y="${YP(v) + 4}" class="ax pw-pax">${fmt(v, 2)}</text>`;
-  g += `<text x="4" y="12" class="unit">kW</text><text x="${W - R + 4}" y="12" class="unit pw-pax">zł/kWh</text>`;
+  // --- tanie strefy G12: pas przez wszystkie panele + podpis
+  let z0 = -1; rows.forEach((r, i) => { const c = cheapAt(r.t); if (c && z0 < 0) z0 = i; if ((!c || i === n - 1) && z0 >= 0) { const e = c ? i + 1 : i;
+    g += `<rect x="${x(z0)}" y="${T}" width="${x(e) - x(z0)}" height="${bot - T}" class="pw-night"/>`; if (x(e) - x(z0) > 50) g += `<text x="${(x(z0) + x(e)) / 2}" y="${T - 7}" text-anchor="middle" class="pw-zt">tania G12</text>`; z0 = -1; } });
+  const pane = (t, hh, name) => `<text x="${L}" y="${t - 6}" class="unit pw-pn">${name}</text><line x1="${L}" x2="${W - R}" y1="${t + hh}" y2="${t + hh}" class="grid"/>`;
+  // ceny
+  if (hasP) { g += pane(tP, hP, "Ceny zł/kWh"); const pst = pTop > 3 ? 1 : 0.5;
+    for (let v = 0; v <= pTop + 1e-9; v += pst) g += `<line x1="${L}" x2="${W - R}" y1="${YP(v)}" y2="${YP(v)}" class="grid"/><text x="${L - 7}" y="${YP(v) + 4}" text-anchor="end" class="ax">${fmt(v, 2)}</text>`; }
+  // moc
+  g += pane(tM, hM, "Moc kW");
+  for (let v = lo; v <= hi + st / 1e6; v += st) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="${Math.abs(v) < st / 1e6 ? "zero" : "grid"}"/><text x="${L - 7}" y="${Y(v) + 4}" text-anchor="end" class="ax">${(v > 0 ? "+" : "") + String(+v.toFixed(2)).replace(".", ",")}</text>`;
+  if (!ui.mob && lo < 0) g += `<text x="${L + 6}" y="${tM + 13}" class="pw-hint">↑ z sieci do baterii</text><text x="${L + 6}" y="${tM + hM - 6}" class="pw-hint">↓ oddanie do sieci</text>`;
+  // SOC
+  if (hasS) { g += pane(tS, hS, "SOC baterii"); for (const p of [0, 50, 100]) g += `<line x1="${L}" x2="${W - R}" y1="${YS(p)}" y2="${YS(p)}" class="grid"/><text x="${L - 7}" y="${YS(p) + 4}" text-anchor="end" class="ax">${p}%</text>`; }
+  // os czasu (pod ostatnim panelem)
   const span = rows[n - 1].t - rows[0].t, every = Math.max(span > 26 * 36e5 ? 3 : 2, xEvery(span / 36e5, W - L - R));
-  rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % every === 0) g += `${d.getHours() === 0 ? `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${T + ih}" class="vgrid"/>` : ""}<text x="${x(i)}" y="${h - 12}" text-anchor="middle" class="xl">${d.getHours() === 0 && span > 26 * 36e5 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0") + ":00"}</text>`; });
-  // schodki: jeden poziom na slot, przerwa gdy brak wartosci
+  rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % every === 0) g += `${d.getHours() === 0 ? `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="vgrid"/>` : ""}<text x="${x(i)}" y="${bot + 18}" text-anchor="middle" class="xl">${d.getHours() === 0 && span > 26 * 36e5 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0") + ":00"}</text>`; });
   const steps = (f, y) => { let d = "", on = false; rows.forEach((r, i) => { const v = f(r); if (v == null) { on = false; return; } d += on ? `V${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}` : `M${x(i).toFixed(1)} ${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; on = true; }); return d; };
-  for (const s of areas) { if (off[s.name]) continue; const d = steps(r => val(s, r), Y); if (!d) continue;
-    g += d.split("M").filter(Boolean).map(p => { const x0 = p.split(" ")[0]; return `<path d="M${p}V${Y(0).toFixed(1)}H${x0}Z" fill="${s.c}" opacity=".14"/>`; }).join("") + `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="1.5" stroke-linejoin="round" opacity=".9"/>`; }
-  for (const s of lines) { if (off[s.name]) continue; const d = steps(r => val(s, r), Y); if (d) g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 1.5}" stroke-linejoin="round" opacity=".9" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""}/>`; }
-  hlines.forEach(l => g += `<line x1="${L}" x2="${W - R}" y1="${YP(l.v)}" y2="${YP(l.v)}" stroke="${l.c}" stroke-dasharray="6 5" stroke-width="1.2" opacity=".7"/><text x="${W - R - 4}" y="${YP(l.v) - 4}" text-anchor="end" style="fill:${l.c};font-size:11px">${l.name}</text>`);
-  // neonowe ceny: cienka = cena w kwadransie, gruba ze swieceniem = wtedy kupuje / sprzedaje
-  for (const p of prices) { if (off[p.name]) continue; let d = "", hh = ""; rows.forEach((r, i) => { const v = p.f ? p.f(r) : r[p.k]; if (v == null || isNaN(v)) return; const s = `M${x(i).toFixed(1)} ${YP(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; d += s; if (p.act && p.act(r)) hh += s; });
-    g += (d ? `<path d="${d}" fill="none" stroke="${p.c}" stroke-width="1.6" opacity=".55"/>` : "") + (hh ? `<path d="${hh}" fill="none" stroke="${p.c}" stroke-width="4" stroke-linecap="round" filter="url(#gl${id})"/>` : ""); }
-  // SOC na wierzchu: lekkie wypelnienie + gruba linia
-  for (const s of socs) { if (off[s.name]) continue; const d = steps(r => r[s.k] == null ? null : r[s.k], YS); if (!d) continue;
-    if (s.fill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${YS(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".08"/>`).join("");
-    g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 3}" stroke-linejoin="round"/>`; }
-  if (socs.some(s => !off[s.name])) for (let p = 0; p <= 100; p += 25) g += `<text x="${L + 4}" y="${YS(p) - 3}" class="ax pw-sax">${p}%</text>`;
-  if (now) { const t = Date.now(), i = rows.findIndex(r => r.t.getTime() > t); if (i > 0) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${T + ih}" class="nowl"/><text x="${x(i) + 5}" y="${T + 12}" class="nowt">teraz</text>`; }
+  // moc: ladowanie / sprzedaz jako slupki (od zera), PV / dom jako schodki (PV z wypelnieniem)
+  const gp = bw > 5 ? 1 : 0;
+  for (const s of areas) { if (off[s.name]) continue; rows.forEach((r, i) => { const v = val(s, r); if (!v) return; const y0 = Y(0), y1 = Y(v);
+    g += `<rect x="${(x(i) + gp / 2).toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}" width="${Math.max(bw - gp, 0.6).toFixed(1)}" height="${Math.max(Math.abs(y1 - y0), 0.5).toFixed(1)}" fill="${s.c}" opacity=".85"/>`; }); }
+  lines.forEach((s, j) => { if (off[s.name]) return; const d = steps(r => val(s, r), Y); if (!d) return;
+    if (j === 0 && !s.nofill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${Y(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".16"/>`).join("");
+    g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 1.8}" stroke-linejoin="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""}/>`; });
+  // ceny: progi + ciagle schodki, gruba swiecaca linia gdy kupuje / sprzedaje
+  if (hasP) {
+    hlines.forEach(l => { if (l.v > pTop) return; g += `<line x1="${L}" x2="${W - R}" y1="${YP(l.v)}" y2="${YP(l.v)}" stroke="${l.c}" stroke-dasharray="6 5" stroke-width="1.2" opacity=".75"/><text x="${W - R - 4}" y="${YP(l.v) - 4}" text-anchor="end" style="fill:${l.c};font-size:11px">${l.name}</text>`; });
+    for (const p of prices) { if (off[p.name]) continue; const f = r => { const v = p.f ? p.f(r) : r[p.k]; return v == null || isNaN(v) ? null : v; }; const d = steps(f, YP); let hh = "";
+      rows.forEach((r, i) => { const v = f(r); if (v != null && p.act && p.act(r)) hh += `M${x(i).toFixed(1)} ${YP(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; });
+      g += (d ? `<path d="${d}" fill="none" stroke="${p.c}" stroke-width="1.8" stroke-linejoin="round" opacity=".8"/>` : "") + (hh ? `<path d="${hh}" fill="none" stroke="${p.c}" stroke-width="4.5" stroke-linecap="round" filter="url(#gl${id})"/>` : ""); } }
+  // SOC + linia minimum
+  if (hasS) { const mn = OFF.socMin; if (mn != null) g += `<line x1="${L}" x2="${W - R}" y1="${YS(mn)}" y2="${YS(mn)}" stroke="#a78bfa" stroke-dasharray="3 4" opacity=".6"/><text x="${W - R - 4}" y="${YS(mn) - 3}" text-anchor="end" style="fill:#a78bfa;font-size:11px">min ${mn}%</text>`;
+    for (const s of socs) { if (off[s.name]) continue; const d = steps(r => r[s.k] == null ? null : r[s.k], YS); if (!d) continue;
+      if (s.fill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${YS(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".14"/>`).join("");
+      g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 2.5}" stroke-linejoin="round"/>`; } }
+  if (now) { const t = Date.now(), i = rows.findIndex(r => r.t.getTime() > t); if (i > 0) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="nowl"/><text x="${x(i) + 5}" y="${T + 12}" class="nowt">teraz</text>`; }
   CHARTS[id] = { key, rows, P: { l: L }, bw, W, tipf };
-  const legend = [...prices, ...socs, ...areas, ...lines].map(s => `<button class="pw-lg${off[s.name] ? " off" : ""}" data-lg="${esc(key)}|${esc(s.name)}"><i style="background:${s.c}"></i>${s.name}</button>`).join("");
-  return `<div class="pw-legend">${legend}</div><div class="fc-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T}" y2="${T + ih}" style="display:none"/></svg>${tipBox()}</div>`;
+  const legend = [...prices, ...areas, ...lines, ...socs].map(s => `<button class="pw-lg${off[s.name] ? " off" : ""}" data-lg="${esc(key)}|${esc(s.name)}"><i style="background:${s.c}"></i>${s.name}</button>`).join("");
+  return `<div class="pw-legend">${legend}</div><div class="fc-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T}" y2="${bot}" style="display:none"/></svg>${tipBox()}</div>`;
 }
+export const setSocMin = v => { OFF.socMin = v; };
 
 // Dymek wykresu: na komputerze plywa nad wykresem, na telefonie stoi pod wykresem (nie zaslania danych).
 const tipBox = () => ui.mob ? `<div class="fc-tip">👆 Dotknij albo przesuń palcem po wykresie</div>` : `<div class="fc-tip" style="display:none"></div>`;
@@ -179,7 +201,7 @@ input[type=range]{width:100%;accent-color:#2a8cff}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-top:6px}.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .pw-legend{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px}.pw-lg{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:13px;color:var(--mut2);padding:4px 10px;border:1px solid #1d3a55;border-radius:20px;background:transparent;cursor:pointer}.pw-lg.off{opacity:.35}.pw-lg i{width:14px;height:4px;border-radius:2px}
 .pw-svg .grid{stroke:#1a3246}.pw-svg .vgrid{stroke:#14293a;stroke-dasharray:none}.pw-svg .zero{stroke:#3b5a73;stroke-width:1.2}.pw-svg .ax,.pw-svg .xl,.pw-svg .unit{fill:var(--mut);font-size:13px}.pw-svg .pw-pax{fill:#00f5ff;opacity:.85}.pw-svg .pw-sax{fill:#3b8cff;opacity:.55;font-size:11px}
-.pw-svg .pw-night{fill:#3b8cff;opacity:.05}.pw-svg .nowl{stroke:#c9d7e2;stroke-dasharray:3 3;opacity:.6}.pw-svg .nowt{fill:#c9d7e2;font-size:12px}
+.pw-svg .pw-night{fill:#3b8cff;opacity:.09}.pw-svg .pw-zt{fill:#7fa6d6;font-size:11px}.pw-svg .pw-pn{fill:#9fb0c3;font-size:12px}.pw-svg .pw-hint{fill:#5f7a99;font-size:11px}.pw-svg .nowl{stroke:#c9d7e2;stroke-dasharray:3 3;opacity:.6}.pw-svg .nowt{fill:#c9d7e2;font-size:12px}
 .nohist{color:#58778c;text-align:center;padding:40px;font-size:13px}
 .ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .date{display:flex;align-items:center;gap:8px;height:38px;padding:0 10px;border:1px solid #2a4f70;border-radius:9px;background:#0c1f30}.date input{background:transparent;border:0;color:var(--txt);color-scheme:dark;font-size:13.5px}

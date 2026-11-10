@@ -1,5 +1,14 @@
 # Zmiany EMS
 
+## v0.5.5
+
+**Zmienione**
+- Wykres planu („Teraz + 24 h” i „Wstecz”) rozbity na 3 pasy na wspólnej osi czasu – każdy z jedną osią, bez nachodzących podpisów:
+  - **Ceny zł/kWh**: RCE i G12 jako ciągłe schodki (gruba świecąca linia = wtedy kupuje / sprzedaje), progi droga / tania / za bezcen,
+  - **Moc kW**: ładowanie z sieci (niebieskie słupki w górę) i sprzedaż (zielone w dół), PV jako schodki z wypełnieniem, dom jako linia; opis „↑ z sieci do baterii / ↓ oddanie do sieci”,
+  - **SOC baterii**: osobny pas z linią minimum (`soc_min`),
+  - tanie strefy G12 jako pas przez całą wysokość z podpisem „tania G12”, pionowa linia dymka przez wszystkie pasy.
+
 ## v0.5.4
 
 **Poprawione**
