@@ -116,18 +116,25 @@ class EmsDashboard extends HTMLElement {
     const last = S(this._hass, this.e("bateria_soc"))?.last_updated;
     const tx = this.shadowRoot.querySelector(".tabs")?.scrollLeft || 0;
     // bez podjezdzania strony: trzymaj poprzednia wysokosc w trakcie przerysowania i przywroc przewiniecie
+    // wysokosc panelu tylko rosnie w obrebie zakladki (strona nie kurczy sie przy odswiezeniu -> brak podjezdzania)
     const oldH = this.shadowRoot.querySelector("main")?.offsetHeight || 0, sc = this._scroller(), sy = sc ? sc.scrollTop : window.scrollY;
-    if (oldH) this.style.minHeight = oldH + "px";
+    if (this._mhTab !== this.tab) { this._mhTab = this.tab; this._mh = 0; this.style.minHeight = ""; }   // nowa zakladka: od zera
+    else { this._mh = Math.max(this._mh || 0, oldH); if (this._mh) this.style.minHeight = this._mh + "px"; }
+    this.style.overflowAnchor = "none";
     this.shadowRoot.innerHTML = `<style>${CSS}</style><main class="pf"><div class="pf-bg" style="background-image:url(${BG})"></div><div class="wrap">
       <div class="pf-head ${this._narrow ? "mob" : ""}"><div class="pf-brand"><button class="menu" data-menu title="Menu Home Assistant">☰</button><img class="brand" src="${LOGO}" alt="EMS – Energy Management System"><div><div class="pf-sub">datalogger ${esc(this.dev)} · ostatni odczyt ${last ? new Date(last).toLocaleTimeString("pl-PL") : "–"} <button class="hd-rd ${this.rd.__hd ? "spin" : ""}" data-hdodczyt title="Odczytaj falownik (ustawienia)">⟳</button>${(() => { const z = S(this._hass, this.rid(this.e("ostatni_zapis"), "Ostatni zapis"))?.state; return z ? ` <span class="hd-z" title="Ostatni zapis do falownika: ${esc(z)}">· zapis: ${esc(z)}</span>` : ""; })()} · v${ver}</div></div></div>
       <div class="tabs">${TABS.map((t, i) => `<button class="tab ${i === this.tab ? "on" : ""}" data-tab="${i}">${t.title}</button>`).join("")}</div>${(() => { const ps = S(this._hass, "sensor.ems_plan")?.state; const M = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", block: "Blokada eksportu", wylaczony: "Algorytm wyłączony", brak_planu: "Brak planu", reczne_buy: "Ręczne kupno", reczne_sell: "Ręczna sprzedaż" }; return ps ? `<span class="pf-mode">🍃 Tryb: <b>${esc(M[ps] || ps)}</b></span>` : ""; })()}</div>${body}</div></main>
       <div class="toasts">${this.toasts.map(t => `<div class="toast ${t.kind}" data-toast="${t.id}"><b>${esc(t.title)}</b>${t.lines.slice(0, 8).map(l => `<div>${esc(l)}</div>`).join("")}${t.lines.length > 8 ? `<div>… i ${t.lines.length - 8} więcej</div>` : ""}<span class="x">✕</span></div>`).join("")}</div>`;
     const tb = this.shadowRoot.querySelector(".tabs"); if (tb) tb.scrollLeft = tx;
-    if (sc ? sc.scrollTop !== sy : window.scrollY !== sy) { if (sc) sc.scrollTop = sy; else window.scrollTo(0, sy); }
-    clearTimeout(this._mhT); this._mhT = setTimeout(() => { this.style.minHeight = ""; }, 2500);
     this.bind();
     bindCharts(this.shadowRoot, () => this.render(true));
     if (T.bind) T.bind(this, this.shadowRoot);
+    // przewiniecie przywracane PO wstawieniu wszystkiego (kafle PGE, wykresy) i jeszcze raz w nastepnej klatce
+    const fix = () => { const cur = sc ? sc.scrollTop : window.scrollY; if (Math.abs(cur - sy) > 1 && Date.now() - (this._userScroll || 0) > 400) {
+      console.debug(`[EMS] przewinięcie: było ${Math.round(sy)}, jest ${Math.round(cur)} – przywracam`); if (sc) sc.scrollTop = sy; else window.scrollTo(0, sy); } };
+    fix(); requestAnimationFrame(fix);
+    if (!this._scrollHook) { this._scrollHook = true; const mark = () => { this._userScroll = Date.now(); };
+      for (const ev of ["wheel", "touchmove", "keydown", "pointerdown"]) window.addEventListener(ev, mark, { passive: true, capture: true }); }
   }
 
   bind() {

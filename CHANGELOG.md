@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.27
+- Podjeżdżanie strony: wysokość panelu w zakładce tylko rośnie, przewinięcie przywracane po wstawieniu całej treści (+ następna klatka), wyłączone scroll anchoring; wpis `[EMS] przewinięcie` w konsoli (debug), gdy coś przesunie stronę.
+
 ## 0.6.26
 - Panel nie podjeżdża sam do góry: przy przerysowaniu trzyma poprzednią wysokość i przywraca przewinięcie.
 - Koszt energii w baterii (batcost.py): średni zł/kWh ważony źródłem ładowania (PV 0 zł / tania / droga G12), zapis w Store.
