@@ -1,5 +1,16 @@
 # Zmiany EMS
 
+## v0.6.7
+
+**Zmienione**
+- Prognoza zużycia domu: podobne dni z 56 dni historii – ten sam dzień tygodnia (8 tygodni, nowsze ważniejsze, bez skrajnych wartości) zmieszany 60/40 z tym samym typem dnia (roboczy / weekend) z ostatnich 14 dni, wygładzenie z sąsiednimi godzinami, **święta ustawowe jak niedziela**, korekta bieżąca z 3 ostatnich godzin (fakt / prognoza, 0,7–1,4, wygasa przez 6 h). Historia odświeżana co godzinę (było co 6 h).
+- Plan – jeden główny wykres: Dom, PV, Sieć, SOC (i bateria) – **pomiar linią ciągłą, prognoza przerywaną w tym samym kolorze**; nowa przerywana „Sieć (prognoza)” i „SOC (prognoza)”.
+- Okno „Prognoza vs rzeczywistość” dostępne także z Planu; porównanie z **prognozą z początku dnia** i ostatnią; nowa tabela **„Błąd wg wyprzedzenia prognozy”** (< 1 h … > 12 h: średni błąd i odchylenie – czy prognoza zaniża czy zawyża).
+
+**Dodane**
+- EMS zapisuje prognozę z początku dnia i **każdą aktualizację** w trakcie dnia (zmiana > 3 %, do 40 na slot).
+- Plan: kafelek „Bilans energii dziś (kWh)” – PV, zakup, sprzedaż: do teraz i prognoza na koniec dnia; w kafelku zakupu: ile algorytm planuje jeszcze dziś dokupić do baterii.
+
 ## v0.6.6
 
 **Dodane**

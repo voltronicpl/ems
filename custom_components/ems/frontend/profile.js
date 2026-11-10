@@ -90,7 +90,7 @@ export function accuracyModal(c) {
     const pos = k => ms.reduce((s, r) => s + Math.max(0, r[k] || 0), 0) / 60;
     const fs = [0, 1, 2, 3].map(i => sm.get(a + i * 9e5)).filter(Boolean), sum = (k, src = "ost") => fs.length ? fs.reduce((s, x) => s + (((src === "rano" ? x.rano : x) || {})[k] || 0), 0) : null;
     const plCh = fs.length ? fs.reduce((s, x) => s + (x.action === "charge" ? x.grid_kwh || 0 : 0), 0) : null, plSl = fs.length ? fs.reduce((s, x) => s + (x.action === "sell" ? x.grid_kwh || 0 : 0), 0) : null;
-    H.push({ h, done, n: ms.length, pv: kwh("pv"), dom: kwh("dom"), ch: pos("bat"), ex: pos("grid"), pvR: sum("pv", "rano"), pvO: sum("pv"), domR: sum("load", "rano"), domO: sum("load"), plCh, plSl }); }
+    H.push({ h, done, n: ms.length, pv: kwh("pv"), dom: kwh("dom"), ch: pos("bat"), ex: pos("grid"), pvR: sum("pv", "rano"), pvO: sum("pv"), domR: sum("load", "rano"), domO: sum("load"), plCh, plSl, fs, a }); }
   const tot = k => H.reduce((s, x) => s + (x[k] || 0), 0), err = (f, p) => f == null || p == null ? null : f - p, pct = (f, p) => p ? (f - p) / p * 100 : null;
   const hit = (k, pk) => H.filter(x => x.done && x[pk] != null && x[k] > 0.05).filter(x => Math.abs(x[k] - x[pk]) <= Math.max(0.1 * x[k], 0.05)).length, cnt = pk => H.filter(x => x.done && x[pk] != null && x.n).length;
   const e = v => v == null ? "–" : `<span style="color:${Math.abs(v) < 0.05 ? "#9bb3c6" : v > 0 ? "#3ee07a" : "#ff6b6b"}">${v > 0 ? "+" : ""}${fmt(v, 2)}</span>`;
@@ -99,24 +99,32 @@ export function accuracyModal(c) {
   const ln = (k, col, dash) => { const p = H.filter(x => x[k] != null && (dash || x.n)).map((x, i) => `${i ? "L" : "M"}${cx(x.h + 0.5).toFixed(1)} ${cy(x[k]).toFixed(1)}`).join(""); return p ? `<path d="${p}" fill="none" stroke="${col}" stroke-width="2.2" ${dash ? 'stroke-dasharray="6 5"' : ""}/>` : ""; };
   let ch = ""; for (let h = 0; h <= 24; h += 3) ch += `<line x1="${cx(h)}" x2="${cx(h)}" y1="12" y2="${CH - 28}" class="pf-grid"/><text x="${cx(h)}" y="${CH - 10}" text-anchor="middle" class="pf-ax">${String(h).padStart(2, "0")}:00</text>`;
   ch += `<text x="34" y="18" text-anchor="end" class="pf-ax">${fmt(mx, 1)}</text><text x="34" y="${CH - 28}" text-anchor="end" class="pf-ax">0</text>` + ln("pv", "#facc15") + ln("pvO", "#facc15", 1) + ln("dom", "#1e9bff") + ln("domO", "#1e9bff", 1);
-  const sumRow = (lab, f, pR, pO) => `<tr><td class="hd">${lab}</td><td data-l="Fakt" class="r"><b>${fmt(f, 1, "kWh")}</b></td><td data-l="Prognoza rano" class="r">${fmt(pR, 1, "kWh")} · ${e(err(f, pR))} (${pR ? fmt(pct(f, pR), 0, "%") : "–"})</td><td data-l="Prognoza ostatnia" class="r">${fmt(pO, 1, "kWh")} · ${e(err(f, pO))} (${pO ? fmt(pct(f, pO), 0, "%") : "–"})</td></tr>`;
+  const sumRow = (lab, f, pR, pO) => `<tr><td class="hd">${lab}</td><td data-l="Fakt" class="r"><b>${fmt(f, 1, "kWh")}</b></td><td data-l="Prognoza z początku dnia" class="r">${fmt(pR, 1, "kWh")} · ${e(err(f, pR))} (${pR ? fmt(pct(f, pR), 0, "%") : "–"})</td><td data-l="Prognoza ostatnia" class="r">${fmt(pO, 1, "kWh")} · ${e(err(f, pO))} (${pO ? fmt(pct(f, pO), 0, "%") : "–"})</td></tr>`;
   const anyFc = H.some(x => x.pvO != null);
   const rows = H.map(x => `<tr><td class="hd">${String(x.h).padStart(2, "0")}:00${x.done ? "" : " (trwa)"}</td>
-    <td data-l="PV fakt" class="r">${fmt(x.pv, 2)}</td><td data-l="PV prognoza" class="r">${fmt(x.pvO, 2)} <span class="lab">(rano ${fmt(x.pvR, 2)})</span></td><td data-l="PV błąd" class="r">${e(err(x.pv, x.pvO))}</td>
-    <td data-l="Dom fakt" class="r">${fmt(x.dom, 2)}</td><td data-l="Dom prognoza" class="r">${fmt(x.domO, 2)} <span class="lab">(rano ${fmt(x.domR, 2)})</span></td><td data-l="Dom błąd" class="r">${e(err(x.dom, x.domO))}</td>
+    <td data-l="PV fakt" class="r">${fmt(x.pv, 2)}</td><td data-l="PV prognoza" class="r">${fmt(x.pvO, 2)} <span class="lab">(pocz. dnia ${fmt(x.pvR, 2)})</span></td><td data-l="PV błąd" class="r">${e(err(x.pv, x.pvO))}</td>
+    <td data-l="Dom fakt" class="r">${fmt(x.dom, 2)}</td><td data-l="Dom prognoza" class="r">${fmt(x.domO, 2)} <span class="lab">(pocz. dnia ${fmt(x.domR, 2)})</span></td><td data-l="Dom błąd" class="r">${e(err(x.dom, x.domO))}</td>
     <td data-l="Ładowanie plan/fakt" class="r">${fmt(x.plCh, 2)} / ${fmt(x.ch, 2)}</td><td data-l="Sprzedaż plan/fakt" class="r">${fmt(x.plSl, 2)} / ${fmt(x.ex, 2)}</td></tr>`).join("");
+  // blad wg wyprzedzenia: kazda zapisana aktualizacja slotu vs fakt slotu
+  const BK = [[0, 1, "< 1 h"], [1, 3, "1–3 h"], [3, 6, "3–6 h"], [6, 12, "6–12 h"], [12, 99, "> 12 h"]], acc = BK.map(() => ({ n: 0, ld: 0, pv: 0, bl: 0 }));
+  H.filter(x => x.done).forEach(x => (x.fs || []).forEach((sl, i) => { const t = x.a + i * 9e5, ms = meas.filter(r => r.t >= t && r.t < t + 9e5); if (ms.length < 10) return;
+    const fd = ms.reduce((q, r) => q + (r.dom || 0), 0) / 60, fp = ms.reduce((q, r) => q + (r.pv || 0), 0) / 60;
+    (sl.h || []).forEach(u => { const lead = (t - Date.parse(u[0])) / 36e5; if (lead < 0) return; const b = BK.findIndex(k => lead >= k[0] && lead < k[1]); if (b < 0) return;
+      const o = acc[b]; o.n++; o.ld += Math.abs(fd - u[2]); o.pv += Math.abs(fp - u[1]); o.bl += fd - u[2]; }); }));
+  const leadTab = acc.some(o => o.n) ? `<div class="h" style="margin:12px 0 6px"><span>Błąd wg wyprzedzenia prognozy (kWh na 15 min)</span></div><table class="tbl rt"><tr><th>Wyprzedzenie</th><th class="r">Prognoz</th><th class="r">Dom – śr. błąd</th><th class="r">Dom – odchylenie</th><th class="r">PV – śr. błąd</th></tr>
+    ${BK.map((k, i) => { const o = acc[i]; return o.n ? `<tr><td class="hd">${k[2]}</td><td class="r" data-l="Prognoz">${o.n}</td><td class="r" data-l="Dom śr. błąd">${fmt(o.ld / o.n, 3)}</td><td class="r" data-l="Dom odchylenie">${e(o.bl / o.n)} <span class="lab">${o.bl > 0 ? "(zaniża)" : "(zawyża)"}</span></td><td class="r" data-l="PV śr. błąd">${fmt(o.pv / o.n, 3)}</td></tr>` : ""; }).join("")}</table>` : "";
   const today = st.day === new Date().toLocaleDateString("sv-SE");
   return `<div class="mr-ov" data-pfclose><div class="mr-md" style="max-width:1100px"><div class="mr-hd"><b>Prognoza vs rzeczywistość</b><span><button class="btn" data-pfday="-1">◀</button><b style="align-self:center">${new Date(st.day + "T00:00").toLocaleDateString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit" })}</b><button class="btn" data-pfday="1" ${today ? "disabled" : ""}>▶</button><button class="btn" data-pfclose>✕</button></span></div>
     <div class="mr-body">${!dd ? `<div class="ov-mut">Ładuję…</div>` : !anyFc ? `<div class="ov-mut">Brak zapisanych prognoz dla tego dnia (EMS zapisuje je od wersji 0.6.4, trzyma 14 dni).</div>` : ""}
       <svg viewBox="0 0 ${CW} ${CH}" width="100%">${ch}</svg>
       <div class="pf-legs" style="margin:4px 0 10px"><span class="pf-lg"><i style="background:#facc15"></i>PV</span><span class="pf-lg"><i style="background:#1e9bff"></i>Dom</span><span class="pf-dash">── fakt · ┄ prognoza (ostatnia przed godziną), kWh/h</span></div>
-      <table class="tbl rt" style="margin-bottom:12px"><tr><th>Dzień (do teraz)</th><th class="r">Fakt</th><th class="r">Prognoza z rana · błąd</th><th class="r">Ostatnia prognoza · błąd</th></tr>
+      <table class="tbl rt" style="margin-bottom:12px"><tr><th>Dzień (do teraz)</th><th class="r">Fakt</th><th class="r">Prognoza z początku dnia · błąd</th><th class="r">Ostatnia prognoza · błąd</th></tr>
         ${sumRow("PV", tot("pv"), tot("pvR"), tot("pvO"))}${sumRow("Zużycie domu", tot("dom"), tot("domR"), tot("domO"))}
         <tr><td class="hd">Trafione godziny (±10 %)</td><td colspan="3" data-l="Trafione" class="r">PV ${hit("pv", "pvO")}/${cnt("pvO")} · dom ${hit("dom", "domO")}/${cnt("domO")}</td></tr>
         <tr><td class="hd">Ładowanie z sieci</td><td colspan="3" data-l="Plan / fakt" class="r">plan ${fmt(tot("plCh"), 1)} kWh · bateria naładowana ${fmt(tot("ch"), 1)} kWh</td></tr>
         <tr><td class="hd">Sprzedaż</td><td colspan="3" data-l="Plan / fakt" class="r">plan ${fmt(tot("plSl"), 1)} kWh · oddane do sieci ${fmt(tot("ex"), 1)} kWh</td></tr></table>
       <div style="overflow:auto"><table class="tbl rt"><tr><th>Godzina</th><th class="r">PV fakt</th><th class="r">PV prognoza</th><th class="r">PV błąd</th><th class="r">Dom fakt</th><th class="r">Dom prognoza</th><th class="r">Dom błąd</th><th class="r">Ładowanie plan / fakt</th><th class="r">Sprzedaż plan / fakt</th></tr>${rows}</table></div>
-      <div class="note" style="margin-top:8px">kWh w godzinie. Błąd = fakt − prognoza (zielony: więcej niż przewidziano). „Rano” = pierwsza prognoza tej godziny, „ostatnia” = ostatnia przed nią.</div></div></div></div>`;
+      ${leadTab}<div class="note" style="margin-top:8px">kWh w godzinie. Błąd = fakt − prognoza (zielony: więcej niż przewidziano). „Początek dnia” = prognoza z pierwszego przeliczenia po północy, „ostatnia” = ostatnia przed daną godziną. Błąd wg wyprzedzenia = średni błąd bezwzględny slotu 15 min dla prognoz zrobionych tyle godzin wcześniej (z każdej aktualizacji w ciągu dnia).</div></div></div></div>`;
 }
 
 export const PROFILE_CSS = `

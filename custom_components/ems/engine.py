@@ -107,7 +107,17 @@ class Engine:
             rec = {k: s.get(k) for k in ("pv", "load", "soc", "action", "grid_kwh", "imp", "exp", "price")}
             e = self.fc_log.setdefault(s["start"], {})
             e.setdefault("rano", {**rec, "o": now.isoformat()})
+            # "dzien" = prognoza z poczatku dnia (pierwsze przeliczenie po polnocy w dniu slotu)
+            if "dzien" not in e and now.astimezone(WAW).date() == datetime.fromisoformat(s["start"]).astimezone(WAW).date():
+                e["dzien"] = {**rec, "o": now.isoformat()}
             e["ost"] = {**rec, "o": now.isoformat()}
+            # kazda aktualizacja w trakcie: [czas, pv, load, soc] gdy zmiana > 3 % (max 40 na slot)
+            hh = e.setdefault("h", [])
+            last = hh[-1] if hh else None
+            v = [now.isoformat(), round(rec["pv"] or 0, 4), round(rec["load"] or 0, 4), round(rec["soc"] or 0, 1)]
+            if not last or any(abs(a - b) > 0.03 * max(abs(b), 0.01) for a, b in zip(v[1:3], last[1:3])) or abs(v[3] - last[3]) > 1:
+                hh.append(v)
+                del hh[:-40]
         cut = (now - timedelta(days=15)).isoformat()
         self.fc_log = {k: v for k, v in self.fc_log.items() if k >= cut}
         self._fstore.async_delay_save(lambda: {"sloty": self.fc_log}, 30)
@@ -167,7 +177,7 @@ class Engine:
                 self._prices = await prices.fetch(self.hass, [today, today + timedelta(days=1)])
             lat, lon = self.hass.config.latitude, self.hass.config.longitude
             self._weather = await weather.fetch(self.hass, lat, lon, self.p["pv_nachylenie"], self.p["pv_azymut"]) or self._weather
-            if not self._hist_at or now - self._hist_at > timedelta(hours=6):
+            if not self._hist_at or now - self._hist_at > timedelta(hours=1):
                 self._hist = await load_forecast.history(self.hass, f"sensor.{self.dev}_obciazenie_moc_suma")
                 self._hist_at = now
 

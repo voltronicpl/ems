@@ -129,7 +129,7 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
     hlines.forEach(l => { if (l.v <= pTop) g += pill(YP(l.v), l.c, l.name); }); }
   if (hasS) { for (const s of socs) { if (off[s.name]) continue; const d = steps(r => r[s.k] == null ? null : r[s.k], YS); if (!d) continue;
       if (s.fill) g += d.split("M").filter(Boolean).map(p => `<path d="M${p}V${YS(0).toFixed(1)}H${p.split(" ")[0]}Z" fill="${s.c}" opacity=".22"/>`).join("");
-      g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 2.6}" stroke-linejoin="round"/>`; }
+      g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 2.6}" stroke-linejoin="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""}/>`; }
     const mn = OFF.socMin; if (mn != null) g += `<line x1="${L}" x2="${W - R}" y1="${YS(mn)}" y2="${YS(mn)}" stroke="#d8b4fe" stroke-dasharray="7 6" stroke-width="1.4" opacity=".8"/>` + pill(YS(mn), "#d8b4fe", `min ${mn}%`); }
   if (now) { const t = Date.now(), i = rows.findIndex(r => r.t.getTime() > t); if (i > 0) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="nowl"/><text x="${x(i) + 5}" y="${T + 12}" class="nowt">teraz</text>`; }
   // kropki na liniach w miejscu kursora
