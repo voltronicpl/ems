@@ -1,6 +1,9 @@
 """Wykonanie planu na falowniku przez encje dataloggera ESPHome.
 
 - plan (sloty 15 min) -> max 6 punktow harmonogramu TOU (falownik ma tylko 6) na najblizsze 24 h,
+- w kazdym punkcie: start, moc, SOC, "Z sieci", "Autokonsumpcja do" (901-906) i "Sprzedaj do" (913-918) - wariant A:
+  ladowanie: Z sieci ON, autokonsumpcja do = cel, sprzedaj do 100;  sprzedaz: Z sieci OFF, autokonsumpcja/sprzedaj do = rezerwa;
+  autokonsumpcja: Z sieci OFF, autokonsumpcja do = dolny limit (bateria trzyma limit, dom z sieci), sprzedaj do 100,
 - globalnie: harmonogram wlaczony, ladowanie z sieci dozwolone, tryb limitu eksportu wg biezacego slotu,
 - zapisuje TYLKO roznice (kazdy zapis w logu),
 - NIGDY nie rusza limitow twardych (number.<dev>_limit_twardy_*),
@@ -26,6 +29,7 @@ class Executor:
         self.hass, self.dev = hass, dev
         self.store = Store(hass, 1, f"ems_snapshot_{entry_id}")
         self.last_points: list | None = None
+        self.last_write: datetime | None = None       # ostatni zapis EMS do TOU
 
     # --- encje -------------------------------------------------------------------------------
     def eid(self, dom: str, key: str) -> str:
@@ -35,7 +39,8 @@ class Executor:
         out = []
         for p in range(1, 7):
             out += [self.eid("number", f"tou_{p}_start_hhmm"), self.eid("number", f"tou_{p}_moc"),
-                    self.eid("number", f"tou_{p}_soc"), self.eid("switch", f"tou_{p}_ladowanie_z_sieci")]
+                    self.eid("number", f"tou_{p}_soc"), self.eid("switch", f"tou_{p}_ladowanie_z_sieci"),
+                    self.eid("number", f"tou_{p}_autokonsumpcja_do"), self.eid("number", f"tou_{p}_sprzedaj_do")]
         return out + [self.eid("switch", "harmonogram_tou"), self.eid("switch", "ladowanie_z_sieci_dozwolone"),
                       self.eid("select", "tryb_limitu_eksportu")]
 
@@ -63,6 +68,8 @@ class Executor:
                 return
             await self.hass.services.async_call("select", "select_option", {"entity_id": entity, "option": value}, blocking=True)
         LOG.info("ZAPIS %s: %s -> %s (%s)", entity.split(".", 1)[1], cur, value, why)
+        if "tou_" in entity or "harmonogram" in entity:
+            self.last_write = datetime.now(WAW)
 
     # --- snapshot Twoich ustawien ---------------------------------------------------------------
     async def snapshot(self) -> None:
@@ -86,11 +93,14 @@ class Executor:
     # --- plan -> punkty TOU ------------------------------------------------------------------------
     @staticmethod
     def mode(slot: dict, p: dict, max_charge_w: float, max_sell_w: float) -> tuple:
+        """(nazwa, Z sieci, SOC, moc W, autokonsumpcja do %, sprzedaj do %)"""
+        res = round(slot["reserve"])
         if slot["action"] == "charge":
-            return ("charge", True, round(p["soc_max"]), int(max_charge_w // 100 * 100))
+            tgt = round(p["soc_max"])
+            return ("charge", True, tgt, int(max_charge_w // 100 * 100), tgt, 100)
         if slot["action"] == "sell":
-            return ("sell", False, round(slot["reserve"]), int(max_sell_w // 100 * 100))
-        return (slot["action"], False, round(slot["reserve"]), int(max_sell_w // 100 * 100))
+            return ("sell", False, res, int(max_sell_w // 100 * 100), res, res)
+        return (slot["action"], False, res, int(max_sell_w // 100 * 100), res, 100)
 
     def points(self, plan: list[dict], p: dict, max_charge_w: float, max_sell_w: float) -> list[tuple]:
         now = datetime.now(WAW)
@@ -109,7 +119,7 @@ class Executor:
             return []
         if len(segs) > 6:                      # falownik ma 6 punktow: reszta doby -> tryb "self"
             LOG.debug("Plan ma %d segmentow w 24 h, scalam do 6", len(segs))
-            segs = segs[:5] + [(segs[5][0], ("self", False, round(p["soc_min"]), int(max_sell_w // 100 * 100)))]
+            segs = segs[:5] + [(segs[5][0], ("self", False, round(p["soc_min"]), int(max_sell_w // 100 * 100), round(p["soc_min"]), 100))]
         while len(segs) < 6:                   # dopelnij: podziel najdluzszy segment na pol
             gaps = [((segs[(i + 1) % len(segs)][0] if i + 1 < len(segs) else segs[0][0] + timedelta(days=1)) - segs[i][0], i)
                     for i in range(len(segs))]
@@ -124,12 +134,14 @@ class Executor:
             LOG.warning("Brak planu na najblizsze 24 h - nic nie zapisuje")
             return
         if pts != self.last_points:
-            LOG.info("Nowe punkty TOU: %s", ", ".join(f"{h:04d} {m[0]} SOC{m[2]} {m[3]}W" for h, m in pts))
-        for i, (hhmm, (name, grid, soc, w)) in enumerate(pts, start=1):
+            LOG.info("Nowe punkty TOU: %s", ", ".join(f"{h:04d} {m[0]} SOC{m[2]} {m[3]}W sieć:{'ON' if m[1] else 'OFF'} autokons.do{m[4]} sprzedaj.do{m[5]}" for h, m in pts))
+        for i, (hhmm, (name, grid, soc, w, auto, sell)) in enumerate(pts, start=1):
             await self.set(self.eid("number", f"tou_{i}_start_hhmm"), hhmm, f"punkt {i} {name}")
             await self.set(self.eid("number", f"tou_{i}_moc"), w, f"punkt {i} {name}")
             await self.set(self.eid("number", f"tou_{i}_soc"), soc, f"punkt {i} {name}")
             await self.set(self.eid("switch", f"tou_{i}_ladowanie_z_sieci"), grid, f"punkt {i} {name}")
+            await self.set(self.eid("number", f"tou_{i}_autokonsumpcja_do"), auto, f"punkt {i} {name}")
+            await self.set(self.eid("number", f"tou_{i}_sprzedaj_do"), sell, f"punkt {i} {name}")
         await self.set(self.eid("switch", "harmonogram_tou"), True, "EMS")
         await self.set(self.eid("switch", "ladowanie_z_sieci_dozwolone"), True, "EMS")
         act = (current or {}).get("action", "self")

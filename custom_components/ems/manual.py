@@ -1,6 +1,6 @@
 """Reczne "Kup energie teraz" / "Sprzedaj teraz" (ile kWh). Dziala tez przy wylaczonym algorytmie.
 
-Kupno: ladowanie z sieci od teraz, az import z sieci wzrosnie o zadana ilosc (lub SOC max).
+Kupno: ladowanie z sieci od teraz, az ladowanie baterii (licznik dzienny) wzrosnie o zadana ilosc (lub SOC max).
 Sprzedaz: sprzedaz z baterii od teraz, az eksport wzrosnie o zadana ilosc (lub SOC spadnie do zapasu).
 Limit czasu 4 h. Po zakonczeniu: algorytm wlaczony -> wraca plan; wylaczony -> wracaja Twoje ustawienia.
 """
@@ -20,6 +20,7 @@ class ManualJob:
         self.done_kwh = 0.0
         self.zl = 0.0                       # kwota: kupno = stawka G12, sprzedaz = RCE x depozyt (liczona przyrostowo)
         self.reason = ""
+        self.warn = ""                      # ostrzezenie: falownik nie robi tego, co zlecono
         LOG.info("START %s %.3f kWh (licznik %.1f)", "KUP" if kind == "buy" else "SPRZEDAJ", kwh, counter_start)
 
     def progress(self, counter_now: float | None, soc: float | None, p: dict, price: float | None = None) -> bool:
@@ -46,6 +47,19 @@ class ManualJob:
             return True
         return False
 
+    def watch(self, bat_w: float | None, grid_w: float | None) -> None:
+        """Po 3 min sprawdza, czy falownik faktycznie laduje (kupno) / oddaje do sieci (sprzedaz)."""
+        if datetime.now(timezone.utc) - self.t0 < timedelta(minutes=3) or bat_w is None:
+            return
+        ok = bat_w < -50 if self.kind == "buy" else (grid_w is not None and grid_w < -50)
+        msg = "" if ok else ("Falownik nie ładuje mimo zlecenia – sprawdź harmonogram TOU" if self.kind == "buy"
+                             else "Falownik nie oddaje do sieci mimo zlecenia – sprawdź harmonogram TOU i tryb eksportu")
+        if msg and msg != self.warn:
+            LOG.warning("%s (bateria %.0f W, sieć %s W)", msg, bat_w, grid_w)
+        elif not msg and self.warn:
+            LOG.info("Falownik wykonuje zlecenie (bateria %.0f W)", bat_w)
+        self.warn = msg
+
     def record(self, reason: str | None = None) -> dict:
         """Wpis do historii recznych (po zakonczeniu)."""
         return {"od": self.t0.isoformat(), "do": datetime.now(timezone.utc).isoformat(), "typ": "kup" if self.kind == "buy" else "sprzedaj",
@@ -65,7 +79,7 @@ class ManualJob:
 
     def info(self) -> dict:
         return {"typ": "kup" if self.kind == "buy" else "sprzedaj", "kwh": self.kwh, "zrobione_kwh": round(self.done_kwh, 2),
-                "zl": round(self.zl, 2), "od": self.t0.isoformat()}
+                "zl": round(self.zl, 2), "od": self.t0.isoformat(), "ostrzezenie": self.warn or None}
 
 
 from homeassistant.components.http import HomeAssistantView  # noqa: E402

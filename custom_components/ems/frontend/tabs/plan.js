@@ -37,17 +37,19 @@ async function loadBack(c) {
 function tou(c) {
   const d = c.dev, n = k => `number.${d}_${k}`, alg = S(c.hass, "switch.ems_algorytm")?.state === "on";
   const ids = []; for (let p = 1; p <= 6; p++) ids.push(n(`tou_${p}_start_hhmm`), n(`tou_${p}_moc`), n(`tou_${p}_soc`), n(`tou_${p}_autokonsumpcja_do`), n(`tou_${p}_sprzedaj_do`));
-  const rows = [1, 2, 3, 4, 5, 6].map(p => `<tr><td data-l="Punkt ${p}">${c.sw(`switch.${d}_tou_${p}_ladowanie_z_sieci`, `Z sieci ${p}`, alg)}</td>
-    <td data-l="Start">${c.field(n(`tou_${p}_start_hhmm`), "HHMM", { ro: alg })}</td><td data-l="Moc">${c.field(n(`tou_${p}_moc`), "W", { ro: alg })}</td><td data-l="SOC">${c.field(n(`tou_${p}_soc`), "%", { ro: alg })}</td>
-    <td data-l="Autokons. do">${c.range(n(`tou_${p}_autokonsumpcja_do`), "", alg)}</td><td data-l="Sprzedaj do">${c.range(n(`tou_${p}_sprzedaj_do`), "", alg)}</td></tr>`).join("");
-  return c.group(`🗓 Harmonogram w falowniku (TOU)${tip(T.tou)}`, `${alg ? `<div class="note" style="margin:0 0 8px">Ustawia EMS (algorytm włączony) – tylko do odczytu.</div>` : ""}
-    <div style="overflow:auto"><table class="tbl rt"><tr><th>Ładowanie</th><th>Start</th><th>Moc</th><th>SOC</th><th>Autokonsumpcja do</th><th>Sprzedaj do</th></tr>${rows}</table></div>`, alg ? [] : ids);
+  const rows = [1, 2, 3, 4, 5, 6].map(p => `<tr><td data-l="Punkt ${p}">${c.sw(`switch.${d}_tou_${p}_ladowanie_z_sieci`, `Z sieci ${p}`)}</td>
+    <td data-l="Start">${c.field(n(`tou_${p}_start_hhmm`), "HHMM")}</td><td data-l="Moc">${c.field(n(`tou_${p}_moc`), "W")}</td><td data-l="SOC">${c.field(n(`tou_${p}_soc`), "%")}</td>
+    <td data-l="Autokons. do">${c.range(n(`tou_${p}_autokonsumpcja_do`), "")}</td><td data-l="Sprzedaj do">${c.range(n(`tou_${p}_sprzedaj_do`), "")}</td></tr>`).join("");
+  const lw = S(c.hass, "sensor.ems_plan")?.attributes?.ostatni_zapis_tou;
+  return c.group(`🗓 Harmonogram w falowniku (TOU)${tip(T.tou)}`, `${alg ? `<div class="note" style="margin:0 0 8px">Algorytm włączony – EMS przy następnym zapisie (co ~1 min) ustawi TOU według planu.</div>` : ""}
+    <div style="overflow:auto"><table class="tbl rt"><tr><th>Ładowanie</th><th>Start</th><th>Moc</th><th>SOC</th><th>Autokonsumpcja do</th><th>Sprzedaj do</th></tr>${rows}</table></div>
+    <div class="lab" style="margin-top:8px">Ostatni zapis EMS do TOU: ${lw ? new Date(lw).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–"}</div>`, ids);
 }
 
 // Okienka Kup / Sprzedaj teraz (te same co w Przegladzie)
 function manual(c, a) {
   const man = a.reczne;
-  return `<div class="box"><div class="h"><span>🛒 Ręcznie teraz${tip(T.kup)}</span>${man ? `<span class="pill b">${man.typ}: ${fmt(man.zrobione_kwh, 2)} / ${fmt(man.kwh, 2, "kWh")}</span>` : ""}</div><div class="ctrl">
+  return `<div class="box"><div class="h"><span>🛒 Ręcznie teraz${tip(T.kup)}</span>${man ? `<span class="pill b">${man.typ}: ${fmt(man.zrobione_kwh, 2)} / ${fmt(man.kwh, 2, "kWh")}</span>` : ""}</div>${man?.ostrzezenie ? `<div class="box err" style="margin:0 0 8px">⚠ ${esc(man.ostrzezenie)}</div>` : ""}<div class="ctrl">
     <div class="ms"><div><label class="f">Kup energię teraz${tip(T.kup)}</label><div class="inp wbuy">${c.input("number.ems_kup_wh")}<span>Wh</span></div></div>
     <button class="btn pri" data-svc="button.press" data-ent="button.ems_kup_teraz">Kup</button></div>
     <div class="ms"><div><label class="f">Sprzedaj teraz${tip(T.sprzedaj)}</label><div class="inp wbuy">${c.input("number.ems_sprzedaj_wh")}<span>Wh</span></div></div>

@@ -194,7 +194,8 @@ class Engine:
         try:
             ch_w, sell_w = self.limits()
             if self.manual:
-                key = "energia_siec_import_dzisiaj" if self.manual.kind == "buy" else "energia_siec_export_dzisiaj"
+                key = "energia_bateria_ladowanie_dzisiaj" if self.manual.kind == "buy" else "energia_siec_export_dzisiaj"
+                self.manual.watch(self.r("bateria_moc"), self.r("siec_moc_suma"))
                 if self.manual.progress(self.r(key), self.r("bateria_soc"), self.p, self._price_now(self.manual.kind)):
                     self._finish_manual()
                     if self.enabled:
@@ -241,7 +242,7 @@ class Engine:
             self._finish_manual("zastapione")
         elif not self.enabled:
             await self.exec.snapshot()
-        key = "energia_siec_import_dzisiaj" if kind == "buy" else "energia_siec_export_dzisiaj"
+        key = "energia_bateria_ladowanie_dzisiaj" if kind == "buy" else "energia_siec_export_dzisiaj"
         self.manual = ManualJob(kind, kwh, self.r(key, 0.0))
         await self.execute()
 

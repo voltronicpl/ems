@@ -1,5 +1,19 @@
 # Zmiany EMS
 
+## v0.6.3
+
+**Poprawione**
+- Ręczne kupno / ładowanie z planu nie ładowało baterii: EMS nie ustawiał w punktach TOU „Autokonsumpcja do” (901–906) i „Sprzedaj do” (913–918). Teraz ustawia je w każdym punkcie:
+  - ładowanie: „Z sieci” ON, „Autokonsumpcja do” = cel (SOC max), „Sprzedaj do” 100 %,
+  - sprzedaż: „Z sieci” OFF, „Autokonsumpcja do” i „Sprzedaj do” = rezerwa SOC,
+  - autokonsumpcja: „Z sieci” OFF, „Autokonsumpcja do” = dolny limit (SOC min / burza) – bateria trzyma limit, dom bierze z sieci do taniej strefy; „Sprzedaj do” 100 %.
+  Te pola są też w snapshocie (przywracane po wyłączeniu algorytmu).
+- Postęp ręcznego kupna liczony z ładowania baterii (licznik dzienny), a nie z importu z sieci (który łapał też zużycie domu).
+
+**Dodane**
+- Ręczne zlecenie: po 3 min sprawdzenie, czy falownik faktycznie ładuje / oddaje do sieci – jeśli nie, ostrzeżenie w Przeglądzie, w Planie i w logu `[reczne]`. Zlecenie ręczne nadal ma pierwszeństwo przed algorytmem, a EMS co cykl poprawia wpisy w TOU, jeśli ktoś je zmienił.
+- Harmonogram TOU (Plan): „Odczyt” i „Zapisz” zawsze, także przy włączonym algorytmie (informacja, że EMS nadpisze przy następnym zapisie), oraz „Ostatni zapis EMS do TOU”.
+
 ## v0.6.2
 
 **Zmienione**

@@ -34,6 +34,7 @@ class EmsPlanSensor(EmsEntity, SensorEntity):
             "algorytm": e.enabled,
             "przeliczono": e.last_plan.isoformat() if e.last_plan else None,
             "blad": e.error,
+            "ostatni_zapis_tou": e.exec.last_write.isoformat() if e.exec.last_write else None,
         }
 
 
