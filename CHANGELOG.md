@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## 0.6.19
+- Wykres planu: uproszczona legenda – jeden przycisk na wielkość (Dom, PV, Sieć, Bateria, SOC, Ładowanie / sprzedaż (plan), Ceny RCE / G12), włącza pomiar i prognozę naraz; ikonka: ciągła = pomiar, przerywana = prognoza / plan.
+- Ładowanie z sieci i sprzedaż z planu jako linie przerywane zamiast słupków.
+- Usunięta ramka „Symulacja wstecz – nasz EMS vs stary” z Planu.
+
 ## v0.6.18
 
 **Poprawione (sprzedaż – punkt TOU jak przy sprzedaży wyklikanej na falowniku, zrzut rejestrów 10.11)**

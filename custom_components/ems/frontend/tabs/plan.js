@@ -73,13 +73,14 @@ function fwd(c) {
   const thr = [["prog_tania", "#facc15", "tania"], ["prog_droga", "#ff4757", "droga"], ["prog_bezcen", "#cbd5e1", "za bezcen"]].map(([k, col, nm]) => ({ v: num(c.hass, `number.ems_${k}_${sez}`, 0), c: col, name: `${nm} ${fmt(num(c.hass, `number.ems_${k}_${sez}`), 2)}` }));
   setSocMin(num(c.hass, "number.ems_soc_min", null));
   const main = pwChart({ key: "fwd", rows: mrows, h: 420, order: "msp", tipf: tipRow, hlines: thr, bands: MB(),
-    prices: [{ k: "price", c: CYAN, name: "Cena sprzedaży (RCE)", act: r => r.sl > 0 }, { f: r => g12Price(r.t), c: PINK, name: "Cena kupna (G12)", act: r => r.ch > 0 }],
-    socs: [{ k: "soc_m", c: "#a78bfa", name: "SOC (pomiar)", fill: true }, { k: "soc_p", c: "#a78bfa", name: "SOC (prognoza)", dash: "6 5", w: 2 }],
-    areas: [{ k: "ch", c: "#3d8dff", name: "Ładowanie z sieci" }, { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż" }],
-    lines: [{ k: "dom_m", raw: true, c: "#1e9bff", name: "Dom (pomiar)", w: 2.2, fill: true }, { k: "loadp", c: "#1e9bff", name: "Dom (prognoza)", nofill: true, dash: "6 5" },
-      { k: "pv_m", raw: true, c: "#facc15", name: "PV (pomiar)", w: 2, fill: true }, { k: "pv", c: "#facc15", name: "PV (prognoza)", dash: "6 5", nofill: true },
-      { k: "grid_m", raw: true, c: "#ff4d5e", name: "Sieć (pomiar, + pobór)", w: 1.8 }, { k: "grid_p", c: "#ff4d5e", name: "Sieć (prognoza, + pobór)", dash: "6 5", nofill: true },
-      { k: "bat_m", raw: true, c: "#22e07a", name: "Bateria (pomiar, + ładowanie)", w: 1.4 }] });
+    prices: [{ k: "price", c: CYAN, name: "Cena sprzedaży (RCE)", g: "Ceny RCE / G12", act: r => r.sl > 0 }, { f: r => g12Price(r.t), c: PINK, name: "Cena kupna (G12)", g: "Ceny RCE / G12", act: r => r.ch > 0 }],
+    socs: [{ k: "soc_m", c: "#a78bfa", name: "SOC (pomiar)", g: "SOC", fill: true }, { k: "soc_p", c: "#a78bfa", name: "SOC (prognoza)", g: "SOC", dash: "6 5", w: 2 }],
+    lines: [{ k: "dom_m", raw: true, c: "#1e9bff", name: "Dom (pomiar)", g: "Dom", w: 2.2, fill: true }, { k: "loadp", c: "#1e9bff", name: "Dom (prognoza)", g: "Dom", nofill: true, dash: "6 5" },
+      { k: "pv_m", raw: true, c: "#facc15", name: "PV (pomiar)", g: "PV", w: 2, fill: true }, { k: "pv", c: "#facc15", name: "PV (prognoza)", g: "PV", dash: "6 5", nofill: true },
+      { k: "grid_m", raw: true, c: "#ff4d5e", name: "Sieć (pomiar)", g: "Sieć", w: 1.8 }, { k: "grid_p", c: "#ff4d5e", name: "Sieć (prognoza)", g: "Sieć", dash: "6 5", nofill: true },
+      { k: "bat_m", raw: true, c: "#22e07a", name: "Bateria (pomiar)", g: "Bateria", w: 1.4 },
+      { k: "ch", c: "#3d8dff", name: "Ładowanie z sieci (plan)", g: "Ładowanie / sprzedaż (plan)", dash: "6 5", nofill: true, w: 2.2 },
+      { k: "sl", sign: -1, c: "#1fe090", name: "Sprzedaż (plan)", g: "Ładowanie / sprzedaż (plan)", dash: "6 5", nofill: true, w: 2.2 }] });
   const fk = (st.fakt || []).map(f => ({ t: new Date(f.start), pva: f.pv / 1000, loada: f.load != null ? f.load / 1000 : null }));
   const hourly = (key, fkey) => { const m = {}; rows.forEach(r => { const k = new Date(r.t).setMinutes(0, 0, 0); m[k] = (m[k] || 0) + r[key]; }); const ks = Object.keys(m).map(Number).sort(); fk.forEach(f => { const k = f.t.getTime(); if (!(k in m)) { m[k] = null; ks.push(k); } }); return [...new Set(ks)].sort().map(k => ({ t: new Date(k), [key]: m[k], [fkey]: fk.find(f => f.t.getTime() === k)?.[fkey] ?? null })); };
   const pvc = chart({ key: "pv", rows: hourly("pv", "pva"), bars: [{ k: "pv", c: "#ffaa22", name: "Prognoza PV" }], lines: [{ k: "pva", c: "#fff", name: "Faktyczna produkcja" }], unit: "kWh/h", h: 200, tipf: r => `<div class="tt2">${hm(r.t)}</div><div><span>Prognoza</span><b>${fmt(r.pv, 2, "kWh")}</b></div><div><span>Fakt</span><b>${fmt(r.pva, 2, "kWh")}</b></div>` });
@@ -87,7 +88,7 @@ function fwd(c) {
   const acts = []; rows.forEach(r => { if (r.action === "self") return; const l = acts[acts.length - 1]; if (l && l.action === r.action && l.end === r.t.getTime()) { l.kwh += r.grid_kwh; l.end += 9e5; l.pr.push(r.price); } else acts.push({ action: r.action, start: r.t, end: r.t.getTime() + 9e5, kwh: r.grid_kwh, pr: [r.price], why: r.why }); });
   const tile = (ic, cls, lab, val, sub) => `<div class="tile"><div class="ic ${cls}">${ic}</div><div><div class="lab">${lab}</div><div class="val">${val}</div><div class="sub">${sub}</div></div></div>`;
   return `${a.blad ? `<div class="box err">Błąd planu: ${esc(a.blad)}</div>` : ""}
-  <div class="box"><div class="h"><span>📅 ${st.sel === "week" ? "Bieżący tydzień" : st.sel === "month" ? "Bieżący miesiąc" : st.sel ? new Date(st.sel + "T00:00").toLocaleDateString("pl-PL", { weekday: "long", day: "2-digit", month: "2-digit" }) : "Teraz ±12 h"} <span class="lab" style="font-size:inherit">(${step === 1 ? "co 1 min" : step === 15 ? "co 15 min" : "co 1 h"}; pomiar linią ciągłą, prognoza przerywaną)</span>${tip(T.wykres)}</span><span style="display:flex;gap:8px;align-items:center"><button class="btn" data-pfopen style="font-size:12px;padding:4px 10px">Prognoza vs rzeczywistość ↗</button><span class="pill b">🗼 taryfa: G12</span></span></div>${main}</div>
+  <div class="box"><div class="h"><span>📅 ${st.sel === "week" ? "Bieżący tydzień" : st.sel === "month" ? "Bieżący miesiąc" : st.sel ? new Date(st.sel + "T00:00").toLocaleDateString("pl-PL", { weekday: "long", day: "2-digit", month: "2-digit" }) : "Teraz ±12 h"} <span class="lab" style="font-size:inherit">(${step === 1 ? "co 1 min" : step === 15 ? "co 15 min" : "co 1 h"}; pomiar linią ciągłą, prognoza przerywaną)</span>${tip(T.wykres)}</span><span style="display:flex;gap:8px;align-items:center"><button class="btn" data-pfopen style="font-size:12px;padding:4px 10px">Prognoza vs rzeczywistość ↗</button><span class="pill b">🗼 taryfa: G12</span></span></div>${main}<div class="lab" style="margin-top:4px">── pomiar (to, co było) · ┄┄ prognoza / plan · sieć i bateria: nad zerem pobór / ładowanie, pod zerem oddawanie / sprzedaż</div></div>
   ${st.sel ? "" : `${manual(c, a)}
   <div class="tiles">${tile("🔵", "ic-b", "Ładowanie z sieci", fmt(s.ladowanie_kwh, 1, "kWh"), `pobór razem ${fmt(s.import_kwh, 1, "kWh")}`)}${tile("💰", "ic-g", "Sprzedaż", fmt(s.sprzedaz_kwh, 1, "kWh"), `~${fmt(s.przychod_zl, 2, "zł")}`)}
     ${tile("☀", "ic-o", "Prognoza PV", fmt(s.pv_kwh, 1, "kWh"), `korekta dnia ×${fmt(s.korekta_pv, 2)}`)}${tile("🏠", "ic-b", "Prognoza zużycia", fmt(s.zuzycie_kwh, 1, "kWh"), `wsp. temp. ${fmt(s.wsp_temp, 2)} kWh/°C`)}${tile("⚡", s.burza ? "ic-r" : "ic-g", "Burza", s.burza ? "TAK" : "nie", s.burza ? `zapas ${num(c.hass, "number.ems_soc_burza", 50)}%` : "brak w prognozie")}</div>
@@ -179,7 +180,7 @@ export function render(c) {
     + `<button class="btn ${st.sel === "week" ? "on" : ""}" data-pday="week">Tydzień</button><button class="btn ${st.sel === "month" ? "on" : ""}" data-pday="month">Miesiąc</button>`;
   return `<div class="ctrl" style="margin-bottom:14px;flex-wrap:nowrap"><div class="pday" data-pdays>${bar}</div><span class="ctrl" style="margin-left:auto;flex:none"><span class="lab">przeliczono ${a.przeliczono ? hm(a.przeliczono) : "–"} · do ${hz || "–"}</span><button class="btn" data-svc="button.press" data-ent="button.ems_przelicz">↻ Przelicz</button></span></div>
   <style>.pday{display:flex;gap:6px;overflow-x:auto;scrollbar-width:thin;padding-bottom:4px;min-width:0;flex:1}.pday .btn{flex:none;white-space:nowrap}</style>`
-    + moneyTiles(c) + fwd(c) + back(c) + tou(c) + accuracyModal(c);
+    + moneyTiles(c) + fwd(c) + tou(c) + accuracyModal(c);   // symulacja wstecz (nasz vs stary) – nie wyswietlana (decyzja uzytkownika)
 }
 export function bind(c, r) {
   bindProfile(c, r);

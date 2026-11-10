@@ -136,7 +136,14 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   const dots = rows.map(r => [...prices.filter(p => !off[p.name]).map(p => { const v = p.f ? p.f(r) : r[p.k]; return v == null || isNaN(v) ? null : { y: YP(v), c: p.c }; }),
     ...socs.filter(s => !off[s.name]).map(s => r[s.k] == null ? null : { y: YS(r[s.k]), c: s.c })].filter(Boolean));
   CHARTS[id] = { key, rows, P: { l: L }, bw, W, tipf, dots };
-  const legend = [...prices, ...areas, ...lines, ...socs].map(s => `<button class="pw-lg${off[s.name] ? " off" : ""}" data-lg="${esc(key)}|${esc(s.name)}"><i style="background:${s.c}"></i>${s.name}</button>`).join("");
+  // legenda: serie z tym samym "g" (grupa) = jeden przycisk, wlacza / wylacza je naraz; ikonka: ciagla = pomiar, przerywana = prognoza / plan
+  const grp = new Map();
+  [...lines, ...socs, ...areas, ...prices].forEach(s => { const g = s.g || s.name; if (!grp.has(g)) grp.set(g, []); grp.get(g).push(s); });
+  const ico = ss => { const cols = [...new Set(ss.map(x => x.c))], solid = ss.filter(x => !x.dash), dash = ss.filter(x => x.dash);
+    if (cols.length > 1 && !dash.length) return `<svg width="30" height="10">${cols.slice(0, 2).map((c, i) => `<line x1="1" y1="${3 + i * 5}" x2="29" y2="${3 + i * 5}" stroke="${c}" stroke-width="2.4"/>`).join("")}</svg>`;
+    if (cols.length > 1) return `<svg width="30" height="10">${cols.slice(0, 2).map((c, i) => `<line x1="1" y1="${3 + i * 5}" x2="29" y2="${3 + i * 5}" stroke="${c}" stroke-width="2" stroke-dasharray="4 3"/>`).join("")}</svg>`;
+    return `<svg width="30" height="10">${solid.length ? `<line x1="1" y1="5" x2="${dash.length ? 13 : 29}" y2="5" stroke="${cols[0]}" stroke-width="2.6"/>` : ""}${dash.length ? `<line x1="${solid.length ? 17 : 1}" y1="5" x2="29" y2="5" stroke="${cols[0]}" stroke-width="2" stroke-dasharray="3 3"/>` : ""}</svg>`; };
+  const legend = [...grp.entries()].map(([g, ss]) => `<button class="pw-lg${ss.every(x => off[x.name]) ? " off" : ""}" data-lg="${esc(key)}|${esc(ss.map(x => x.name).join("\u0001"))}">${ico(ss)}${esc(g)}</button>`).join("");
   return `<div class="pw-legend">${legend}</div><div class="fc-plot pw-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T - 7}" y2="${bot + 7}" style="display:none"/><g class="cd"></g></svg>${tipBox()}</div>`;
 }
 export const setSocMin = v => { OFF.socMin = v; };
@@ -145,7 +152,7 @@ export const setSocMin = v => { OFF.socMin = v; };
 const tipBox = () => ui.mob ? `<div class="fc-tip">👆 Dotknij albo przesuń palcem po wykresie</div>` : `<div class="fc-tip" style="display:none"></div>`;
 const SEL = {};                                         // wybrany slot per wykres (key) – przezywa odswiezenie panelu
 export function bindCharts(root, rerender) {
-  root.querySelectorAll("[data-lg]").forEach(b => b.onclick = () => { const [k, nm] = b.dataset.lg.split("|"); const o = OFF[k] = OFF[k] || {}; o[nm] = !o[nm]; if (rerender) rerender(); });
+  root.querySelectorAll("[data-lg]").forEach(b => b.onclick = () => { const [k, nm] = b.dataset.lg.split("|"); const o = OFF[k] = OFF[k] || {}, names = nm.split("\u0001"), v = !names.every(n => o[n]); names.forEach(n => { o[n] = v; }); if (rerender) rerender(); });
   root.querySelectorAll("[data-chart]").forEach(el => {
     const c = CHARTS[el.dataset.chart]; if (!c) return;
     const svg = el.querySelector("svg"), cl = svg.querySelector(".cl"), tp = el.querySelector(".fc-tip");
@@ -243,7 +250,7 @@ input[type=range]{width:100%;accent-color:#2a8cff}
 .fc-tip{position:absolute;top:-6px;transform:translateX(-50%);background:#0d1c2a;border:1px solid #2b4459;border-radius:9px;padding:9px 12px;font-size:12.5px;pointer-events:none;box-shadow:0 8px 20px #0007;min-width:220px;z-index:5}
 .fc-tip .tt2{font-weight:700;margin-bottom:5px}.fc-tip div{display:flex;justify-content:space-between;gap:12px;margin-top:2px}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-top:6px}.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
-.pw-legend{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px}.pw-lg{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:13px;color:var(--mut2);padding:4px 10px;border:1px solid #1d3a55;border-radius:20px;background:transparent;cursor:pointer}.pw-lg.off{opacity:.35}.pw-lg i{width:14px;height:4px;border-radius:2px}
+.pw-legend{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px}.pw-lg{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:13px;color:var(--mut2);padding:4px 10px;border:1px solid #1d3a55;border-radius:20px;background:transparent;cursor:pointer}.pw-lg.off{opacity:.35}.pw-lg svg{flex:none;margin-right:2px}.pw-lg i{width:14px;height:4px;border-radius:2px}
 .pw-svg .grid{stroke:#1a3246}.pw-svg .vgrid{stroke:#14293a;stroke-dasharray:none}.pw-svg .zero{stroke:#3b5a73;stroke-width:1.2}.pw-svg .ax,.pw-svg .xl,.pw-svg .unit{fill:var(--mut);font-size:13px}.pw-svg .pw-pax{fill:#00f5ff;opacity:.85}.pw-svg .pw-sax{fill:#3b8cff;opacity:.55;font-size:11px}
 .pw-svg .pw-night{fill:#3b8cff;opacity:.09}.pw-svg .pw-zt{fill:#7fa6d6;font-size:11px}.pw-svg .pw-pn{fill:#9fb0c3;font-size:12px}.pw-svg .pw-hint{fill:#5f7a99;font-size:11px}.pw-svg .nowl{stroke:#c9d7e2;stroke-dasharray:3 3;opacity:.6}.pw-svg .nowt{fill:#c9d7e2;font-size:12px}
 .nohist{color:#58778c;text-align:center;padding:40px;font-size:13px}
