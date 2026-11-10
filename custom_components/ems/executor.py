@@ -128,9 +128,12 @@ class Executor:
             w = max_charge_w
             if not slot.get("manual") and slot.get("grid_kwh"):          # algorytm: moc z planu (lagodne 0,2C), w krokach 500 W
                 w = min(max_charge_w, max(500.0, -(-slot["grid_kwh"] * 4000 // 500) * 500))
-            return ("charge", True, tgt, int(w // 100 * 100), tgt, 100)
+            return ("charge", True, tgt, int(w // 100 * 100), tgt, min(tgt + 1, 100))     # jak LCD: sprzedaj do = cel + 1
         if slot["action"] == "sell":
-            return ("sell", False, res, int(max_sell_w // 100 * 100), res, res)
+            # jak sprzedaz wyklikana na falowniku (zrzut 10.11): Z sieci ON, autokonsumpcja do = rezerwa,
+            # sprzedaj do = SOC punktu = rezerwa + 1 (musi byc co najmniej 1 % wyzej niz autokonsumpcja)
+            auto = min(res, 99)
+            return ("sell", True, auto + 1, int(max_sell_w // 100 * 100), auto, auto + 1)
         return (slot["action"], False, res, int(max_sell_w // 100 * 100), res, 100)
 
     def points(self, plan: list[dict], p: dict, max_charge_w: float, max_sell_w: float) -> list[tuple]:

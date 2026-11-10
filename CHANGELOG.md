@@ -1,5 +1,12 @@
 # Zmiany EMS
 
+## v0.6.18
+
+**Poprawione (sprzedaż – punkt TOU jak przy sprzedaży wyklikanej na falowniku, zrzut rejestrów 10.11)**
+- Punkt sprzedaży: **„Z sieci” włączone** (rejestry 272–277 bit0; przy sprzedaży z falownika = 1, EMS dawał 0), „autokonsumpcja do” = rezerwa, **„sprzedaj do” = rezerwa + 1 %** i SOC punktu = rezerwa + 1 % (przy równych wartościach falownik cofał tryb eksportu).
+- Punkt ładowania: „sprzedaj do” = cel + 1 % zamiast 100 (jak falownik).
+- Rejestr 225 („prąd ładowania z generatora”) – EMS go nie rusza (decyzja użytkownika).
+
 ## v0.6.17
 
 **Dodane**
