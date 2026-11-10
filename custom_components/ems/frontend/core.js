@@ -72,7 +72,7 @@ const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50
 const ICC = { coins: "#facc15", bolt: "#facc15", batteryBolt: "#3ee07a" };
 // Kolumny kupna / sprzedazy (przez cala wysokosc, delikatne): czerwone = kupno z sieci, zielone = sprzedaz do sieci
 export const BUYSELL = { kup: "#ff4d5e", sprzedaj: "#22e07a" };
-export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [], order = "pms", act = null, socIn = true, mName = "Moc", mUnit = "kW", mSub = null }) {
+export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [], order = "pms", act = null, socIn = true, mName = "Moc", mUnit = "kW", mSub = null, bsOp = 0.16, bsTop = false }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
   // Trzy pasy na wspolnej osi czasu (kazdy z jedna osia): ceny zl/kWh | moc kW | SOC %. Na komputerze opis pasa z ikona po lewej.
   const off = OFF[key] = OFF[key] || {}, mob = ui.mob;
@@ -104,7 +104,7 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   let z0 = -1; rows.forEach((r, i) => { const c = cheapAt(r.t); if (c && z0 < 0) z0 = i; if ((!c || i === n - 1) && z0 >= 0) { const e = c ? i + 1 : i;
     g += `<rect x="${x(z0)}" y="${T - 7}" width="${x(e) - x(z0)}" height="${bot - T + 14}" class="pw-night"/>`; z0 = -1; } });
   // kolumny kupna / sprzedazy: z planu (act(r) -> "kup" | "sprzedaj") + reczne zlecenia (bands: [{a, b (ms), typ}]); bez napisow (szczegoly w dymku)
-  const col = (a, e, k) => { if (off["__" + k] || e - a < 0.5) return; g += `<rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${bot - T + 14}" fill="${BUYSELL[k]}" opacity=".16"/>`; };
+  const col = (a, e, k) => { if (off["__" + k] || e - a < 0.5) return; g += `<rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${bot - T + 14}" fill="${BUYSELL[k]}" opacity="${bsOp}"/>${bsTop ? `<rect x="${a.toFixed(1)}" y="${T - 7}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="3" fill="${BUYSELL[k]}"/>` : ""}`; };
   if (act) { let k0 = null, i0 = 0; rows.forEach((r, i) => { const k = act(r) || null; if (k !== k0) { if (k0) col(x(i0), x(i), k0); k0 = k; i0 = i; } }); if (k0) col(x(i0), x(n), k0); }
   if (n > 1) { const t0 = rows[0].t.getTime(), dt = rows[1].t - rows[0].t, xt = t => L + (t - t0) / dt * bw;
     for (const b of bands) { const a = Math.max(L, xt(b.a)), e = Math.min(W - R, xt(b.b)); if (e > a) col(a, e, b.typ === "sprzedaj" ? "sprzedaj" : "kup"); } }

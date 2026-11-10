@@ -21,6 +21,24 @@ const box = (k, html, cls = "") => { const [l, t, w, h] = POS[k]; return `<div c
 const tile = (ic, cls, lab, val, sub, subc, t) => `<div class="ov-tile"><div class="ov-ic ${cls}">${ic}</div><div><div class="ov-lab">${lab}${tip(t)}</div><div class="ov-val">${val}</div><div class="ov-sub" ${subc ? `style="color:${subc}"` : ""}>${sub}</div></div></div>`;
 
 import { profile, bindProfile, accuracyModal, PROFILE_CSS } from "../profile.js";
+import { pwChart } from "../core.js";
+import { range, nowWindow } from "../minute.js";
+import { slots } from "../forecast.js";
+// Prognoza PV i zuzycia domu (teraz ±12 h): pomiar linia ciagla, prognoza przerywana – jak w Planie
+function fcRow(c) {
+  const w = nowWindow(12), meas = range(c, w.t0, w.t1), sm = slots(c, w.t0, w.t1), now = Date.now(), rows = [];
+  for (let t = w.t0, i = 0; t < w.t1; t += 6e4, i++) { const x = sm.get(Math.floor(t / 9e5) * 9e5) || {}, m = t < now ? meas[i] : null;
+    rows.push({ t: new Date(t), pv: x.pv ?? null, loadp: x.load ?? null, pv_m: m?.pv ?? null, dom_m: m?.dom ?? null }); }
+  const DOTc = col => `<i class="d" style="background:${col}"></i>`;
+  const ch = (key, mk, pk, col, nm) => pwChart({ key, rows, h: 230, order: "m", mName: nm, mUnit: "kW", mSub: "", socIn: false,
+    tipf: r => `<div class="tt2">${r.t.toLocaleString("pl-PL", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</div><div><span>${DOTc(col)}Prognoza</span><b>${fmt((r[pk] || 0) * 4, 2, "kW")}</b></div><div><span>${DOTc(col)}Pomiar</span><b>${r[mk] == null ? "–" : fmt(r[mk], 2, "kW")}</b></div>`,
+    lines: [{ k: mk, raw: true, c: col, name: `${nm} (pomiar)`, lg: nm, w: 2.2, fill: true }, { k: pk, c: col, name: `${nm} (prognoza)`, lg: nm, dash: "6 5", nofill: true, w: 2 }] });
+  const sum = (k, raw) => rows.reduce((q, r) => q + (r[k] == null ? 0 : raw ? r[k] / 60 : r[k] / 15), 0);
+  const hd = (pk, mk, cls) => `<span><b class="${cls}">${fmt(sum(pk), 1, "kWh")} prognoza</b> <span class="ov-mut">· ${fmt(sum(mk, true), 1, "kWh")} faktycznie</span></span>`;
+  return `<div class="ov-fc" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px;margin-top:14px">
+    <div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span>☀ Produkcja PV – prognoza i pomiar <span class="ov-mut">(teraz ±12 h)</span></span>${hd("pv", "pv_m", "t-o")}</div>${ch("ovpv", "pv_m", "pv", "#facc15", "PV")}</div>
+    <div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span>🏠 Zużycie domu – prognoza i pomiar <span class="ov-mut">(teraz ±12 h)</span></span>${hd("loadp", "dom_m", "t-b")}</div>${ch("ovdom", "dom_m", "loadp", "#1e9bff", "Dom")}</div></div>`;
+}
 // Rachunek za energie w biezacym miesiacu (/api/ems/rachunek), odswiezany co 10 min
 const bill = { at: 0, busy: false, d: null };
 function billBox(c) {
@@ -119,7 +137,7 @@ export function render(c) {
     <div class="ov-box"><div class="ov-h">${ic("tower", 20)} Sieć (3F, ${fmt(v("siec_czestotliwosc"), 1, "Hz")})</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("siec_napiecie_" + l), 1, "V")} · ${kw(v("siec_moc_" + l))}`)).join("")}</div>
     <div class="ov-box"><div class="ov-h">${ic("cpu", 20)} Przetwornica</div>${L3.map(l => row(l.toUpperCase(), `${fmt(v("przetwornica_napiecie_" + l), 1, "V")} · ${kw(v("przetwornica_moc_" + l))}`)).join("")}${row("Temp. radiatora", `${fmt(v("temperatura_przetwornicy"), 1)} °C / ${fmt(v("temperatura_radiatora"), 1, "°C")}`)}</div>
     <div class="ov-box"><div class="ov-h">${ic("panel", 20)} PV (stringi)</div>${[1, 2, 3, 4].map(i => row("PV" + i, kw(v("pv" + i + "_moc")))).join("")}</div></div>`;
-  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}<div data-pge-ov style="margin-bottom:14px">${pgeEl ? "" : `<div class="ov-box ov-mut">Ładuję rozliczenie PGE…</div>`}</div>${mid}<div style="margin-top:14px">${ster}</div><div style="margin-bottom:14px">${billBox(c)}</div>${bot}${modal()}${accuracyModal(c)}`;
+  return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}<div data-pge-ov style="margin-bottom:14px">${pgeEl ? "" : `<div class="ov-box ov-mut">Ładuję rozliczenie PGE…</div>`}</div>${mid}${fcRow(c)}<div style="margin-top:14px">${ster}</div><div style="margin-bottom:14px">${billBox(c)}</div>${bot}${modal()}${accuracyModal(c)}`;
 }
 export function bind(c, r) {
   const host = r.querySelector("[data-pge-ov]");
