@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.40
+- Harmonogram TOU (Ustawienia i Plan): kolumna **„Do”** (start następnego punktu, ostatni do 23:59) + czas trwania, tryb punktu wyliczony z ustawień (Ładowanie / Sprzedaż / Trzymanie / Autokonsumpcja), podświetlony punkt aktywny teraz, ostrzeżenie gdy punkt 1 nie startuje o 00:00 albo start jest po następnym punkcie.
+
 ## 0.6.39
 - Harmonogram TOU w dobie falownika 00:00–23:59: zawsze punkt o **00:00**, żaden punkt nie przechodzi przez północ (segment trwający przez północ dzielony – ten sam tryb od 00:00); punktu 00:00 nie usuwa scalanie ani obcinanie do 6.
 - Po końcu planu (brak cen na dalej) – autokonsumpcja; wcześniej ostatni punkt (np. 22:00 ładowanie) ciągnął się dalej.
