@@ -1,5 +1,9 @@
 # Zmiany EMS
 
+## 0.6.39
+- Harmonogram TOU w dobie falownika 00:00–23:59: zawsze punkt o **00:00**, żaden punkt nie przechodzi przez północ (segment trwający przez północ dzielony – ten sam tryb od 00:00); punktu 00:00 nie usuwa scalanie ani obcinanie do 6.
+- Po końcu planu (brak cen na dalej) – autokonsumpcja; wcześniej ostatni punkt (np. 22:00 ładowanie) ciągnął się dalej.
+
 ## 0.6.38
 - Przyczyna „Pmax zakupu nie da się zapisać”: surowy zapis szedł funkcją 06H (write single), a falownik przyjmuje tylko 10H (jak wszystkie zapisy z dataloggera). YAML v5.7: `raw_write` i przełącznik „Pmax zakupu” zapisują 10H.
 - Panel: Pmax zakupu znowu jako przełącznik (Ustawienia → ⚡ Pmax zakupu i Inwerter → Tryb pracy), gdy jest `switch.<dev>_pmax_zakupu` (YAML v5.7); bez niego – podgląd. EMS sam go nie przestawia (do decyzji).

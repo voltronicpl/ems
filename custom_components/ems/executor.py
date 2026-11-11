@@ -164,11 +164,16 @@ class Executor:
             hi.append(s.get("soc") or 0 if m[0] == "charge" and not s.get("manual") else 0)
         if not segs:
             return []
+        p_end = max((datetime.fromisoformat(s["start"]).astimezone(WAW) + timedelta(minutes=15) for s in plan), default=horizon)
+        if p_end < horizon and segs[-1][1][0] != "self":                # po koncu planu: autokonsumpcja (nic nie ciagnie sie dalej)
+            sm = ("self", False, round(p["soc_min"]), int(max_sell_w // 100 * 100), round(p["soc_min"]), 100)
+            segs.append((p_end, sm))
+            hi.append(0)
         # ladowanie algorytmu: SOC punktu = cel z planu (max SOC w bloku, w gore do 1 %), nie soc_max – inaczej po scaleniu ladowalby do pelna
         segs = [(t, (m[:2] + (min(int(-(-h // 1)), m[2]),) + m[3:4] + (min(int(-(-h // 1)), m[4]), min(int(-(-h // 1)) + 1, 100))) if h and m[0] == "charge" else m)
                 for (t, m), h in zip(segs, hi)]
-        if len(segs) > 1 and segs[-1][1] == segs[0][1]:   # doba w kolko: ostatni punkt = pierwszy -> jeden punkt
-            segs.pop(0)
+        if len(segs) > 1 and segs[-1][1] == segs[0][1] and segs[0][0].hour * 60 + segs[0][0].minute != 0:
+            segs.pop(0)                                  # doba w kolko: ostatni punkt = pierwszy (nie przez polnoc) -> jeden punkt
         # sasiednie ladowania (inna moc / SOC) -> jeden punkt (moc pierwszego, SOC najwyzszy)
         i = 1
         while i < len(segs):
@@ -178,15 +183,25 @@ class Executor:
                 del segs[i]
                 continue
             i += 1
+        # doba falownika = 00:00–23:59: punkt NIE MOZE przechodzic przez polnoc -> zawsze punkt o 00:00
+        # (segment trwajacy przez polnoc dzielony: ten sam tryb od 00:00)
+        midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        if not any(t == midnight for t, _ in segs):
+            k = max((i for i, (t, _) in enumerate(segs) if t < midnight), default=None)
+            if k is not None:
+                segs.insert(k + 1, (midnight, segs[k][1]))
+        is_mid = lambda k: segs[k][0] == midnight                    # noqa: E731
         soft = lambda k: segs[k][1][0] not in ("charge", "sell")   # noqa: E731
         end = segs[0][0] + timedelta(days=1)
         ln = lambda k: (segs[k + 1][0] if k + 1 < len(segs) else end) - segs[k][0]   # noqa: E731
 
         def drop(k: int) -> bool:
             """Usun miekki punkt k BEZ wydluzania ladowania / sprzedazy: do poprzedniego miekkiego albo nastepny miekki przejmuje start."""
+            if is_mid(k):                                             # punkt 00:00 zostaje zawsze
+                return False
             if k > 0 and soft(k - 1):
                 del segs[k]
-            elif k + 1 < len(segs) and soft(k + 1):
+            elif k + 1 < len(segs) and soft(k + 1) and not is_mid(k + 1):
                 segs[k + 1] = (segs[k][0], segs[k + 1][1])
                 del segs[k]
             else:
@@ -205,7 +220,14 @@ class Executor:
             if cand and drop(cand[0][1]):
                 continue
             LOG.debug("Plan ma %d punktow w 24 h – reszta doby jako autokonsumpcja", len(segs))
-            segs = segs[:5] + [(segs[5][0], ("self", False, round(p["soc_min"]), int(max_sell_w // 100 * 100), round(p["soc_min"]), 100))]
+            selfm = ("self", False, round(p["soc_min"]), int(max_sell_w // 100 * 100), round(p["soc_min"]), 100)
+            m = next((k for k in range(len(segs)) if is_mid(k)), None)
+            if m is not None and m < 5:
+                segs = segs[:5] + [(segs[5][0], selfm)]               # 00:00 jest w pierwszych 5
+            elif m == 5:
+                segs = segs[:5] + [(midnight, selfm)]
+            else:
+                segs = segs[:4] + [(segs[4][0], selfm)] + ([(midnight, selfm)] if m is not None else [])
         # bezpiecznik: ostatni punkt doby nie moze byc ladowaniem / sprzedaza ciagnietym do pierwszego punktu
         while len(segs) < 6:                   # dopelnij: podziel najdluzszy segment na pol
             gaps = [((segs[(i + 1) % len(segs)][0] if i + 1 < len(segs) else segs[0][0] + timedelta(days=1)) - segs[i][0], i)
