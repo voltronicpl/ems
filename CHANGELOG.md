@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.43
+- Pmax zakupu – zapis ze sprawdzeniem: po przestawieniu od razu odczyt ustawień, po max 40 s porównanie z falownikiem; nie zgadza się → 2. próba, dalej nie → błąd w logu i ⚠ w Ustawieniach → ⚡ Pmax zakupu (bez zapisu w kółko). W logu: `ZAPIS … proba N`, `POTWIERDZONY`, brak przełącznika (YAML v5.7+) zgłaszany raz.
+
 ## 0.6.42
 - ⟳ w nagłówku: odczyt OD RAZU pomiarów (moce, przepływy, SOC) i ustawień – akcja `esphome.<dev>_odczytaj_wszystko` (YAML v5.8); ze starszym YAML jak dotąd same ustawienia. Przycisk „Odczyt” w ramkach Ustawień bez zmian.
 

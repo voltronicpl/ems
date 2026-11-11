@@ -70,7 +70,7 @@ function pmaxBox(c) {
   const st = on == null ? "nieodczytany" : on ? `<b>☑ zaznaczony</b>` : `<b>☐ odznaczony</b>`;
   return c.group(`⚡ Pmax zakupu – limit poboru z sieci${tip({ co: "Grid Peak Shaving – rejestr 278 (bit 4) i „Moc szczytowa sieci” (291).", jak: "Od YAML v5.7 (zapis 10H). EMS (algorytm i ręczne): odznaczony TYLKO przy sprzedaży, w każdym innym trybie (kupno, trzymanie, autokonsumpcja – pobór z sieci) zaznaczony. Ręczna zmiana zostanie nadpisana przy następnej zmianie trybu. Limit (291) tutaj." })}`,
     `<div class="g3"><div><label class="f">Pmax zakupu${hasSw ? "" : " (tylko odczyt – YAML v5.7 da przełącznik)"}</label><div style="padding:8px 0">${hasSw ? c.sw(swId, "Zaznaczony") : st}${!b && p?.r278 ? ` <span class="lab">(278 = ${esc(p.r278)})</span>` : ""}</div></div>
-      <div><label class="f">Moc szczytowa sieci (limit)</label>${c.field(nm, "W")}</div></div>`, [nm]);
+      <div><label class="f">Moc szczytowa sieci (limit)</label>${c.field(nm, "W")}</div></div>${p?.ostrzezenie ? `<div class="box err" style="margin:8px 0 0">⚠ ${esc(p.ostrzezenie)}</div>` : ""}`, [nm]);
 }
 export function render(c) {
   const winter = !c.zone.summer, d = c.dev;

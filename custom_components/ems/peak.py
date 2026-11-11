@@ -90,19 +90,46 @@ class PeakShave:
 
     # --- v0.6.37: TYLKO ODCZYT (278 nie da sie zapisac przez Modbus) -----------------------------------
     async def ensure(self, act: str, limit_w: float = 0) -> None:
-        """v0.6.41 (decyzja uzytkownika): SPRZEDAZ = odznaczony, KUPNO (ladowanie z sieci) = zaznaczony – algorytm i reczne.
-        Odznaczony tylko przy sprzedazy, inaczej zaznaczony. Przez przelacznik z YAML v5.7 (zapis 10H); bez niego nic nie robi. Zapis tylko przy zmianie."""
+        """Sprzedaz = ODZNACZONY, kazdy inny tryb = ZAZNACZONY (algorytm i reczne). Przez przelacznik z YAML v5.7+ (zapis 10H).
+        Zapis ze SPRAWDZENIEM: po zapisie czeka na odczyt ustawien (max 40 s); jesli falownik dalej ma stary stan ->
+        druga proba, potem blad w logu + ostrzezenie w Ustawieniach (bez zapisu w kolko)."""
         sw = dev_entity(self.hass, self.dev, "switch", "pmax_zakupu")
         st = self.hass.states.get(sw)
         if st is None or st.state not in ("on", "off"):
-            self.status = {}
+            self.status = {"ostrzezenie": None if st is None else f"{sw} = {st.state} – czekam na odczyt rejestru 278"}
+            if st is None and act == "sell" and not getattr(self, "_no_sw", False):
+                self._no_sw = True
+                LOG.warning("Pmax zakupu: brak %s (YAML v5.7+) – nie przestawiam", sw)
             return
-        want = "off" if act == "sell" else "on"              # odznaczony TYLKO przy sprzedazy; pobor z sieci (kupno, trzymanie, autokonsumpcja) = zaznaczony
-        if want and st.state != want and getattr(self, "_sent", None) != (want, st.last_updated):
-            self._sent = (want, st.last_updated)               # jeden zapis na zmiane – nie w kolko, gdy falownik nie przyjmie
-            await self.hass.services.async_call("switch", f"turn_{want}", {"entity_id": sw}, blocking=True)
-            LOG.info("ZAPIS %s: %s -> %s (Pmax zakupu %s)", sw, st.state, want, "ODZNACZONY – sprzedaz" if want == "off" else "ZAZNACZONY – kupno")
-        self.status = {"wlaczony": (want or st.state) == "on", "przez_ems": True, "ostrzezenie": None}
+        want = "off" if act == "sell" else "on"
+        now = time.monotonic()
+        w = getattr(self, "_w", None)                          # {want, at, tries}
+        if st.state == want:
+            if w and w["want"] == want:
+                LOG.info("Pmax zakupu POTWIERDZONY: %s (%s) po %.0f s", want, "odznaczony – sprzedaz" if want == "off" else "zaznaczony", now - w["at"])
+            self._w = None
+            self.status = {"wlaczony": want == "on", "przez_ems": True, "ostrzezenie": None}
+            return
+        if w and w["want"] == want:
+            if now - w["at"] < 40:                             # czekamy na odczyt po zapisie
+                return
+            if w["tries"] >= 2:
+                if not w.get("err"):
+                    w["err"] = True
+                    msg = f"Falownik nie przyjął Pmax zakupu = {'odznaczony' if want == 'off' else 'zaznaczony'} (2 próby, zapis 10H rejestr 278) – ustaw na LCD"
+                    LOG.error("%s", msg)
+                    self.status = {"wlaczony": st.state == "on", "przez_ems": True, "ostrzezenie": msg}
+                return
+        tries = (w["tries"] + 1) if w and w["want"] == want else 1
+        await self.hass.services.async_call("switch", f"turn_{want}", {"entity_id": sw}, blocking=True)
+        try:                                                    # odczyt ustawien od razu (potwierdzenie)
+            await self.hass.services.async_call("esphome", f"{self.dev}_odczytaj_ustawienia", {}, blocking=False)
+        except Exception:  # noqa: BLE001
+            pass
+        self._w = {"want": want, "at": now, "tries": tries}
+        LOG.info("ZAPIS %s: %s -> %s (Pmax zakupu %s, proba %d) – sprawdzam po odczycie", sw, st.state, want,
+                 "ODZNACZONY – sprzedaz" if want == "off" else "ZAZNACZONY", tries)
+        self.status = {"wlaczony": st.state == "on", "przez_ems": True, "ostrzezenie": None}
 
     async def restore(self) -> None:
         """Nic do przywracania – EMS nie zapisuje 278."""
