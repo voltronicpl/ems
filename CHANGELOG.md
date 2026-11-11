@@ -1,5 +1,12 @@
 # Zmiany EMS
 
+## 0.6.35 – PILNA POPRAWKA
+- BŁĄD v0.6.30–0.6.34: przy scalaniu punktów TOU (krótkie punkty / więcej niż 6) usuwany punkt autokonsumpcji był doklejany do POPRZEDNIEGO – gdy był to punkt ładowania, falownik ładował z sieci dalej (11.11: „13:00 ładowanie 6000 W” trwało do 22:00 → ~12 kW z sieci w drogiej strefie). Teraz punkt miękki (autokonsumpcja / trzymanie / blokada) jest usuwany tylko, gdy sąsiad też jest miękki (do poprzedniego miękkiego albo następny miękki przejmuje start); ładowanie i sprzedaż NIGDY nie są wydłużane. Gdy dalej > 6 punktów – reszta doby jako autokonsumpcja (jak przed v0.6.30).
+- Sąsiednie ładowania z inną mocą scalane w jeden punkt.
+- Tania strefa ze sprzedażą w innej godzinie: sloty bez ładowania = „Trzymanie” (bateria nie rozładowuje się, dom z sieci), było „Autokonsumpcja”.
+- **Pmax zakupu (rejestr 278) steruje EMS** (decyzja użytkownika, zmienia v0.6.15): sprzedaż (algorytm i ręczna) = odznaczony, wszystko inne (ładowanie, ręczne kupno, autokonsumpcja, trzymanie) = zaznaczony z limitem 291 = „Max pobór z sieci” – pobór z sieci pilnuje falownik. Zapis przez raw_write tylko przy zmianie, odczyt kontrolny, 2 próby, ⚠ przy błędzie. Twoja wartość 278 / 291 zapamiętana przy pierwszym zapisie i przywracana przy wyłączeniu algorytmu. Usunięte liczenie mocy ładowania „limit − dom − 300 W”.
+- **Strażnik zgodności z planem**: przy każdym nowym odczycie dataloggera – bateria ładuje z sieci (> 300 W), a plan nie ładuje, albo bateria oddaje do sieci, a plan nie sprzedaje → po 3 odczytach z rzędu nowy plan ze stanu faktycznego + wymuszony pełny zapis wszystkich punktów TOU; po 2 interwencjach bez skutku **wyłącza algorytm** (wracają Twoje ustawienia) i pokazuje 🛡 ostrzeżenie w Przeglądzie. Log `[straznik]`, licznik interwencji w Przeglądzie.
+
 ## 0.6.34
 - Nauka: pasek okresu przyklejony (jedzie ze stroną, pod nagłówkiem panelu).
 - Wszystkie ramki liczone z wybranego okresu (`GET /api/ems/nauka?od=&do=`): kafle (kalibracja PV i pompa z okresu vs poprzedni), „było → jest” tylko ze snapshotów okresu, dni podobne do średniej pogody okresu, pompa – punkty z okresu + model okresu (zielony) obok rocznego, profil dobowy z okresu vs ten sam okres rok temu, kalibracja PV okresu z podświetleniem miesięcy.

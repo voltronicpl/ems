@@ -37,7 +37,7 @@ class Executor:
         self._exp_rej = 0                                # ile razy falownik sam cofnal tryb sprzedazy w biezacej sprzedazy
         self._exp_set = False
         self.sell_warn: str | None = None
-        self.peak = PeakShave(hass, dev, entry_id)      # "Pmax zakupu" (Grid Peak Shaving) – TYLKO odczyt, nigdy zapis
+        self.peak = PeakShave(hass, dev, entry_id)      # "Pmax zakupu" (Grid Peak Shaving) – sprzedaz odznaczony, reszta zaznaczony
 
     # --- encje -------------------------------------------------------------------------------
     def eid(self, dom: str, key: str) -> str:
@@ -84,13 +84,14 @@ class Executor:
             return
         cur = self.val(entity)
         dom = entity.split(".")[0]
+        force = getattr(self, "force", False) and ("tou_" in entity or "harmonogram" in entity or "ladowanie_z_sieci" in entity)
         if dom == "number":
-            if cur is not None and abs(float(cur) - float(value)) < 0.5:
+            if cur is not None and abs(float(cur) - float(value)) < 0.5 and not force:
                 return
             await self.hass.services.async_call("number", "set_value", {"entity_id": entity, "value": value}, blocking=True)
         elif dom == "switch":
             want = "on" if value else "off"
-            if cur == want:
+            if cur == want and not force:
                 return
             await self.hass.services.async_call("switch", f"turn_{want}", {"entity_id": entity}, blocking=True)
         elif dom == "select":
@@ -119,6 +120,10 @@ class Executor:
             dom = e.split(".")[0]
             await self.set(e, v == "on" if dom == "switch" else (float(v) if dom == "number" else v), "przywrocenie")
         self.last_points = None
+        try:
+            await self.peak.restore()
+        except Exception as err:  # noqa: BLE001
+            LOG.warning("Pmax zakupu: przywrocenie nie wyszlo (%s)", err)
 
     # --- plan -> punkty TOU ------------------------------------------------------------------------
     @staticmethod
@@ -164,27 +169,44 @@ class Executor:
                 for (t, m), h in zip(segs, hi)]
         if len(segs) > 1 and segs[-1][1] == segs[0][1]:   # doba w kolko: ostatni punkt = pierwszy -> jeden punkt
             segs.pop(0)
-        # punkty krotsze niz `tou_min_blok_min` (autokonsumpcja / trzymanie / blokada) doklejane do poprzedniego – bez cykania
+        # sasiednie ladowania (inna moc / SOC) -> jeden punkt (moc pierwszego, SOC najwyzszy)
+        i = 1
+        while i < len(segs):
+            if segs[i][1][0] == "charge" == segs[i - 1][1][0]:
+                m0, m1 = segs[i - 1][1], segs[i][1]
+                segs[i - 1] = (segs[i - 1][0], m0[:2] + (max(m0[2], m1[2]),) + m0[3:4] + (max(m0[4], m1[4]), max(m0[5], m1[5])))
+                del segs[i]
+                continue
+            i += 1
+        soft = lambda k: segs[k][1][0] not in ("charge", "sell")   # noqa: E731
+        end = segs[0][0] + timedelta(days=1)
+        ln = lambda k: (segs[k + 1][0] if k + 1 < len(segs) else end) - segs[k][0]   # noqa: E731
+
+        def drop(k: int) -> bool:
+            """Usun miekki punkt k BEZ wydluzania ladowania / sprzedazy: do poprzedniego miekkiego albo nastepny miekki przejmuje start."""
+            if k > 0 and soft(k - 1):
+                del segs[k]
+            elif k + 1 < len(segs) and soft(k + 1):
+                segs[k + 1] = (segs[k][0], segs[k + 1][1])
+                del segs[k]
+            else:
+                return False
+            return True
+
+        # punkty miekkie krotsze niz `tou_min_blok_min` – tylko gdy sasiad tez miekki (NIGDY nie wydluzamy ladowania / sprzedazy)
         mn = timedelta(minutes=p.get("tou_min_blok_min", 60))
         i = 1
         while i < len(segs):
-            nxt = segs[i + 1][0] if i + 1 < len(segs) else None
-            if nxt is not None and nxt - segs[i][0] < mn and segs[i][1][0] not in ("charge", "sell"):
-                del segs[i]
-                if i < len(segs) and segs[i][1] == segs[i - 1][1]:
-                    del segs[i]
+            if soft(i) and i + 1 < len(segs) and ln(i) < mn and drop(i):
                 continue
             i += 1
-        if len(segs) > 6:                      # falownik ma 6 punktow: scalaj najkrotsze autokonsumpcje / trzymania (ladowanie i sprzedaz zostaja)
-            LOG.debug("Plan ma %d segmentow w 24 h, scalam do 6", len(segs))
-            end = segs[0][0] + timedelta(days=1)
-            while len(segs) > 6:
-                ln = [((segs[i + 1][0] if i + 1 < len(segs) else end) - segs[i][0], i) for i in range(1, len(segs))]
-                soft_ = [x for x in ln if segs[x[1]][1][0] not in ("charge", "sell")]
-                _, i = min(soft_ or ln)
-                del segs[i]
-                if i < len(segs) and segs[i][1] == segs[i - 1][1]:
-                    del segs[i]
+        while len(segs) > 6:                   # falownik ma 6 punktow: najpierw najkrotsze miekkie (bez wydluzania twardych)
+            cand = sorted((ln(k), k) for k in range(1, len(segs)) if soft(k) and ((soft(k - 1)) or (k + 1 < len(segs) and soft(k + 1))))
+            if cand and drop(cand[0][1]):
+                continue
+            LOG.debug("Plan ma %d punktow w 24 h – reszta doby jako autokonsumpcja", len(segs))
+            segs = segs[:5] + [(segs[5][0], ("self", False, round(p["soc_min"]), int(max_sell_w // 100 * 100), round(p["soc_min"]), 100))]
+        # bezpiecznik: ostatni punkt doby nie moze byc ladowaniem / sprzedaza ciagnietym do pierwszego punktu
         while len(segs) < 6:                   # dopelnij: podziel najdluzszy segment na pol
             gaps = [((segs[(i + 1) % len(segs)][0] if i + 1 < len(segs) else segs[0][0] + timedelta(days=1)) - segs[i][0], i)
                     for i in range(len(segs))]
@@ -210,9 +232,6 @@ class Executor:
         return self._cap_w
 
     async def apply(self, plan: list[dict], p: dict, max_charge_w: float, max_sell_w: float, current: dict | None) -> None:
-        cap = self._grid_cap(p)
-        if cap is not None and cap < max_charge_w:
-            max_charge_w = cap                                # ladowanie z sieci (algorytm i reczne) w granicy przylacza
         pts = self.points(plan, p, max_charge_w, max_sell_w)
         if not pts:
             LOG.warning("Brak planu na najblizsze 24 h - nic nie zapisuje")
@@ -227,14 +246,14 @@ class Executor:
             await self.set(self.eid("number", f"tou_{i}_autokonsumpcja_do"), auto, f"punkt {i} {name}")
             await self.set(self.eid("number", f"tou_{i}_sprzedaj_do"), sell, f"punkt {i} {name}")
         await self.set(self.eid("switch", "harmonogram_tou"), True, "EMS")
+        if getattr(self, "force", False):
+            LOG.warning("[straznik] wymuszony pelny zapis TOU (wszystkie punkty)")
+            self.force = False
         await self.set(self.eid("switch", "ladowanie_z_sieci_dozwolone"), True, "EMS")
         act = (current or {}).get("action", "self")
         pmax = self.eid("number", "max_moc_sprzedazy_z_pv")   # w panelu "Pmax sprzedazy (eksport)" – ogranicza CALY eksport (Deye "Max Sell Power")
-        try:
-            if act == "sell":
-                await self.peak.check_for_sell()          # tylko sprawdzenie – EMS NIGDY nie zapisuje Pmax zakupu
-            else:
-                self.peak.idle()
+        try:                                                # Pmax zakupu: sprzedaz = odznaczony, reszta = zaznaczony z limitem przylacza (falownik pilnuje poboru)
+            await self.peak.ensure(act != "sell", float(p.get("max_pobor_w", 10000) or 0))
         except Exception as err:  # noqa: BLE001
             LOG.warning("Pmax zakupu: blad (%s)", err)
         if act == "sell":                                   # glowny wlacznik eksportu (jak "Solar Sell" w Deye) – bez niego nic nie idzie do sieci

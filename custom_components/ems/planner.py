@@ -310,6 +310,7 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                 e, over = store(e, max(net, 0))
                 ahead = sum(sell[j] + max(ld[j] - pvk[j], 0) for j in range(k + 1, b) if in_sh(j)) / ed
                 want = min(kwh(soc_max), kwh(tgt if tgt is not None else res_min) + ahead)
+                act, why = "hold", "tania strefa G12: bateria trzyma, dom z sieci (sprzedaz w innej godzinie)"
                 if want - e > 0.005:
                     left = max(sum(1 for j in range(k, b) if not in_sh(j)), 1)
                     need = (want - e) / left

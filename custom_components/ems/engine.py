@@ -49,6 +49,8 @@ class Engine:
         self._hist: dict = {}
         self._hist_at: datetime | None = None
         self._busy = False
+        self.guard_warn: str | None = None
+        self.guard_n = 0
         self._last_exec: datetime | None = None
         self.manual_log: list[dict] = []             # historia recznych zadan (14 dni)
         self._mstore = Store(hass, 1, f"ems_reczne_{entry_id}")
@@ -181,12 +183,62 @@ class Engine:
                           self.r("obciazenie_moc_suma", 0.0) or 0.0, self.p.get("sprawnosc_ladowania", 93) / 100)
         except Exception as err:  # noqa: BLE001
             LOG.debug("koszt baterii: %s", err)
+        try:
+            self._guard_check()
+        except Exception as err:  # noqa: BLE001
+            LOG.debug("straznik: %s", err)
         if self._busy:
             return
         if not self.last_plan or now - self.last_plan >= timedelta(minutes=self.p["plan_co_min"]):
             self.hass.async_create_task(self._guard(self.replan(f"co {int(self.p['plan_co_min'])} min")))
         elif not self._last_exec or now - self._last_exec >= timedelta(seconds=self.p["zapis_co_s"]):
             self.hass.async_create_task(self._guard(self.execute()))
+
+    def _guard_check(self) -> None:
+        """Straznik zgodnosci (v0.6.35): przy kazdym NOWYM odczycie dataloggera porownuje falownik z planem.
+        Bateria laduje z sieci, a plan nie ma ladowania / oddaje do sieci, a plan nie ma sprzedazy -> po 3 odczytach
+        z rzedu: nowy plan ze stanu faktycznego + przepisanie TOU. Po 2 interwencjach bez skutku -> WYLACZA algorytm
+        (snapshot = Twoje ustawienia wracaja) + ostrzezenie w Przegladzie."""
+        st = self.hass.states.get(f"sensor.{self.dev}_bateria_moc")
+        mark = st.last_updated if st else None
+        if mark is None or mark == getattr(self, "_g_mark", None):
+            return
+        self._g_mark = mark
+        if not self.enabled or self.manual or not self.plan:
+            self._g_bad = 0                                  # ostrzezenie o wylaczeniu zostaje widoczne
+            return
+        act = (self.current() or {}).get("action", "self")
+        bat, grid = self.r("bateria_moc"), self.r("siec_moc_suma")
+        if bat is None or grid is None:
+            return
+        bad = None
+        if act != "charge" and bat < -300 and grid > 300:
+            bad = f"bateria ładuje {-bat:.0f} W z sieci (pobór {grid:.0f} W), a plan: {act}"
+        elif act != "sell" and grid < -300 and bat > 300:
+            bad = f"bateria oddaje do sieci {-grid:.0f} W, a plan: {act}"
+        if not bad:
+            if getattr(self, "_g_bad", 0):
+                LOG.info("[straznik] zgodnie z planem")
+            self._g_bad, self._g_fix = 0, 0
+            self.guard_warn = None
+            return
+        self._g_bad = getattr(self, "_g_bad", 0) + 1
+        LOG.warning("[straznik] niezgodnosc %d/3: %s", self._g_bad, bad)
+        if self._g_bad < 3 or self._busy:
+            return
+        self._g_bad = 0
+        self._g_fix = getattr(self, "_g_fix", 0) + 1
+        self.guard_n = getattr(self, "guard_n", 0) + 1
+        if self._g_fix > 2:
+            self.guard_warn = f"Strażnik WYŁĄCZYŁ algorytm: {bad}. 2× nowy plan + przepisanie TOU nie pomogło – przywrócone Twoje ustawienia, sprawdź na LCD."
+            LOG.error("[straznik] %s", self.guard_warn)
+            self._g_fix = 0
+            self.hass.async_create_task(self.set_enabled(False))
+            return
+        LOG.warning("[straznik] interwencja %d: nowy plan ze stanu faktycznego + przepisanie TOU", self._g_fix)
+        self.exec.last_points = None
+        self.exec.force = True                              # przepisz WSZYSTKIE punkty TOU, nawet jesli HA pokazuje to samo
+        self.hass.async_create_task(self._guard(self.replan("straznik: niezgodnosc z planem")))
 
     async def _guard(self, coro) -> None:
         self._busy = True
@@ -395,6 +447,7 @@ class Engine:
         self.enabled = on
         LOG.info("ALGORYTM %s", "WLACZONY" if on else "WYLACZONY")
         if on:
+            self.guard_warn, self._g_fix, self._g_bad = None, 0, 0
             await self.exec.snapshot()
             await self.replan("wlaczenie algorytmu")
         elif not self.manual:

@@ -37,6 +37,7 @@ class EmsPlanSensor(EmsEntity, SensorEntity):
             "ostatni_zapis_tou": e.exec.last_write.isoformat() if e.exec.last_write else None,
             "pmax_zakupu": e.exec.peak.status or None,
             "sprzedaz_ostrzezenie": e.exec.sell_warn,
+            "straznik": {"ostrzezenie": getattr(e, "guard_warn", None), "interwencje": getattr(e, "guard_n", 0)},
         }
 
 
