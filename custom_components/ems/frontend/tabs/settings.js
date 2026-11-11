@@ -64,11 +64,12 @@ const arbMin = (c, z) => 0.61 / (num(c.hass, "number.ems_sprawnosc_ladowania", 9
 // przelacznik na encji number 0/1 (parametry EMS sa liczbami)
 const ntog = (c, id) => { const on = num(c.hass, id, 0) >= 0.5; return `<div class="sw" data-ntog="${id}" title="${esc(id)}"><div class="tg ${on ? "on" : ""}"></div>${on ? "Włączone" : "Wyłączone"}</div>`; };
 function pmaxBox(c) {
-  const p = S(c.hass, "sensor.ems_plan")?.attributes?.pmax_zakupu, sw = c.rid ? c.rid("switch.ecobss_pmax_zakupu", "Pmax zakupu") : "switch.ecobss_pmax_zakupu", nm = c.rid ? c.rid("number.ecobss_moc_szczytowa_sieci", "Moc szczytowa sieci") : "number.ecobss_moc_szczytowa_sieci";
-  const has = !!S(c.hass, sw), st = p?.wlaczony == null ? "nieodczytany" : p.wlaczony ? `<b class="t-o">zaznaczony</b>` : `<b class="t-g">odznaczony</b>`;
-  return c.group(`⚡ Pmax zakupu – limit poboru z sieci (Tryb pracy na LCD)${tip({ co: "Grid Peak Shaving – rejestr 278 (bit 4), limit w „Moc szczytowa sieci” (291). Zaznaczony = falownik sam pilnuje poboru z sieci; blokuje sprzedaż.", jak: "EMS (algorytm i ręczne): kupno, autokonsumpcja, trzymanie = zaznaczony z limitem = Max pobór z sieci; sprzedaż = odznaczony. Możesz zaznaczyć / odznaczyć ręcznie – EMS przestawi przy następnej zmianie akcji. Przy wyłączeniu algorytmu wraca Twoje ustawienie." })}`,
-    `<div class="g3"><div><label class="f">Pmax zakupu</label>${has ? c.sw(sw, "Zaznaczony") : `<div class="lab">Brak przełącznika w dataloggerze – dodaj do YAML (v5.6). Teraz EMS przestawia rejestr surowym zapisem. Stan: ${st}${p?.r278 ? ` (278 = ${esc(p.r278)})` : ""}</div>`}</div>
-      <div><label class="f">Moc szczytowa sieci (limit)</label>${c.field(nm, "W")}</div></div>${p?.ostrzezenie ? `<div class="box err" style="margin:8px 0 0">⚠ ${esc(p.ostrzezenie)}</div>` : ""}`, [nm]);
+  const p = S(c.hass, "sensor.ems_plan")?.attributes?.pmax_zakupu, bs = c.rid ? c.rid("binary_sensor.ecobss_pmax_zakupu", "Pmax zakupu") : "binary_sensor.ecobss_pmax_zakupu", nm = c.rid ? c.rid("number.ecobss_moc_szczytowa_sieci", "Moc szczytowa sieci") : "number.ecobss_moc_szczytowa_sieci";
+  const b = S(c.hass, bs), on = b ? b.state === "on" : p?.wlaczony;
+  const st = on == null ? "nieodczytany" : on ? `<b>☑ zaznaczony</b>` : `<b>☐ odznaczony</b>`;
+  return c.group(`⚡ Pmax zakupu – limit poboru z sieci${tip({ co: "Grid Peak Shaving – rejestr 278 (bit 4) i „Moc szczytowa sieci” (291).", jak: "Checkbox zmieniasz tylko na LCD (Tryb pracy) – przez Modbus się nie da, EMS go nie rusza i tylko pokazuje stan. Limit (291) możesz zmienić tutaj." })}`,
+    `<div class="g3"><div><label class="f">Pmax zakupu (tylko odczyt – zmiana na LCD)</label><div style="padding:8px 0">${st}${!b && p?.r278 ? ` <span class="lab">(278 = ${esc(p.r278)})</span>` : ""}</div></div>
+      <div><label class="f">Moc szczytowa sieci (limit)</label>${c.field(nm, "W")}</div></div>`, [nm]);
 }
 export function render(c) {
   const winter = !c.zone.summer, d = c.dev;

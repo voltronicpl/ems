@@ -1,5 +1,9 @@
 # Zmiany EMS
 
+## 0.6.37
+- Pmax zakupu (rejestr 278) **nie da się zapisać przez Modbus** (tylko LCD) – EMS go NIGDY nie zapisuje (wycofane sterowanie z v0.6.35–0.6.36), bez ostrzeżeń. Panel (Ustawienia → ⚡ Pmax zakupu) pokazuje tylko stan z `binary_sensor.<dev>_pmax_zakupu` (YAML v5.6); limit „Moc szczytowa sieci” (291) dalej do ręcznej zmiany. Usunięty przełącznik z Inwertera.
+- Zostaje: poprawka scalania punktów TOU (v0.6.35) i strażnik zgodności z planem.
+
 ## 0.6.36
 - Pmax zakupu jako przełącznik: `switch.<dev>_pmax_zakupu` (YAML v5.6, rejestr 278 bit 4) – w Ustawieniach (ramka „⚡ Pmax zakupu”, z limitem „Moc szczytowa sieci” 291) i w Inwerterze (Tryb pracy – podstawowe). Można zaznaczyć / odznaczyć ręcznie; EMS przestawia go przy zmianie akcji (sprzedaż = odznaczony, reszta = zaznaczony z limitem = Max pobór z sieci).
 - EMS steruje przez encje (switch + number), gdy są; bez YAML v5.6 – jak dotąd surowy zapis rejestru.
