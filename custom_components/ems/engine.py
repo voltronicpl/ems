@@ -226,7 +226,7 @@ class Engine:
                 self.learn.pv_act = pv_act
                 self._pv_cal = await self._pv_calibration(now)
                 wxh = learn.hour_wx(self._wx_learn)
-                self.learn.pump = learn.pump_model({h: v / 1000 for h, v in self._pump.items()}, wxh) if self._pump else None
+                self.learn.pump = learn.pump_layers({h: v / 1000 for h, v in self._pump.items()}, wxh) if self._pump else None
                 devs = {}
                 for d in self.src.dev:
                     hh = await self.src.hourly_ent(d.get("kwh") or d.get("moc"), now - timedelta(days=365), now)
@@ -254,8 +254,14 @@ class Engine:
             pv_now_w = self.r("pv_moc_suma", None)
             fact = pv_forecast.intraday_factor((pv_now_w or 0) / 1000 * 2, sum(pv_prev.values())) if pv_now_w is not None else 1.0
             pvk = pv_forecast.forecast(slots, self._weather, pp, fact)
-            if self.learn.pv_cal_m and self._pv_cal:                                 # kalibracja PV per miesiac (pora roku)
-                pvk = {s: v * self.learn.pv_cal_m.get(s.astimezone(WAW).month, self._pv_cal) / self._pv_cal for s, v in pvk.items()}
+            if self._pv_cal and (self.learn.pv_cal_m or self.learn.pv_day):        # kalibracja PV: dni podobne + miesiac + rok
+                fwd = learn.day_wx(learn.hour_wx(self._weather))
+                mult = {}
+                for d in {s.astimezone(WAW).date() for s in pvk}:
+                    mult[d] = learn.pv_mult(d, fwd.get(d, {}), self.learn.pv_day, self.learn.pv_cal_m, self._pv_cal)
+                    LOG.info("PV %s: mnoznik x%.2f (dni podobnych: %d)", d, *mult[d])
+                self.learn.pv_mult_now = {d.isoformat(): v for d, v in mult.items()}
+                pvk = {s: v * mult[s.astimezone(WAW).date()][0] / self._pv_cal for s, v in pvk.items()}
 
             wl = self._wx_learn or self._weather
             # zuzycie ze skladnikow: baza (dom − pompa − urzadzenia) + pompa (T, wiatr, slonce) + urzadzenia (profil cykli)
@@ -268,11 +274,12 @@ class Engine:
                 for h, v in hh.items():
                     sub[h] += v * 1000
             base_hist = {h: max(w - sub.get(h, 0.0), 0.0) for h, w in self._hist.items()}
-            coeff = self.p["wsp_temp"] or load_forecast.temp_coeff(base_hist, wl, self.p["weekend_od_godz"])
+            coeff, c_lab = (self.p["wsp_temp"], "reczny") if self.p["wsp_temp"] else learn.temp_coeff_l(base_hist, wl, self.p["weekend_od_godz"], now.astimezone(WAW).month, load_forecast.temp_coeff)
+            LOG.info("Wsp. temperatury %.3f kWh/°C (%s)", coeff, c_lab)
             ldk = load_forecast.forecast(slots, base_hist, {**wl, **self._weather}, self.p, coeff)
             pump_model = pm["coef"] if pm else None
             if pm:
-                pmp = learn.pump_forecast(slots, {**wl, **self._weather}, pm)
+                pmp = learn.pump_forecast_l(slots, {**wl, **self._weather}, pm)
                 ldk = {k: v + pmp.get(k, 0.0) for k, v in ldk.items()}
                 LOG.info("Pompa ciepla w prognozie: %.2f kWh w horyzoncie (%s)", sum(pmp.values()), "T + wiatr + slonce" if pm.get("pelny") else "tylko T")
             for n, st in self.learn.dev.items():
@@ -341,6 +348,7 @@ class Engine:
             h = s.replace(minute=0)
             fh[h] = fh.get(h, 0.0) + v
         self.learn.pv_cal_m = learn.pv_month_cal(act, fh)
+        self.learn.pv_day = learn.pv_days(act, fh, learn.day_wx(learn.hour_wx(wl)))
         if self.learn.pv_cal_m:
             LOG.info("Kalibracja PV per miesiac: %s", ", ".join(f"{m}: x{v:.2f}" for m, v in sorted(self.learn.pv_cal_m.items())))
         pairs = [(act[h], fh[h]) for h in act if h in fh and (act[h] > 0.02 or fh[h] > 0.02)]

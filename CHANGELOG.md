@@ -1,5 +1,13 @@
 # Zmiany EMS
 
+## 0.6.33 – algorytm „per wszystko”
+- PV: mnożnik na każdy dzień prognozy z **dni podobnych** (±30 dni roku z każdego roku, zachmurzenie ±20 %, nasłonecznienie ±30 %, T ±5 °C) zmieszany z miesięcznym, a ten z rocznym (waga podobnych n / (n + 5)). W logu `PV <data>: mnoznik xN (dni podobnych: n)`.
+- Pompa ciepła: modele miesięczne i sezonowe (min. 168 h) + roczny, mieszane wg ilości danych; bezpiecznik – na ostatnich 14 dniach mieszanka vs sam roczny, gorsza → roczny.
+- Wsp. temperatury domu: bieżący miesiąc (min. 14 dni) → sezon → rok.
+- Urządzenia: profil 70 % ostatnie 120 dni + 30 % ten sam okres rok temu; cykle / tydz. osobno dla każdego miesiąca.
+- Baza domu: 20 % z tego samego okresu rok temu (±30 dni, ten sam typ dnia).
+- Nauka: „📅 Współczynniki dzień po dniu” – kalibracja PV dnia, błąd prognozy domu / PV, błąd modelu pompy, kWh pompy na °C chłodu, zużycie; wykres z trendem, tabela początek → koniec okresu, mnożniki PV użyte w bieżącym planie, warstwy pompy.
+
 ## 0.6.32 – Nauka
 - Nowa zakładka **🧠 Nauka** (między Plan a Ustawienia): okres Dzień / Tydzień / Miesiąc / Rok z ◀ ▶ i kalendarzem; błąd prognozy domu i PV vs poprzedni okres, prognoza vs fakt (godzinowo / dziennie / tygodniowo) z trendem błędu, pogoda okresu (temperatura, wiatr, nasłonecznienie, pompa), współczynniki „było → jest” + wykres historii, dni podobne (temperatura ±3 °C, wiatr ±2 m/s, nasłonecznienie ±30 %, ±30 dni od daty z każdego roku, typ dnia), urządzenia (cykle / tydz., kWh / cykl, co ile dni, dni tygodnia, godziny startu, kalendarz 35 dni), pompa vs temperatura (kolor = wiatr), profil dobowy wg pory roku, kalibracja PV per miesiąc.
 - Prognoza zużycia ze składników: baza (dom − pompa − urządzenia) + pompa ciepła `a + b·T + c·wiatr + d·słońce` (bezpiecznik: model uczony na danych sprzed 14 dni, sprawdzany na ostatnich 14 – gdy gorszy od `a + b·T`, zostaje prosty) + urządzenia (średnie kWh w dniu tygodnia i godzinie z 120 dni).

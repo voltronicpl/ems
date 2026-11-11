@@ -119,6 +119,7 @@ def forecast(slots: list[datetime], hist: dict, weather: dict, p: dict, coeff: f
     # indeksy: (dzien tygodnia/ typ, godzina) -> [(W, waga)]
     by_wd: dict = defaultdict(list)
     by_type: dict = defaultdict(list)
+    by_ly: dict = defaultdict(list)                  # ten sam okres rok temu (±30 dni), ten sam typ dnia
     for ts, w in hist.items():
         loc = ts.astimezone(WAW)
         age = (today - loc.date()).days
@@ -129,6 +130,8 @@ def forecast(slots: list[datetime], hist: dict, weather: dict, p: dict, coeff: f
         by_wd[(wd_key, loc.hour)].append((w, 0.85 ** (age // 7)))
         if age <= 14:
             by_type[("we" if dt == "weekend" else "wd", loc.hour)].append((w, 0.9 ** age))
+        if 335 <= age <= 395:
+            by_ly[("we" if dt == "weekend" else "wd", loc.hour)].append((w, 1.0))
 
     def hour_w(loc: datetime) -> float:
         dt = day_type(loc, wh)
@@ -138,6 +141,9 @@ def forecast(slots: list[datetime], hist: dict, weather: dict, p: dict, coeff: f
             a = _wavg(by_wd.get(("weekend" if dt == "weekend" else loc.weekday(), hh), []))
             b = _wavg(by_type.get(("we" if dt == "weekend" else "wd", hh), []))
             v = (0.6 * a + 0.4 * b) if a is not None and b is not None else (a if a is not None else b)
+            ly = _wavg(by_ly.get(("we" if dt == "weekend" else "wd", hh), []))
+            if v is not None and ly is not None:
+                v = 0.8 * v + 0.2 * ly                      # rok temu w tej porze roku (pora roku / temperatura)
             res.append(v)
         wts = [0.25, 0.5, 0.25]
         got = [(v, k) for v, k in zip(res, wts) if v is not None]

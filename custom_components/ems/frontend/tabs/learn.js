@@ -3,7 +3,7 @@
 import { fmt, esc, tip } from "../core.js";
 export const title = "🧠 Nauka";
 
-const st = { okres: "tydz", end: null, d: null, busy: false, at: 0, key: "", wsp: "kal_pv" };
+const st = { dc: "kal_pv", okres: "tydz", end: null, d: null, busy: false, at: 0, key: "", wsp: "kal_pv" };
 const OKR = { dzien: ["Dzień", 1], tydz: ["Tydzień", 7], mies: ["Miesiąc", 30], rok: ["Rok", 365] };
 const iso = d => d.toLocaleDateString("sv-SE"), today = () => iso(new Date());
 const C = { dom: "#1e9bff", pv: "#facc15", grey: "#8fa6bd", red: "#ff4d5e", green: "#22e07a", vio: "#a78bfa", cyan: "#22d3ee", or: "#ff9f1a" };
@@ -118,6 +118,22 @@ function coefBox(d, P) {
     <div><div class="lab" style="margin-bottom:4px">${esc(lab)} – cała historia</div>${chart(xs, [{ v: sn.map(([, s]) => f(s)), c: C.vio, name: lab }], { h: 200, zero: false })}</div></div></div>`;
 }
 
+const DAYC = { kal_pv: ["Kalibracja PV dnia (fakt / prognoza z pogody)", C.pv], dom_e: ["Błąd prognozy domu (%)", C.red], pv_e: ["Błąd prognozy PV (%)", C.or],
+  pompa_e: ["Błąd modelu pompy (%)", C.vio], kwh_na_st: ["Pompa: kWh na °C chłodu (18 − T)", C.cyan], dom: ["Zużycie domu (kWh)", C.dom], pompa: ["Pompa (kWh)", C.or] };
+const dayVal = (r, k) => k === "dom_e" ? errPct(r.dom, r.dom_p) : k === "pv_e" ? errPct(r.pv, r.pv_p) : k === "pompa_e" ? errPct(r.pompa, r.pompa_m) : r[k];
+function dayCoefBox(P) {
+  const rows = P.rows; if (!rows.length) return "";
+  const xs = rows.map(r => r.data.slice(5).split("-").reverse().join(".")), k = DAYC[st.dc] ? st.dc : "kal_pv", v = rows.map(r => dayVal(r, k)), tr = trend(v);
+  const third = Math.max(1, Math.floor(rows.length / 3)), a = avg(v.slice(0, third)), b = avg(v.slice(-third));
+  const tab = Object.entries(DAYC).map(([kk, [lab]]) => { const vv = rows.map(r => dayVal(r, kk)), x = avg(vv.slice(0, third)), y = avg(vv.slice(-third));
+    return `<tr><td><a href="#" data-dc="${kk}" style="color:${kk === k ? "#fff" : "#7fb3ff"}">${esc(lab)}</a></td><td class="r">${fmt(x, 2)}</td><td class="r">${fmt(y, 2)}</td><td class="r">${x != null && y != null ? `<b>${y >= x ? "+" : "−"}${fmt(Math.abs(y - x), 2)}</b>` : "–"}</td></tr>`; }).join("");
+  return `<div class="box"><div class="h"><span>📅 Współczynniki dzień po dniu${tip({ co: "Każdy współczynnik policzony dla każdego dnia osobno. Algorytm korzysta ze wszystkich poziomów naraz: dni podobne, miesiąc, sezon, rok (wagi wg ilości danych).", czytaj: "„Początek” = średnia z pierwszej 1/3 okresu, „koniec” = z ostatniej 1/3." })}</span><span class="lab">${tr ? `trend: ${tr.b >= 0 ? "+" : "−"}${fmt(Math.abs(tr.b), 3)} / dzień` : ""}</span></div>
+    <div class="g2"><div>${chart(xs, [{ v, c: DAYC[k][1], name: DAYC[k][0] }, ...(tr ? [{ v: v.map((_, i) => tr.a + tr.b * i), c: DAYC[k][1], dash: "6 5", op: .6, w: 1.4 }] : [])], { h: 220, zero: false })}</div>
+    <div style="overflow:auto"><table class="tbl"><tr><th>Współczynnik (kliknij = wykres)</th><th class="r">początek</th><th class="r">koniec</th><th class="r">zmiana</th></tr>${tab}</table>
+    <div class="lab" style="margin-top:6px">Teraz w prognozie PV: ${Object.entries(st.d?.pv_mnozniki || {}).map(([dd, [m, n]]) => `${dd.slice(5)} ×${fmt(m, 2)} (${n} dni podobnych)`).join(" · ") || "–"}<br>
+    Pompa: ${st.d?.pompa_warstwy?.uzywa === "warstwy" ? "miesiąc + sezon + rok" : "tylko roczny"} (MAE 14 dni: warstwy ${fmt(st.d?.pompa_warstwy?.mae_warstwy, 3)} / roczny ${fmt(st.d?.pompa_warstwy?.mae_roczny, 3)}) · modele miesięczne: ${Object.keys(st.d?.pompa_warstwy?.mies || {}).map(m => MIES[m - 1]).join(", ") || "–"}</div></div></div></div>`;
+}
+
 function simBox(d) {
   const s = d.podobne || [], c0 = d.dzien_cechy || {};
   const dom = avg(s.map(x => x.dom)), pv = avg(s.map(x => x.pv));
@@ -182,13 +198,14 @@ export function render(c) {
   if (d.err) return bar + `<div class="box err">Błąd: ${esc(d.err)}</div>`;
   const P = period(d);
   return `<style>.nk-svg text.xl{fill:#8fa6bd;font-size:11px}.nk-lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#9bb3c6;margin-top:4px}.nk-lg i{display:inline-block;width:16px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}</style>
-    ${bar}${tiles(d, P)}${accBox(d, P)}${st.okres !== "dzien" ? wxBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}`;
+    ${bar}${tiles(d, P)}${accBox(d, P)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}`;
 }
 
 export function bind(c, r) {
   r.querySelectorAll("[data-okr]").forEach(b => b.onclick = () => { st.okres = b.dataset.okr; c.render(true); });
   r.querySelectorAll("[data-mv]").forEach(b => b.onclick = () => { const v = +b.dataset.mv; if (!v) st.end = null; else { const t = new Date((st.end || today()) + "T12:00"); t.setDate(t.getDate() + v * OKR[st.okres][1]); const s = iso(t); st.end = s >= today() ? null : s; } st.at = 0; c.render(true); });
   r.querySelector("[data-end]")?.addEventListener("change", e => { st.end = e.target.value && e.target.value < today() ? e.target.value : null; st.at = 0; c.render(true); });
+  r.querySelectorAll("[data-dc]").forEach(a => a.onclick = e => { e.preventDefault(); st.dc = a.dataset.dc; c.render(true); });
   r.querySelectorAll("[data-wsp]").forEach(b => b.onclick = () => { st.wsp = b.dataset.wsp; c.render(true); });
   r.querySelectorAll("[data-simday]").forEach(a => a.onclick = e => { e.preventDefault(); st.end = a.dataset.simday; st.okres = "dzien"; st.at = 0; c.render(true); });
 }

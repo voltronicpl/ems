@@ -147,11 +147,18 @@ def device_stats(hourly: dict, wh: float) -> dict:
         age = (today - loc.date()).days
         if 0 < age <= 120:
             prof[(loc.weekday(), loc.hour)].append((v, 0.985 ** age))
-    pr = {f"{k[0]}-{k[1]}": sum(v * w for v, w in a) / sum(w for _, w in a) for k, a in prof.items()}
+    pr = device_profile_l(hourly)
+    cm: dict = defaultdict(int)
+    for d in cyc:
+        cm[d.month] += 1
+    mdays: dict = defaultdict(set)
+    for d in days:
+        mdays[d.month].add(d)
     gaps = [(b - a).days for a, b in zip(cyc, cyc[1:])]
     return {"dni": span, "od": days[0].isoformat(), "cykle": len(cyc), "cykle_tydz": round(len(cyc) / span * 7, 2),
             "kwh_cykl": round(sum(day[d] for d in cyc) / len(cyc), 3) if cyc else 0, "co_ile_dni": round(sum(gaps) / len(gaps), 1) if gaps else None,
             "dni_tyg": wd, "godz_startu": hrs, "kwh_rok": round(sum(day.values()) / span * 365, 1), "profil": pr,
+            "cykle_tydz_mies": {m: round(cm[m] / len(mdays[m]) * 7, 2) for m in mdays if len(mdays[m]) >= 7},
             "kalendarz": {d.isoformat(): round(day[d], 2) for d in days[-120:] if day[d] >= 0.05}}
 
 
@@ -215,6 +222,8 @@ class Learn:
         self.dev_h: dict = {}         # nazwa -> {h: kWh}
         self.pv_cal_m: dict = {}
         self.pv_act: dict = {}        # {h: kWh} fakt PV (stara encja / datalogger)
+        self.pv_day: dict = {}        # {data: {r, f, p, pogoda}} kalibracja PV dnia
+        self.pv_mult_now: dict = {}   # mnozniki PV uzyte w biezacym planie
         self.at: str | None = None
 
     async def load(self) -> None:
@@ -314,6 +323,18 @@ class LearnView(HomeAssistantView):
             loc = h.astimezone(WAW)
             if loc.date() == d0:
                 hours[loc.hour]["pv_f"] = round(v, 3)
+        # wspolczynniki dnia: kalibracja PV dnia, model pompy (warstwy) vs fakt
+        pm_d: dict = defaultdict(float)
+        if L.pump:
+            for h in eng._pump:
+                w = wx.get(h)
+                if w and w.get("temp") is not None:
+                    pm_d[h.astimezone(WAW).date()] += _pred(pump_coef(L.pump, h) if L.pump.get("warstwy", True) else L.pump["coef"], w)
+        for dd, f in feats.items():
+            x = L.pv_day.get(dd)
+            f["kal_pv"] = x["r"] if x else None
+            f["pompa_m"] = round(pm_d[dd], 2) if dd in pm_d else None
+            f["kwh_na_st"] = round(f["pompa"] / max(18 - f["t"], 1), 3) if f.get("pompa") is not None and f.get("t") is not None and f["t"] < 15 else None
         days = sorted(feats)
         ser = [{"data": dd.isoformat(), **feats[dd], "dom_p": round(fc_day[dd]["dom"], 2) if dd in fc_day else None,
                 "pv_p": round(fc_day[dd]["pv"], 2) if dd in fc_day else None} for dd in days if dd <= datetime.now(WAW).date()]
@@ -330,9 +351,156 @@ class LearnView(HomeAssistantView):
         profil = {k: [round(sum(v for h, v in a if h == i) / max(sum(1 for h, _ in a if h == i), 1), 3) for i in range(24)] for k, a in prof.items()}
         return self.json({
             "dzien": d0.isoformat(), "przeliczono": L.at, "snapshoty": L.snap, "seria": ser, "godziny": [hours[i] for i in range(24)],
-            "pompa": L.pump, "pompa_pkt": [[round(a, 1), round(b, 1), round(c, 3)] for a, b, c in pts[::step]],
+            "pompa": {k: v for k, v in (L.pump or {}).items() if k not in ("mies", "sez")} if L.pump else None, "pompa_pkt": [[round(a, 1), round(b, 1), round(c, 3)] for a, b, c in pts[::step]],
             "urzadzenia": {n: {k: v for k, v in d.items() if k != "profil"} for n, d in L.dev.items()},
             "pv_kal_m": L.pv_cal_m, "kal_pv": (eng.summary or {}).get("kalibracja_pv"), "wsp_temp": (eng.summary or {}).get("wsp_temp"),
             "profil": profil, "podobne": similar(d0, feats), "dzien_cechy": {k: (round(v, 2) if isinstance(v, float) else v) for k, v in feats.get(d0, {}).items()},
-            "dni_hist": len(dom_d), "bezpiecznik": (eng.summary or {}).get("nauka_bezpiecznik"),
+            "dni_hist": len(dom_d), "bezpiecznik": (eng.summary or {}).get("nauka_bezpiecznik"), "pv_mnozniki": L.pv_mult_now,
+            "pompa_warstwy": {"mies": {str(k): v for k, v in (L.pump or {}).get("mies", {}).items()}, "sez": (L.pump or {}).get("sez", {}),
+                              "uzywa": "warstwy" if (L.pump or {}).get("warstwy") else "roczny", "mae_warstwy": (L.pump or {}).get("mae_warstwy"), "mae_roczny": (L.pump or {}).get("mae_roczny")},
         })
+
+
+# ---- v0.6.33: algorytm "per wszystko" – dni podobne + miesiac + sezon + rok, mieszane wg ilosci danych ----------------
+SEZ = {m: ("zima" if m in (11, 12, 1, 2, 3) else "lato" if m in (5, 6, 7, 8) else "przejsciowy") for m in range(1, 13)}
+
+
+def day_wx(wx_h: dict) -> dict:
+    """{data_lokalna: {t, wiatr, nasl, chmury}} z godzinowej pogody."""
+    acc: dict = defaultdict(lambda: defaultdict(list))
+    for h, w in wx_h.items():
+        d = h.astimezone(WAW).date()
+        for k, kk in (("temp", "t"), ("wind", "wiatr"), ("cloud", "chmury")):
+            if w.get(k) is not None:
+                acc[d][kk].append(w[k])
+        if w.get("gti") is not None:
+            acc[d]["nasl"].append(w["gti"] / 1000)
+    return {d: {k: (sum(a) if k == "nasl" else sum(a) / len(a)) for k, a in v.items()} for d, v in acc.items()}
+
+
+def pv_days(act: dict, fc_h: dict, wxd: dict) -> dict:
+    """{data: {r: fakt/prognoza, f, p, ...pogoda}} – dni z prognoza >= 0,5 kWh."""
+    a, f = defaultdict(float), defaultdict(float)
+    for h, v in act.items():
+        if h in fc_h:
+            d = h.astimezone(WAW).date()
+            a[d] += v
+            f[d] += fc_h[h]
+    return {d: {"r": round(min(2.0, max(0.1, a[d] / f[d])), 3), "f": round(a[d], 2), "p": round(f[d], 2), **wxd.get(d, {})} for d in f if f[d] >= 0.5}
+
+
+def pv_mult(day: date, fw: dict, pvd: dict, cal_m: dict, cal_y: float) -> tuple[float, int]:
+    """Mnoznik PV na dzien `day` przy prognozie pogody fw: dni podobne (±30 dni roku, chmury ±20 %, nasl. ±30 %, T ±5 °C)
+    zmieszane z miesiecznym (a ten z rocznym) – waga podobnych = n / (n + 5)."""
+    base = cal_m.get(day.month, cal_y) if cal_m else cal_y
+    sim = []
+    for d, x in pvd.items():
+        doy = abs((d.timetuple().tm_yday - day.timetuple().tm_yday + 182) % 365 - 182)
+        if doy > 30:
+            continue
+        if fw.get("chmury") is not None and x.get("chmury") is not None and abs(fw["chmury"] - x["chmury"]) > 20:
+            continue
+        n0, n1 = fw.get("nasl") or 0, x.get("nasl") or 0
+        if max(n0, n1) > 0.3 and abs(n1 - n0) / max(n0, n1) > 0.3:
+            continue
+        if fw.get("t") is not None and x.get("t") is not None and abs(fw["t"] - x["t"]) > 5:
+            continue
+        sim.append((x["r"], 1 - doy / 45))
+    if not sim:
+        return base, 0
+    s = sum(r * w for r, w in sim) / sum(w for _, w in sim)
+    k = len(sim) / (len(sim) + 5)
+    return round(k * s + (1 - k) * base, 3), len(sim)
+
+
+def pump_layers(pump: dict, wx: dict) -> dict | None:
+    """Pompa: model roczny (z bezpiecznikiem) + modele miesiac / sezon (te same zmienne, min. 168 h)."""
+    y = pump_model(pump, wx)
+    if not y:
+        return None
+    full = y["pelny"]
+    by_m, by_s = defaultdict(list), defaultdict(list)
+    for h, v in pump.items():
+        w = wx.get(h)
+        if not w or w.get("temp") is None:
+            continue
+        m = h.astimezone(WAW).month
+        by_m[m].append((_x(w, full), v))
+        by_s[SEZ[m]].append((_x(w, full), v))
+    pad = lambda c: (c + [0.0] * 4)[:4]   # noqa: E731
+    mies = {m: {"coef": [round(x, 4) for x in pad(c)], "n": len(r)} for m, r in by_m.items() if len(r) >= 168 and (c := regress(r, 0.01))}
+    sez = {s: {"coef": [round(x, 4) for x in pad(c)], "n": len(r)} for s, r in by_s.items() if len(r) >= 168 and (c := regress(r, 0.01))}
+    y.update(mies=mies, sez=sez)
+    # bezpiecznik warstw: mieszanka vs sam roczny na ostatnich 14 dniach
+    last = max(pump)
+    test = [(h, wx[h], v) for h, v in pump.items() if h >= last - timedelta(days=14) and h in wx and wx[h].get("temp") is not None]
+    if test:
+        e_y = sum(abs(_pred(y["coef"], w) - v) for _, w, v in test) / len(test)
+        e_l = sum(abs(_pred(pump_coef(y, h), w) - v) for h, w, v in test) / len(test)
+        y["warstwy"] = e_l <= e_y
+        y["mae_warstwy"], y["mae_roczny"] = round(e_l, 4), round(e_y, 4)
+        LOG.info("Pompa warstwy (miesiac/sezon/rok): MAE 14 dni %.3f vs sam roczny %.3f -> %s", e_l, e_y, "warstwy" if y["warstwy"] else "roczny")
+    else:
+        y["warstwy"] = True
+    return y
+
+
+def _pred(c: list, w: dict) -> float:
+    return max(c[0] + c[1] * w["temp"] + c[2] * (w.get("wind") or 0) + c[3] * (w.get("gti") or 0) / 1000, 0.0)
+
+
+def pump_coef(m: dict, ts: datetime) -> list:
+    """Wspolczynniki na chwile ts: miesiac (waga n/(n+500)), sezon (n/(n+1000)), reszta = roczny."""
+    mo = ts.astimezone(WAW).month
+    out, rest = [0.0] * 4, 1.0
+    for lay, key, k in (("mies", mo, 500), ("sez", SEZ[mo], 1000)):
+        x = (m.get(lay) or {}).get(key)
+        if x:
+            w = rest * x["n"] / (x["n"] + k)
+            out = [o + w * c for o, c in zip(out, x["coef"])]
+            rest -= w
+    return [o + rest * c for o, c in zip(out, m["coef"])]
+
+
+def pump_forecast_l(slots: list[datetime], weather: dict, m: dict | None) -> dict:
+    if not m:
+        return {}
+    wx = hour_wx(weather)
+    use = m.get("warstwy", True)
+    out = {}
+    for s in slots:
+        w = wx.get(H(s))
+        out[s] = _pred(pump_coef(m, s) if use else m["coef"], w) / 4 if w and w.get("temp") is not None else 0.0
+    return out
+
+
+def temp_coeff_l(hist: dict, weather: dict, wh: float, month: int, fn) -> tuple[float, str]:
+    """Wsp. temperatury: miesiac (min. 14 dni) -> sezon -> rok; fn = load_forecast.temp_coeff."""
+    for lab, sel in ((f"miesiac {month}", lambda m: m == month), (f"sezon {SEZ[month]}", lambda m: SEZ[m] == SEZ[month])):
+        sub = {h: w for h, w in hist.items() if sel(h.astimezone(WAW).month)}
+        if len({h.astimezone(WAW).date() for h in sub}) >= 14:
+            c = fn(sub, weather, wh)
+            if c > 0:
+                return c, lab
+    return fn(hist, weather, wh), "rok"
+
+
+def device_profile_l(hourly: dict) -> dict:
+    """Profil urzadzenia: 120 dni (nowsze wazniejsze) 70 % + ten sam okres rok temu (±30 dni) 30 %, gdy jest."""
+    today = datetime.now(WAW).date()
+    rec, ly = defaultdict(list), defaultdict(list)
+    for h, v in hourly.items():
+        loc = h.astimezone(WAW)
+        age = (today - loc.date()).days
+        k = (loc.weekday(), loc.hour)
+        if 0 < age <= 120:
+            rec[k].append((v, 0.985 ** age))
+        elif 335 <= age <= 395:
+            ly[k].append((v, 1.0))
+    keys = set(rec) | set(ly)
+    wa = lambda a: sum(v * w for v, w in a) / sum(w for _, w in a) if a else None   # noqa: E731
+    out = {}
+    for k in keys:
+        a, b = wa(rec.get(k)), wa(ly.get(k))
+        out[f"{k[0]}-{k[1]}"] = (0.7 * a + 0.3 * b) if a is not None and b is not None else (a if a is not None else b * 0.5)
+    return out
