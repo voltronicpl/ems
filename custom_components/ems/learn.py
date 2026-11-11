@@ -372,6 +372,8 @@ class LearnView(HomeAssistantView):
             "urzadzenia": {n: {**range_dev(L.dev_h.get(n, {}), d1, d0), "ikona": d.get("ikona"), "od": d.get("od"),
                                "poprz": range_dev(L.dev_h.get(n, {}), p1, p0)} for n, d in L.dev.items()},
             "pompa_okres": pump_okres, "od": d1.isoformat(), "do": d0.isoformat(),
+            "temp_h": [[h.astimezone(WAW).strftime("%Y-%m-%d %H"), round(w["temp"], 1), round(w.get("wind") or 0, 1), round((w.get("gti") or 0) / 1000, 3)]
+                       for h, w in sorted(wx.items()) if w.get("temp") is not None and inr(h)],
             "pv_okres": _pv_range(L.pv_day, d1, d0), "pv_poprz": _pv_range(L.pv_day, p1, p0),
             "pv_kal_m": L.pv_cal_m, "kal_pv": (eng.summary or {}).get("kalibracja_pv"), "wsp_temp": (eng.summary or {}).get("wsp_temp"),
             "profil": profil, "podobne": similar(d0, _range_feats(feats, d1, d0)), "dzien_cechy": {k: (round(v, 2) if isinstance(v, float) else v) for k, v in _range_feats(feats, d1, d0).get(d0, {}).items()},

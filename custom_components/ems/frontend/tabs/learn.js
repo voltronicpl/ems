@@ -80,7 +80,8 @@ function accBox(d, P) {
   if (st.okres === "dzien") {
     const hs = d.godziny || [], xs = hs.map((_, i) => `${i}:00`);
     body = chart(xs, [{ v: hs.map(h => h.dom_f), c: C.dom, name: "Dom – fakt" }, { v: hs.map(h => h.dom_p), c: C.dom, dash: "6 5", name: "Dom – prognoza z początku dnia" }, { v: hs.map(h => h.dom_o), c: C.grey, dash: "3 4", name: "Dom – ostatnia prognoza" },
-      { v: hs.map(h => h.pv_f), c: C.pv, name: "PV – fakt" }, { v: hs.map(h => h.pv_p), c: C.pv, dash: "6 5", name: "PV – prognoza" }], { unit: "", every: 3 });
+      { v: hs.map(h => h.pv_f), c: C.pv, name: "PV – fakt" }, { v: hs.map(h => h.pv_p), c: C.pv, dash: "6 5", name: "PV – prognoza" },
+      { v: hs.map((_, i) => { const r = (d.temp_h || []).find(x => +x[0].slice(11) === i && x[0].slice(0, 10) === d.do); return r ? r[1] : null; }), c: C.red, axis: "r", w: 1.3, op: .7, name: "Temperatura (°C)" }], { unit: "", unitR: "°", every: 3 });
     const sf = hs.reduce((a, h) => a + (h.dom_f || 0), 0), sp = hs.reduce((a, h) => a + (h.dom_p || 0), 0);
     body += `<div class="lab">Dom: fakt ${fmt(sf, 1, "kWh")} · prognoza z początku dnia ${fmt(sp, 1, "kWh")}${sp > 0 && sf > 0 ? ` (${sf >= sp ? "+" : "−"}${fmt(Math.abs(sf - sp) / sp * 100, 0)}%)` : ""}. Prognozy zapisywane są przez 15 dni – starsze dni mają tylko fakt.</div>`;
   } else {
@@ -97,6 +98,23 @@ function accBox(d, P) {
     body += `<div class="lab">${tr ? `Trend błędu domu: <b style="color:${tr.b <= 0 ? C.green : C.red}">${tr.b <= 0 ? "spada" : "rośnie"} ${fmt(Math.abs(tr.b), 2)} pp na ${st.okres === "rok" ? "tydzień" : "dzień"}</b> – ${tr.b <= 0 ? "uczy się" : "gorzej niż wcześniej (sprawdź pogodę / zmiany w domu)"}.` : "Za mało dni z zapisaną prognozą, żeby liczyć trend (prognozy trzymane 15 dni, snapshoty dzienne od wdrożenia v0.6.32)."}</div>`;
   }
   return `<div class="box"><div class="h"><span>📉 Prognoza vs fakt${tip({ co: "Ile się pomylił: prognoza z początku dnia (to, czym planował) vs to, co faktycznie było.", jak: "Dzień = godzinowo, Tydzień / Miesiąc = dziennie, Rok = tygodniowo. Czerwona linia = błąd dobowy domu w %.", czytaj: "Błąd spada z czasem = się uczy." })}</span></div>${body}</div>`;
+}
+
+// Temperatura zewnetrzna (Open-Meteo): Dzien / Tydzien – godzinowo, Miesiac / Rok – dziennie min / sr / max
+function tempBox(d) {
+  const th = d.temp_h || []; if (!th.length) return `<div class="box"><div class="h"><span>🌡 Temperatura zewnętrzna</span></div><div class="lab">Brak danych pogodowych w tym okresie.</div></div>`;
+  const T = th.map(r => r[1]), mn = Math.min(...T), mx = Math.max(...T), av = avg(T);
+  let body;
+  if (st.okres === "dzien" || st.okres === "tydz") {
+    const xs = th.map(r => st.okres === "dzien" ? `${+r[0].slice(11)}:00` : `${r[0].slice(8, 10)}.${r[0].slice(5, 7)} ${+r[0].slice(11)}:00`);
+    body = chart(xs, [{ v: T, c: C.red, name: "Temperatura (°C)" }, { v: th.map(r => r[2]), c: C.cyan, dash: "5 4", axis: "r", w: 1.4, name: "Wiatr (m/s)" }, { v: th.map(r => r[3]), c: C.pv, axis: "r", w: 1.2, op: .7, name: "Nasłonecznienie (kWh/m²)" }],
+      { h: 230, zero: false, unit: "°", every: st.okres === "dzien" ? 2 : 24 });
+  } else {
+    const dd = {}; th.forEach(r => { const k = r[0].slice(0, 10); (dd[k] = dd[k] || []).push(r[1]); });
+    const ks = Object.keys(dd).sort(), xs = ks.map(k => k.slice(5).split("-").reverse().join("."));
+    body = chart(xs, [{ v: ks.map(k => Math.max(...dd[k])), c: C.or, w: 1.4, name: "Max (°C)" }, { v: ks.map(k => avg(dd[k])), c: C.red, name: "Średnia (°C)" }, { v: ks.map(k => Math.min(...dd[k])), c: C.dom, w: 1.4, name: "Min (°C)" }], { h: 230, zero: false, unit: "°" });
+  }
+  return `<div class="box"><div class="h"><span>🌡 Temperatura zewnętrzna <span class="lab" style="font-size:inherit">(Open-Meteo, ${st.okres === "dzien" || st.okres === "tydz" ? "godzinowo" : "dziennie min / śr / max"})</span></span><span class="lab">śr. <b>${fmt(av, 1)} °C</b> · min ${fmt(mn, 1)} · max ${fmt(mx, 1)}</span></div>${body}</div>`;
 }
 
 function wxBox(P) {
@@ -218,7 +236,7 @@ export function render(c) {
   return `<style>.nk-svg text.xl{fill:#8fa6bd;font-size:11px}.nk-wrap{position:relative}.nk-svg{touch-action:pan-y}.nk-tip{position:absolute;z-index:6;background:#0b1622f2;border:1px solid #2a4560;border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.6;pointer-events:none;white-space:nowrap;box-shadow:0 0 14px #000b;min-width:180px}
 .nk-tip>div{display:flex;justify-content:space-between;gap:18px}.nk-tip i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}.nk-th{font-weight:700;margin-bottom:2px}.nk-tip .nk-note{display:block;color:#9bb3c6;font-size:11.5px;white-space:normal;max-width:260px}
 .nk-lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#9bb3c6;margin-top:4px}.nk-lg i{display:inline-block;width:16px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}</style>
-    ${bar}${tiles(d, P)}${accBox(d, P)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}`;
+    ${bar}${tiles(d, P)}${accBox(d, P)}${tempBox(d)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}`;
 }
 
 function nkTip(box, ev) {
