@@ -22,7 +22,11 @@ const avg = a => { const v = a.filter(x => x != null && !isNaN(x)); return v.len
 const errPct = (f, p) => f != null && p != null && f > 0.3 ? Math.abs(f - p) / f * 100 : null;
 
 // prosty wykres liniowy / slupkowy: xs = etykiety, ser = [{ v: [], c, name, dash, bar, w, axis: "r" }]
-function chart(xs, ser, { h = 220, unit = "", unitR = "", zero = true, every } = {}) {
+const NK = {}; let nkId = 0;
+const NOTE = { "Kalibracja PV dnia (fakt / prognoza z pogody)": v => `panele dały ${fmt(v * 100, 0)} % tego, co wynika z pogody`, "błąd domu %": v => `prognoza z początku dnia pomyliła się o ${fmt(v, 0)} %`,
+  "Błąd prognozy domu (%)": v => `prognoza z początku dnia pomyliła się o ${fmt(v, 0)} %`, "Błąd prognozy PV (%)": v => `prognoza PV pomyliła się o ${fmt(v, 0)} %`, "Błąd modelu pompy (%)": v => `model pompy pomylił się o ${fmt(v, 0)} %`,
+  "Pompa: kWh na °C chłodu (18 − T)": v => `${fmt(v, 2)} kWh na każdy stopień poniżej 18 °C` };
+function chart(xs, ser, { h = 220, unit = "", unitR = "", zero = true, every, tipx } = {}) {
   const W = 900, L = 46, R = ser.some(s => s.axis === "r") ? 46 : 12, T = 12, B = 26, n = xs.length;
   if (!n) return `<div class="lab">Brak danych w tym okresie.</div>`;
   const rng = ax => { const v = ser.filter(s => (s.axis === "r") === ax).flatMap(s => s.v).filter(x => x != null); if (!v.length) return [0, 1]; let lo = Math.min(...v), hi = Math.max(...v); if (zero) lo = Math.min(lo, 0); if (hi - lo < 1e-6) hi = lo + 1; return [lo, hi + (hi - lo) * 0.08]; };
@@ -40,7 +44,9 @@ function chart(xs, ser, { h = 220, unit = "", unitR = "", zero = true, every } =
     if (d) g += `<path d="${d}" fill="none" stroke="${s.c}" stroke-width="${s.w || 2.2}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""} opacity="${s.op || 1}"/>`;
     if (n <= 40 && !s.dash) s.v.forEach((v, i) => { if (v != null) g += `<circle cx="${X(i)}" cy="${Y(v)}" r="2.6" fill="${s.c}"><title>${esc(xs[i])}: ${fmt(v, 2)}</title></circle>`; }); });
   const lg = ser.filter(s => s.name).map(s => `<span><i style="background:${s.c};${s.dash ? "opacity:.55" : ""}"></i>${esc(s.name)}</span>`).join("");
-  return `<svg viewBox="0 0 ${W} ${h}" width="100%" class="nk-svg">${g}</svg><div class="nk-lg">${lg}</div>`;
+  const id = "nk" + (++nkId);
+  NK[id] = { xs, W, L, R, T, B, h, n, X, ser: ser.filter(s => s.name).map(s => ({ name: s.name, c: s.c, v: s.v, y: s.v.map(v => v == null ? null : (s.axis === "r" ? Yr : Yl)(v)), u: s.axis === "r" ? unitR : unit })), tipx };
+  return `<div class="nk-wrap" data-nk="${id}"><svg viewBox="0 0 ${W} ${h}" width="100%" class="nk-svg">${g}<line class="nk-cl" x1="0" x2="0" y1="${T}" y2="${h - B}" stroke="#fff" stroke-width="1.3" stroke-dasharray="5 4" style="display:none"/><g class="nk-dots"></g></svg><div class="nk-tip" style="display:none"></div></div><div class="nk-lg">${lg}</div>`;
 }
 
 // trend liniowy (nachylenie na punkt)
@@ -155,7 +161,7 @@ function devBox(d) {
   const cal = x => {
     if (days.length > 62) { const mm = {}; Object.entries(x.kalendarz || {}).forEach(([dd, v]) => { const k = dd.slice(0, 7); mm[k] = (mm[k] || 0) + 1; }); const ks = [...new Set(days.map(dd => dd.slice(0, 7)))], mx = Math.max(1, ...Object.values(mm));
       return `<div style="display:grid;grid-template-columns:repeat(${Math.min(ks.length, 12)},1fr);gap:3px;margin-top:8px">${ks.map(k => `<div title="${k}: ${mm[k] || 0} cykli" style="text-align:center"><div style="height:${8 + (mm[k] || 0) / mx * 30}px;background:${C.green};opacity:${mm[k] ? .85 : .12};border-radius:3px"></div><div class="lab" style="font-size:10px">${MIES[+k.slice(5) - 1]}</div></div>`).join("")}</div><div class="lab" style="font-size:10px">cykle w miesiącach</div>`; }
-    return `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px">${days.map(dd => { const v = (x.kalendarz || {})[dd]; return `<div title="${dd}${v ? `: ${v} kWh` : ""}" style="height:16px;border-radius:3px;background:${v ? C.green : "#ffffff10"};opacity:${v ? Math.min(.35 + v / (x.kwh_cykl || 1) * .5, 1) : 1}"></div>`; }).join("")}</div><div class="lab" style="font-size:10px">dni okresu (zielone = cykl)</div>`; };
+    return `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px">${days.map(dd => { const v = (x.kalendarz || {})[dd]; return `<div title="${dd}: ${v ? `cykl, ${v} kWh` : "brak cyklu"}" style="height:16px;border-radius:3px;background:${v ? C.green : "#ffffff10"};opacity:${v ? Math.min(.35 + v / (x.kwh_cykl || 1) * .5, 1) : 1}"></div>`; }).join("")}</div><div class="lab" style="font-size:10px">dni okresu (zielone = cykl)</div>`; };
   return `<div class="box"><div class="h"><span>🔌 Urządzenia – czego się nauczył <span class="lab" style="font-size:inherit">(${esc(d.od)} – ${esc(d.do)}, strzałka = vs poprzedni okres)</span></span></div><div class="g2">${u.map(([n, x]) => {
     const pp = x.poprz || {}, mx = Math.max(...(x.dni_tyg || [1]), 1), hmax = Math.max(...(x.godz_startu || [1]), 1), top = (x.godz_startu || []).map((v, h) => [v, h]).sort((a, b) => b[0] - a[0]).slice(0, 2).filter(q => q[0]).map(q => `${q[1]}:00`);
     const cell = (lab, v, pv, dig = 1) => `<div><div class="lab">${lab}</div><b>${fmt(v, dig)}</b>${cmp(v, pv, dig)}</div>`;
@@ -163,8 +169,8 @@ function devBox(d) {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${cell("cykli / rok", x.cykle_rok, pp.cykle_rok, 0)}${cell("cykli / tydz.", x.cykle_tydz, pp.cykle_tydz)}${cell("cykli w okresie", x.cykle, pp.cykle, 0)}
         ${cell("kWh / cykl", x.kwh_cykl, pp.kwh_cykl, 2)}${cell("kWh / tydz.", x.kwh_tydz, pp.kwh_tydz, 2)}${cell("kWh / rok", x.kwh_rok, pp.kwh_rok, 0)}</div>
       <div class="lab" style="margin-top:6px">co ${fmt(x.co_ile_dni, 1)} dni · w okresie ${fmt(x.kwh_okres, 1, "kWh")} · najczęściej start: ${top.join(", ") || "–"}</div>
-      <div style="display:flex;gap:4px;align-items:flex-end;height:46px;margin-top:6px">${(x.dni_tyg || []).map((v, i) => `<div style="flex:1;text-align:center"><div style="height:${v / mx * 30}px;background:${C.dom};border-radius:3px 3px 0 0;opacity:.8"></div><div class="lab" style="font-size:10px">${WD[i]}</div></div>`).join("")}</div>
-      <div style="display:flex;gap:1px;align-items:flex-end;height:28px;margin-top:4px" title="godzina startu">${(x.godz_startu || []).map(v => `<div style="flex:1;height:${Math.max(v / hmax * 26, 1)}px;background:${C.or};opacity:.75"></div>`).join("")}</div>
+      <div style="display:flex;gap:4px;align-items:flex-end;height:46px;margin-top:6px">${(x.dni_tyg || []).map((v, i) => `<div style="flex:1;text-align:center" title="${WD[i]}: ${v} cykli (${Math.round(v / Math.max(1, (x.dni_tyg || []).reduce((a, b) => a + b, 0)) * 100)} %)"><div style="height:${v / mx * 30}px;background:${C.dom};border-radius:3px 3px 0 0;opacity:.8"></div><div class="lab" style="font-size:10px">${WD[i]}</div></div>`).join("")}</div>
+      <div style="display:flex;gap:1px;align-items:flex-end;height:28px;margin-top:4px" title="godzina startu">${(x.godz_startu || []).map((v, hh) => `<div title="${hh}:00 – ${v} startów" style="flex:1;height:${Math.max(v / hmax * 26, 1)}px;background:${C.or};opacity:.75"></div>`).join("")}</div>
       <div class="lab" style="font-size:10px;display:flex;justify-content:space-between"><span>0:00</span><span>12:00</span><span>23:00</span></div>${cal(x)}</div>`; }).join("")}</div></div>`;
 }
 
@@ -174,11 +180,13 @@ function pumpBox(d) {
   const X = t => L + (t - t0) / ((t1 - t0) || 1) * (W - L - R), Y = v => T + (y1 - v) / y1 * (H - T - B);
   let g = ""; for (let k = 0; k <= 4; k++) { const v = y1 * k / 4; g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#ffffff12"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end" class="xl">${fmt(v, 1)}</text>`; }
   for (let t = Math.ceil(t0 / 5) * 5; t <= t1; t += 5) g += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle" class="xl">${t}°</text>`;
+  const po0 = d.pompa_okres || m, mdl = t => po0 ? Math.max(po0.coef[0] + po0.coef[1] * t, 0) : null;
+  const pp = p.map(([t, w, v]) => [+X(t).toFixed(1), +Y(v).toFixed(1), t, w, v, mdl(t) == null ? null : +mdl(t).toFixed(3)]);
   p.forEach(([t, w, v]) => { const k = Math.min(w / w1, 1); g += `<circle cx="${X(t).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.2" fill="hsl(${200 - k * 200},90%,60%)" opacity=".55"/>`; });
   if (m) { const [a, b] = m.coef; g += `<line x1="${X(t0)}" y1="${Y(Math.max(a + b * t0, 0))}" x2="${X(t1)}" y2="${Y(Math.max(a + b * t1, 0))}" stroke="${C.red}" stroke-width="2.2" stroke-dasharray="6 5" opacity=".7"/>`; }
   const po = d.pompa_okres; if (po) { const [a, b] = po.coef; g += `<line x1="${X(t0)}" y1="${Y(Math.max(a + b * t0, 0))}" x2="${X(t1)}" y2="${Y(Math.max(a + b * t1, 0))}" stroke="${C.green}" stroke-width="2.6"/>`; }
   return `<div class="box"><div class="h"><span>♨ Pompa ciepła vs temperatura <span class="lab" style="font-size:inherit">(okres; zielona = model okresu, czerwona przerywana = roczny)</span>${tip({ co: "Każda kropka = godzina z roku: zużycie pompy vs temperatura. Kolor = wiatr (niebieski słaby → czerwony silny).", czytaj: "Czerwona linia = model przy bezwietrznej nocy. Wiatr i słońce przesuwają ją w górę / w dół." })}</span></div>
-    <svg viewBox="0 0 ${W} ${H}" width="100%" class="nk-svg">${g}</svg>${m ? `<div class="lab">kWh/h = ${fmt(m.coef[0], 3)} ${m.coef[1] < 0 ? "−" : "+"} ${fmt(Math.abs(m.coef[1]), 3)}·T ${m.pelny ? `${m.coef[2] < 0 ? "−" : "+"} ${fmt(Math.abs(m.coef[2]), 3)}·wiatr ${m.coef[3] < 0 ? "−" : "+"} ${fmt(Math.abs(m.coef[3]), 3)}·słońce` : ""} · R² ${fmt(m.r2, 2)} · ${m.n} h<br>
+    <div class="nk-wrap" data-pp='${JSON.stringify(pp)}'><svg viewBox="0 0 ${W} ${H}" width="100%" class="nk-svg">${g}</svg><div class="nk-tip" style="display:none"></div></div>${m ? `<div class="lab">kWh/h = ${fmt(m.coef[0], 3)} ${m.coef[1] < 0 ? "−" : "+"} ${fmt(Math.abs(m.coef[1]), 3)}·T ${m.pelny ? `${m.coef[2] < 0 ? "−" : "+"} ${fmt(Math.abs(m.coef[2]), 3)}·wiatr ${m.coef[3] < 0 ? "−" : "+"} ${fmt(Math.abs(m.coef[3]), 3)}·słońce` : ""} · R² ${fmt(m.r2, 2)} · ${m.n} h<br>
     Bezpiecznik (ostatnie 14 dni, MAE kWh/h): pełny ${fmt(m.mae_pelny, 3)} · prosty ${fmt(m.mae_prosty, 3)} → używa <b>${m.pelny ? "pełnego (T + wiatr + słońce)" : "prostego (tylko T)"}</b></div>` : ""}</div>`;
 }
 
@@ -207,11 +215,42 @@ export function render(c) {
   if (!d) return bar + `<div class="box"><div class="lab">Wczytuję naukę…</div></div>`;
   if (d.err) return bar + `<div class="box err">Błąd: ${esc(d.err)}</div>`;
   const P = period(d);
-  return `<style>.nk-svg text.xl{fill:#8fa6bd;font-size:11px}.nk-lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#9bb3c6;margin-top:4px}.nk-lg i{display:inline-block;width:16px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}</style>
+  return `<style>.nk-svg text.xl{fill:#8fa6bd;font-size:11px}.nk-wrap{position:relative}.nk-svg{touch-action:pan-y}.nk-tip{position:absolute;z-index:6;background:#0b1622f2;border:1px solid #2a4560;border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.6;pointer-events:none;white-space:nowrap;box-shadow:0 0 14px #000b;min-width:180px}
+.nk-tip>div{display:flex;justify-content:space-between;gap:18px}.nk-tip i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}.nk-th{font-weight:700;margin-bottom:2px}.nk-tip .nk-note{display:block;color:#9bb3c6;font-size:11.5px;white-space:normal;max-width:260px}
+.nk-lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#9bb3c6;margin-top:4px}.nk-lg i{display:inline-block;width:16px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}</style>
     ${bar}${tiles(d, P)}${accBox(d, P)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}`;
 }
 
+function nkTip(box, ev) {
+  const d = NK[box.dataset.nk]; if (!d) return;
+  const svg = box.querySelector("svg"), b = svg.getBoundingClientRect(), p = ev.touches ? ev.touches[0] : ev;
+  const x = (p.clientX - b.left) / b.width * d.W, i = d.n === 1 ? 0 : Math.max(0, Math.min(d.n - 1, Math.round((x - d.L) / ((d.W - d.L - d.R) / (d.n - 1)))));
+  const cx = d.X(i), cl = box.querySelector(".nk-cl"), tp = box.querySelector(".nk-tip");
+  cl.setAttribute("x1", cx); cl.setAttribute("x2", cx); cl.style.display = "";
+  box.querySelector(".nk-dots").innerHTML = d.ser.filter(s => s.y[i] != null).map(s => `<circle cx="${cx}" cy="${s.y[i]}" r="5" fill="${s.c}" stroke="#fff" stroke-width="1.5"/>`).join("");
+  const rows = d.ser.filter(s => s.v[i] != null).map(s => `<div><span><i style="background:${s.c}"></i>${esc(s.name)}</span><b>${fmt(s.v[i], Math.abs(s.v[i]) < 3 ? 2 : 1)}${s.u ? " " + s.u.trim() : ""}</b></div>${NOTE[s.name] ? `<div class="nk-note">${NOTE[s.name](s.v[i])}</div>` : ""}`).join("");
+  const f = d.ser.find(s => /fakt/.test(s.name)), pr = f && d.ser.find(s => s !== f && s.name.split(" – ")[0] === f.name.split(" – ")[0] && /prognoza/.test(s.name));
+  const diff = f && pr && f.v[i] != null && pr.v[i] ? `<div class="nk-note">Różnica: ${f.v[i] >= pr.v[i] ? "+" : "−"}${fmt(Math.abs(f.v[i] - pr.v[i]), 2)} (${f.v[i] >= pr.v[i] ? "+" : "−"}${fmt(Math.abs(f.v[i] - pr.v[i]) / pr.v[i] * 100, 0)} %)</div>` : "";
+  tp.innerHTML = `<div class="nk-th">${esc(d.xs[i])}</div>${rows || '<div class="lab">brak danych</div>'}${diff}${d.tipx ? d.tipx(i) : ""}`;
+  tp.style.display = ""; const bw = box.clientWidth, px = cx / d.W * bw;
+  tp.style.left = (px + 14 + tp.offsetWidth > bw ? Math.max(px - tp.offsetWidth - 14, 0) : px + 14) + "px";
+  tp.style.top = Math.max(0, Math.min((p.clientY - b.top) - tp.offsetHeight / 2, b.height - tp.offsetHeight)) + "px";
+}
 export function bind(c, r) {
+  r.querySelectorAll("[data-nk]").forEach(box => {
+    const mv = ev => { c._hold = true; nkTip(box, ev); };
+    box.addEventListener("mousemove", mv); box.addEventListener("touchstart", mv, { passive: true }); box.addEventListener("touchmove", mv, { passive: true });
+    box.addEventListener("mouseleave", () => { c._hold = false; box.querySelector(".nk-tip").style.display = "none"; box.querySelector(".nk-cl").style.display = "none"; box.querySelector(".nk-dots").innerHTML = ""; });
+  });
+  r.querySelectorAll("[data-pp]").forEach(box => {
+    const pts = JSON.parse(box.dataset.pp), svg = box.querySelector("svg"), tp = box.querySelector(".nk-tip");
+    const mv = ev => { c._hold = true; const b = svg.getBoundingClientRect(), p = ev.touches ? ev.touches[0] : ev, x = (p.clientX - b.left) / b.width * 440, y = (p.clientY - b.top) / b.height * 230;
+      let best = null, bd = 1e9; pts.forEach(q => { const dd = (q[0] - x) ** 2 + (q[1] - y) ** 2; if (dd < bd) { bd = dd; best = q; } });
+      if (!best || bd > 900) { tp.style.display = "none"; return; }
+      tp.innerHTML = `<div class="nk-th">Godzina z historii</div><div><span>Temperatura</span><b>${fmt(best[2], 1)} °C</b></div><div><span>Wiatr</span><b>${fmt(best[3], 1)} m/s</b></div><div><span>Pompa</span><b>${fmt(best[4], 2)} kWh/h</b></div>${best[5] != null ? `<div><span>Model</span><b>${fmt(best[5], 2)} kWh/h</b></div><div class="nk-note">Różnica: ${best[4] >= best[5] ? "+" : "−"}${fmt(Math.abs(best[4] - best[5]), 2)} kWh/h</div>` : ""}`;
+      tp.style.display = ""; const bw = box.clientWidth, px = best[0] / 440 * bw; tp.style.left = (px + 14 + tp.offsetWidth > bw ? Math.max(px - tp.offsetWidth - 14, 0) : px + 14) + "px"; tp.style.top = Math.max(0, best[1] / 230 * b.height - 30) + "px"; };
+    box.addEventListener("mousemove", mv); box.addEventListener("touchstart", mv, { passive: true }); box.addEventListener("mouseleave", () => { c._hold = false; tp.style.display = "none"; });
+  });
   const hd = r.querySelector(".pf-head"), top = hd && getComputedStyle(hd).position === "sticky" ? hd.offsetHeight : 0;
   if (top !== (st.top || 0)) { st.top = top; const b = r.querySelector(".nk-bar"); if (b) b.style.top = top + "px"; }
   r.querySelectorAll("[data-okr]").forEach(b => b.onclick = () => { st.okres = b.dataset.okr; c.render(true); });

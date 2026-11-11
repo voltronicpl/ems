@@ -1,5 +1,9 @@
 # Zmiany EMS
 
+## 0.6.46
+- Nauka: wszystkie wykresy interaktywne – pionowa linia za myszą / palcem, kropki na seriach, dymek z datą i wartościami każdej serii (w kolorach), różnica fakt vs prognoza (kWh i %), objaśnienia współczynników („panele dały X % tego, co wynika z pogody”, „prognoza pomyliła się o X %”…).
+- Pompa vs temperatura: dymek najbliższej kropki (temperatura, wiatr, kWh/h, model, różnica). Urządzenia: dymki na dniach tygodnia (cykle, %), godzinach startu i kalendarzu.
+
 ## 0.6.45
 - Plan: przycisk 📅 Kalendarz otwiera wybór daty (`showPicker()`; ukryty input w Chrome nie otwierał się sam) i panel nie przerysowuje się w trakcie wybierania (przerysowanie co 2 s zamykało kalendarz).
 
