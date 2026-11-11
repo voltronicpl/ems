@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.48
+- Przegląd: najechanie (na telefonie dotknięcie) wiersza w „Energia dziś” podświetla na Profilu mocy, której energii dotyczy – pasy w tle w minutach, których dotyczy wiersz, wybrane linie mocniej, reszta przygaszona, u góry wykresu „X kWh w oknie wykresu · od–do”. Import (czerwone), Eksport (niebieskie), Bateria (ładowanie pomarańczowe / rozładowanie zielone), PV (żółte), Ręcznie kupione / sprzedane (pasy zleceń), Sprzedane nie z PV (eksport ponad nadwyżkę PV), Sprzedaż łącznie, Zakup pod sprzedaż (ładowanie baterii z sieci), Zysk z handlu (zakup + sprzedaż). W trybie „Miesiąc” wyłączone (wykres pokazuje ±12 h).
+
 ## 0.6.47
 - Nauka: ramka „🌡 Temperatura zewnętrzna” (Open-Meteo) – Dzień / Tydzień godzinowo (+ wiatr, nasłonecznienie), Miesiąc / Rok dziennie min / średnia / max; w nagłówku średnia, min, max okresu. W okresie Dzień temperatura także na wykresie prognoza vs fakt (druga oś, w dymku). API `temp_h`.
 

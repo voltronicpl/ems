@@ -39,7 +39,8 @@ function pylon(grid, max) {
     <circle cx="1350" cy="43" r="6" fill="${lamp}" filter="url(#pylf)" class="${pc >= 0.95 ? "pyl-bl" : ""}"/></svg>
     <div class="sc-pl">${exp ? "⬆" : "⬇"} <b>${(a / 1000).toFixed(1).replace(".", ",")} kW</b> · ${Math.round(pc * 100)} %<svg viewBox="0 0 60 34" class="sc-g"><path d="M5 30 A25 25 0 0 1 55 30" fill="none" stroke="#ffffff22" stroke-width="6"/><path d="M5 30 A25 25 0 0 1 55 30" fill="none" stroke="${col}" stroke-width="6" stroke-dasharray="${t * 100} 100" pathLength="100"/><line x1="30" y1="30" x2="${(30 + 22 * Math.cos(ang)).toFixed(1)}" y2="${(30 - 22 * Math.sin(ang)).toFixed(1)}" stroke="#fff" stroke-width="2"/></svg></div>`;
 }
-const SC_CSS = `.sc-bat{position:absolute;pointer-events:none}.bbs{position:absolute;inset:9% 14% 7% 14%;display:flex;flex-direction:column-reverse;gap:5%}
+const SC_CSS = `.hlr{cursor:pointer;transition:background .15s}.hlr:hover,.hlr.on{background:#1e9bff26 !important;box-shadow:inset 3px 0 0 #1e9bff}
+.sc-bat{position:absolute;pointer-events:none}.bbs{position:absolute;inset:9% 14% 7% 14%;display:flex;flex-direction:column-reverse;gap:5%}
 .bb{flex:1;border-radius:.2cqw;background:#0f2a1c;border:1px solid #1d4a31;opacity:.55;transition:all .4s}
 .bb.on{background:linear-gradient(90deg,#16c060,#3dff8f,#16c060);border-color:#5dffa3;opacity:.95;box-shadow:0 0 .4cqw #3dff8f,0 0 .9cqw #22e07a88}
 .bb.ch.on{background:linear-gradient(90deg,#d0650a,#ffa53a,#d0650a);border-color:#ffc27a;box-shadow:0 0 .4cqw #ffa53a,0 0 .9cqw #ff9f1a88}
@@ -53,7 +54,7 @@ const sp = n => n == null || isNaN(n) ? "–" : Math.round(n).toString().replace
 const box = (k, html, cls = "") => { const [l, t, w, h] = POS[k]; return `<div class="sc-card ${cls}" style="left:${l}%;top:${t}%;width:${w}%;height:${h}%">${html}</div>`; };
 const tile = (ic, cls, lab, val, sub, subc, t) => `<div class="ov-tile"><div class="ov-ic ${cls}">${ic}</div><div><div class="ov-lab">${lab}${tip(t)}</div><div class="ov-val">${val}</div><div class="ov-sub" ${subc ? `style="color:${subc}"` : ""}>${sub}</div></div></div>`;
 
-import { profile, bindProfile, accuracyModal, PROFILE_CSS } from "../profile.js";
+import { profile, bindProfile, accuracyModal, PROFILE_CSS, HL } from "../profile.js";
 import { pwChart } from "../core.js";
 import { range, nowWindow } from "../minute.js";
 import { slots, cmpHead } from "../forecast.js";
@@ -105,9 +106,11 @@ function loadEn(c, o) {
   c.hass.callApi("GET", `ems/energia?okres=${o}`).then(r => { EN.d[o] = r; }).catch(e => { EN.d[o] = { err: e.message || String(e) }; }).finally(() => { EN.at[o] = Date.now(); EN.busy[o] = false; c.render(true); });
 }
 
+const HLK = { "Import z sieci": "imp", "Eksport do sieci": "exp", "Bateria ład. / rozł.": "bat", "Produkcja PV": "pv", "Ręcznie kupione": "man_k", "Ręcznie sprzedane": "man_s",
+  "Sprzedane nie z PV": "nonpv", "Sprzedaż łącznie (depozyt)": "sell", "Zakup pod sprzedaż": "buy", "Zysk z handlu": "zysk" };
 function enBox(c, x) {
   const o = EN.okres; loadEn(c, o); const d = EN.d[o] || null, mo = o === "miesiac";
-  const row = (a, b, cl = "") => `<div class="ov-row"><span>${a}</span><b ${cl ? `style="color:${cl}"` : ""}>${b}</b></div>`;
+  const row = (a, b, cl = "") => `<div class="ov-row${!mo && HLK[a] ? " hlr" : ""}${!mo && HL.k === HLK[a] ? " on" : ""}" ${!mo && HLK[a] ? `data-hl="${HLK[a]}"` : ""}><span>${a}</span><b ${cl ? `style="color:${cl}"` : ""}>${b}</b></div>`;
   const g = k => mo ? (d && !d.err ? d[k] : null) : null;
   const imp = mo ? g("imp") : x.imp, exp = mo ? g("exp") : x.exp, bl = mo ? g("bin") : x.bl, br = mo ? g("bout") : x.br, pvd = mo ? g("pv") : x.pvd;
   const tg = `<span class="en-tg">${[["dzis", "Dziś"], ["miesiac", "Miesiąc"]].map(([k, n]) => `<button class="btn ${o === k ? "on" : ""}" data-en="${k}">${n}</button>`).join("")}</span>`;
@@ -174,6 +177,12 @@ export function render(c) {
   return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}<div data-pge-ov style="margin-bottom:14px">${pgeEl ? "" : `<div class="ov-box ov-mut" style="min-height:420px">Ładuję rozliczenie PGE…</div>`}</div>${mid}${fcRow(c)}<div style="margin-top:14px">${ster}</div><div style="margin-bottom:14px">${billBox(c)}</div>${bot}${modal()}${accuracyModal(c)}`;
 }
 export function bind(c, r) {
+  r.querySelectorAll("[data-hl]").forEach(el => {
+    const set = k => { if (HL.k === k) return; HL.k = k; c._hold = !!k; c.render(true); };
+    el.addEventListener("mouseenter", () => set(el.dataset.hl));
+    el.addEventListener("mouseleave", () => set(null));
+    el.addEventListener("click", e => { if (e.pointerType === "touch" || e.sourceCapabilities?.firesTouchEvents) set(HL.k === el.dataset.hl ? null : el.dataset.hl); });
+  });
   const host = r.querySelector("[data-pge-ov]");
   if (host) { if (pgeEl) { pgeEl.hass = c.hass; host.appendChild(pgeEl); } else pgeReady.then(() => c.render(true)); }
   r.querySelectorAll("[data-en]").forEach(b => b.onclick = () => { EN.okres = b.dataset.en; c.render(true); });
