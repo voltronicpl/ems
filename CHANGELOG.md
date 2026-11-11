@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## 0.6.44
+- Nowe tło użytkownika: `bg.jpg` (wszystkie zakładki) i scena Przeglądu `scene.jpg` (kadr 1672×400), nowe ścieżki linii przesyłu.
+- Magazyn w scenie: 6 poprzeczek SOC na ekranie magazynu (od dołu, ~16,7 % każda) – ładowanie pomarańczowe (następna pulsuje), rozładowanie / postój zielone; nad magazynem % + strzałka ↑ pomarańczowa / ↓ zielona, bez ramki.
+- Słup w scenie: wypełnia się od dołu wg |moc sieci| / „Max pobór z sieci” – pobór od czerwonego do głęboko czerwonego, oddawanie niebieski; lampka na szczycie (zielona / żółta > 80 % / czerwona ≥ 100 %, miga od 95 %); nad słupem kW · % + wskazówka, bez ramki. Kafelki sceny bez zmian (makieta 9C2VuLtZJwX4JWWGkFsPdn).
+
 ## 0.6.43
 - Pmax zakupu – zapis ze sprawdzeniem: po przestawieniu od razu odczyt ustawień, po max 40 s porównanie z falownikiem; nie zgadza się → 2. próba, dalej nie → błąd w logu i ⚠ w Ustawieniach → ⚡ Pmax zakupu (bez zapisu w kółko). W logu: `ZAPIS … proba N`, `POTWIERDZONY`, brak przełącznika (YAML v5.7+) zgłaszany raz.
 

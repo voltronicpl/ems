@@ -10,12 +10,45 @@ const SCENE = new URL("../scene.jpg", import.meta.url).href;
 // Scena = obrazek uzytkownika (bez linii przesylu); kafelki nakladane DOKLADNIE na miejsca kafelkow wpisanych w obrazek (procenty kadru 1671x400, grafika uzytkownika bez kafelkow).
 const POS = { pv: [1.2, 5.0, 15.5, 30.0], bat: [1.2, 40.0, 17.0, 44.0], dom: [42.0, 50.0, 15.5, 27.0], grid: [84.5, 5.0, 14.3, 30.0], top: [37.0, 1.5, 26.0, 11.0] };
 // Linie przesylu (od zrodla do domu) w ukladzie 1671x400
+// v0.6.44: nowe tlo uzytkownika (1672x941), kadr y 60–460 -> 1672x400
 const FLOW = {
-  pv: "M430 168 C440 250 540 252 600 255 L700 255",
-  bat: "M466 300 C540 300 560 282 610 282 L700 282",
-  grid: "M1350 232 C1340 268 1150 265 1060 265 L962 265",
-  car: "M962 292 L1060 292 C1120 292 1150 302 1200 302 L1252 302",
+  pv: "M440 182 C450 262 560 300 650 300",
+  bat: "M466 322 C540 322 590 322 650 322",
+  grid: "M1350 246 C1340 292 1180 300 1062 300",
+  car: "M1062 330 L1290 330",
 };
+// magazyn (ekran) i slup w ukladzie kadru 1672x400
+const BATSCR = [397, 247, 65, 113];
+const PYLON = "1350,46 1356,80 1395,90 1395,98 1362,100 1366,128 1398,130 1398,138 1370,140 1376,180 1392,246 1316,246 1330,180 1336,140 1305,138 1305,130 1338,128 1341,100 1306,98 1306,90 1344,80";
+function batBars(soc, bp) {
+  const [x, y, w, hh] = BATSCR, chg = bp < -20, dis = bp > 20, n = soc == null ? 0 : [0, 1, 2, 3, 4, 5].filter(i => soc >= i * 100 / 6 + 100 / 12).length;
+  const bars = [0, 1, 2, 3, 4, 5].map(i => `<div class="bb${i < n ? " on" : ""}${chg ? " ch" : ""}${chg && i === n ? " pl" : ""}${dis && i === n - 1 ? " dn" : ""}"></div>`).join("");
+  return `<div class="sc-bat" style="left:${x / 16.72}%;top:${y / 4}%;width:${w / 16.72}%;height:${hh / 4}%"><div class="bbs">${bars}</div>
+    <div class="sc-bl">${soc == null ? "–" : Math.round(soc) + " %"}${chg ? ' <i style="color:#ffa53a">↑</i>' : dis ? ' <i style="color:#3dff8f">↓</i>' : ""}</div></div>`;
+}
+function pylon(grid, max) {
+  const a = Math.abs(grid || 0), pc = max > 0 ? a / max : 0, t = Math.min(pc, 1), h = 200 * t, exp = grid < -20;
+  const mix = (p, q) => "#" + [1, 3, 5].map(i => Math.round(parseInt(p.substr(i, 2), 16) * (1 - t) + parseInt(q.substr(i, 2), 16) * t).toString(16).padStart(2, "0")).join("");
+  const col = exp ? "#3aa0ff" : mix("#ff7a85", "#c4001a"), col0 = exp ? "#1e6fd9" : mix("#ff4d5e", "#8a0010");
+  const lamp = pc >= 1 ? "#ff2238" : pc >= 0.8 ? "#facc15" : "#22e07a", ang = Math.PI * (1 - t);
+  return `<svg class="sc-pyl" viewBox="0 0 1672 400" preserveAspectRatio="none"><defs><clipPath id="pylc"><polygon points="${PYLON}"/></clipPath>
+    <linearGradient id="pylg" x1="0" x2="0" y1="1" y2="0"><stop offset="0" stop-color="${col0}"/><stop offset="1" stop-color="${col}"/></linearGradient>
+    <filter id="pylf"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    <g clip-path="url(#pylc)"><rect x="1300" y="${246 - h}" width="100" height="${h}" fill="url(#pylg)" opacity="${(0.55 + 0.4 * t).toFixed(2)}" style="mix-blend-mode:screen"/></g>
+    ${h > 1 ? `<line x1="1300" x2="1400" y1="${246 - h}" y2="${246 - h}" stroke="${col}" stroke-width="1.5" opacity=".8" filter="url(#pylf)"/>` : ""}
+    <circle cx="1350" cy="43" r="6" fill="${lamp}" filter="url(#pylf)" class="${pc >= 0.95 ? "pyl-bl" : ""}"/></svg>
+    <div class="sc-pl">${exp ? "⬆" : "⬇"} <b>${(a / 1000).toFixed(1).replace(".", ",")} kW</b> · ${Math.round(pc * 100)} %<svg viewBox="0 0 60 34" class="sc-g"><path d="M5 30 A25 25 0 0 1 55 30" fill="none" stroke="#ffffff22" stroke-width="6"/><path d="M5 30 A25 25 0 0 1 55 30" fill="none" stroke="${col}" stroke-width="6" stroke-dasharray="${t * 100} 100" pathLength="100"/><line x1="30" y1="30" x2="${(30 + 22 * Math.cos(ang)).toFixed(1)}" y2="${(30 - 22 * Math.sin(ang)).toFixed(1)}" stroke="#fff" stroke-width="2"/></svg></div>`;
+}
+const SC_CSS = `.sc-bat{position:absolute;pointer-events:none}.bbs{position:absolute;inset:9% 14% 7% 14%;display:flex;flex-direction:column-reverse;gap:5%}
+.bb{flex:1;border-radius:.2cqw;background:#0f2a1c;border:1px solid #1d4a31;opacity:.55;transition:all .4s}
+.bb.on{background:linear-gradient(90deg,#16c060,#3dff8f,#16c060);border-color:#5dffa3;opacity:.95;box-shadow:0 0 .4cqw #3dff8f,0 0 .9cqw #22e07a88}
+.bb.ch.on{background:linear-gradient(90deg,#d0650a,#ffa53a,#d0650a);border-color:#ffc27a;box-shadow:0 0 .4cqw #ffa53a,0 0 .9cqw #ff9f1a88}
+.bb.pl{animation:bbpl 1.2s ease-in-out infinite}@keyframes bbpl{0%,100%{opacity:.3}50%{opacity:1;background:#ffa53a;box-shadow:0 0 .7cqw #ffa53a}}
+.bb.dn{animation:bbdn 1.6s ease-in-out infinite}@keyframes bbdn{0%,100%{opacity:.95}50%{opacity:.55}}
+.sc-bl,.sc-pl{position:absolute;white-space:nowrap;color:#fff;font-weight:600;text-shadow:0 0 4px #000,0 0 10px #000,0 1px 2px #000;background:#0b182833;border-radius:.6cqw;padding:.1cqw .5cqw;pointer-events:none}
+.sc-bl{left:50%;top:-30%;transform:translateX(-50%);font-size:1.5cqw}.sc-bl i{font-style:normal;font-weight:800}
+.sc-pyl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.pyl-bl{animation:pylbl .6s steps(2) infinite}@keyframes pylbl{50%{opacity:.15}}
+.sc-pl{left:78.3%;top:1%;transform:translateX(-50%);font-size:1.15cqw;display:flex;align-items:center;gap:.4cqw;font-weight:500}.sc-pl b{font-size:1.25em}.sc-g{width:2.8cqw}`;
 const sp = n => n == null || isNaN(n) ? "–" : Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0");   // 1 807 (z odstepem jak na wzorze)
 const box = (k, html, cls = "") => { const [l, t, w, h] = POS[k]; return `<div class="sc-card ${cls}" style="left:${l}%;top:${t}%;width:${w}%;height:${h}%">${html}</div>`; };
 const tile = (ic, cls, lab, val, sub, subc, t) => `<div class="ov-tile"><div class="ov-ic ${cls}">${ic}</div><div><div class="ov-lab">${lab}${tip(t)}</div><div class="ov-val">${val}</div><div class="ov-sub" ${subc ? `style="color:${subc}"` : ""}>${sub}</div></div></div>`;
@@ -106,8 +139,8 @@ export function render(c) {
   const nxt = (pa.plan || []).find(s => new Date(s.start) > now && s.action !== "self");
   const L3 = ["l1", "l2", "l3"], kw = w => `${sp(w)} W`;
   const card = (ic, cls, lab, val, sub, sub2, sub3) => `<div class="sc-ic ${cls}">${ic}</div><div class="sc-tx"><div class="sc-lab">${lab}</div><div class="sc-val">${val}</div>${sub ? `<div class="sc-sub">${sub}</div>` : ""}${sub2 || ""}${sub3 ? `<div class="sc-sm">${sub3}</div>` : ""}</div>`;
-  const scene = `<style>${FLOW_CSS}${MANUAL_CSS}${PROFILE_CSS}.ov-pp{position:relative}.ptip{position:absolute;top:4px;z-index:5;background:#0b1622f2;border:1px solid #2a4560;border-radius:8px;padding:6px 9px;font-size:12px;line-height:1.5;pointer-events:none;white-space:nowrap;box-shadow:0 0 12px #000a}.ptip i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}.ov-pp svg{touch-action:pan-y}</style><div class="sc"><img src="${SCENE}" alt="Dom, PV, bateria i sieć">
-    ${flowSvg("0 0 1671 400", FLOW, lines(pv, bp, grid), [13, 9, 3.5], "flov")}
+  const scene = `<style>${FLOW_CSS}${MANUAL_CSS}${PROFILE_CSS}${SC_CSS}.ov-pp{position:relative}.ptip{position:absolute;top:4px;z-index:5;background:#0b1622f2;border:1px solid #2a4560;border-radius:8px;padding:6px 9px;font-size:12px;line-height:1.5;pointer-events:none;white-space:nowrap;box-shadow:0 0 12px #000a}.ptip i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}.ov-pp svg{touch-action:pan-y}</style><div class="sc"><img src="${SCENE}" alt="Dom, PV, bateria i sieć">
+    ${flowSvg("0 0 1672 400", FLOW, lines(pv, bp, grid), [13, 9, 3.5], "flov")}${pylon(grid, num(h, "number.ems_max_pobor_w", 12000))}${batBars(soc, bp)}
     ${box("top", `<span>${icR(WX[wx?.state] || "cloudSun", 30)}${wx ? ` ${fmt(wx.attributes.temperature, 1, wx.attributes.temperature_unit || "°C")}` : " –"}</span><i></i><span>${icR("calendar", 26)} ${now.toLocaleDateString("pl-PL", { weekday: "short" }).replace(/^./, x => x.toUpperCase())}, ${now.toLocaleDateString("pl-PL")}</span><i></i><span>${icR("clock", 26)} ${now.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}</span>`, "sc-top")}
     ${box("pv", card(icR("sun", 34), "y", "PV", kw(pv), `Dziś: ${fmt(pvd, 1, "kWh")}`))}
     ${box("bat", card(icR("batteryBolt", 34), "g", "Bateria", fmt(soc, 0, "%"), `${fmt(bl, 1)} / ${fmt(br, 1, "kWh")}`, `<div class="sc-sub" style="color:${chg > 0 ? "#3ee07a" : bp > 0 ? "#ffad2e" : "#9fb0c3"}">± ${kw(Math.abs(bp))} ${chg > 0 ? ic("arrowUR", 16) : bp > 0 ? ic("arrowDR", 16) : ""}</div>`, toFull))}
