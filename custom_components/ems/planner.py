@@ -79,6 +79,41 @@ def arb_price(p: dict, z: str, flag: str = "arbitraz") -> float | None:
     return (cost + p[f"arbitraz_zysk_{z}"]) / p["depozyt_mnoznik"]
 
 
+def _sell_blocks(sell: list, why: list, price: list, a: int, b: int, mn: int) -> None:
+    """Sprzedaz blokami min. `mn` slotow: bliskie kawalki (przerwa <= mn) sklejane, krotkie rozszerzane o najdrozsze
+    sasiednie sloty; ta sama energia rozlozona rowno (nizsza moc, ta sama ilosc kWh)."""
+    mn = max(mn, 1)
+    runs, k = [], a
+    while k < b:
+        if sell[k] > 0:
+            j = k
+            while j < b and sell[j] > 0:
+                j += 1
+            if runs and k - runs[-1][1] <= mn:
+                runs[-1][1] = j
+            else:
+                runs.append([k, j])
+            k = j
+        else:
+            k += 1
+    for r in runs:
+        lo, hi = r
+        while hi - lo < mn:
+            l_ok = lo > a and price[lo - 1] is not None
+            r_ok = hi < b and price[hi] is not None
+            if not (l_ok or r_ok):
+                break
+            if r_ok and (not l_ok or price[hi] >= price[lo - 1]):
+                hi += 1
+            else:
+                lo -= 1
+        tot = sum(sell[lo:hi])
+        seed = next((why[i] for i in range(lo, hi) if why[i]), "")
+        for i in range(lo, hi):
+            sell[i] = tot / (hi - lo)
+            why[i] = seed + f" (blok sprzedazy {hi - lo} x 15 min)"
+
+
 def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dict, soc_now: float,
          p: dict, cap_kwh: float, max_charge_w: float, max_sell_w: float) -> tuple[list[Slot], dict]:
     n = len(slots)
@@ -187,6 +222,7 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
             why_sell[k] = thr_of.get(k, "")
             planned += amt
             cap_left[d] -= amt
+        _sell_blocks(sell, why_sell, price, a, b, int(p.get("tou_min_blok_min", 60) // 15))
         # docelowy SOC na koniec poprzedniej taniej strefy
         if bi > 0 and blocks[bi - 1][2]:
             want = kwh(res_w) + (need + planned) / ed - pv_in * ec      # w baterii, po stratach

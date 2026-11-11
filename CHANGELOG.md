@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.31
+- Sprzedaż blokami min. „Najkrótszy punkt TOU” (60 min): bliskie kawałki sklejane, krótkie rozszerzane o najdroższe sąsiednie sloty; ta sama energia rozłożona równo (niższa moc, te same kWh). Koniec sprzedaży pojedynczymi kwadransami.
+
 ## 0.6.30
 - Ładowanie z sieci jednym ciągłym blokiem (0,2C, min. 1 h), który kończy się `Koniec ładowania przed końcem taniej strefy` (domyślnie 120 min; strefa 13–15 – 30 min). Reszta taniej strefy = nowa akcja „Trzymanie”: bateria nie rozładowuje się, dom z sieci; z baterii dopiero w drogiej strefie. Koniec „cykania” ładowania co 15 min.
 - Executor: punkt TOU „Trzymanie” (Z sieci OFF, SOC = soc_max), punkt ładowania ma SOC = cel z planu (nie zawsze soc_max), punkty autokonsumpcji / trzymania krótsze niż `Najkrótszy punkt TOU` (60 min) doklejane do poprzedniego, przy > 6 punktach scalane najkrótsze (ładowanie i sprzedaż zostają), ostatni = pierwszy przez północ → jeden punkt.
