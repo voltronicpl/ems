@@ -21,7 +21,7 @@ jobs:
           python3 - "$V" > notes.md <<'PY'
           import sys, re
           v = sys.argv[1]; t = open("CHANGELOG.md", encoding="utf-8").read()
-          m = re.search(rf"^## v{re.escape(v)}\b.*?$(.*?)(?=^## v|\Z)", t, re.S | re.M)
+          m = re.search(rf"^## v?{re.escape(v)}\b.*?$(.*?)(?=^## v?\d|\Z)", t, re.S | re.M)
           print(m.group(1).strip() if m else f"EMS v{v}")
           PY
           gh release create "v$V" --target "$GITHUB_SHA" --title "v$V" --notes-file notes.md --latest
