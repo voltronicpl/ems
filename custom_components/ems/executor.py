@@ -37,7 +37,7 @@ class Executor:
         self._exp_rej = 0                                # ile razy falownik sam cofnal tryb sprzedazy w biezacej sprzedazy
         self._exp_set = False
         self.sell_warn: str | None = None
-        self.peak = PeakShave(hass, dev, entry_id)      # "Pmax zakupu" (Grid Peak Shaving) – TYLKO odczyt
+        self.peak = PeakShave(hass, dev, entry_id)      # "Pmax zakupu": sprzedaz odznaczony, kupno zaznaczony
 
     # --- encje -------------------------------------------------------------------------------
     def eid(self, dom: str, key: str) -> str:
@@ -274,8 +274,8 @@ class Executor:
         await self.set(self.eid("switch", "ladowanie_z_sieci_dozwolone"), True, "EMS")
         act = (current or {}).get("action", "self")
         pmax = self.eid("number", "max_moc_sprzedazy_z_pv")   # w panelu "Pmax sprzedazy (eksport)" – ogranicza CALY eksport (Deye "Max Sell Power")
-        try:                                                # Pmax zakupu: TYLKO odczyt / ostrzezenie przy sprzedazy (nie da sie zapisac)
-            await self.peak.ensure(act != "sell", float(p.get("max_pobor_w", 10000) or 0))
+        try:                                                # Pmax zakupu: sprzedaz = odznaczony, kupno = zaznaczony (algorytm i reczne)
+            await self.peak.ensure(act)
         except Exception as err:  # noqa: BLE001
             LOG.warning("Pmax zakupu: blad (%s)", err)
         if act == "sell":                                   # glowny wlacznik eksportu (jak "Solar Sell" w Deye) – bez niego nic nie idzie do sieci

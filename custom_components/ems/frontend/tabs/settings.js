@@ -68,7 +68,7 @@ function pmaxBox(c) {
   const swId = c.rid ? c.rid("switch.ecobss_pmax_zakupu", "Pmax zakupu") : "switch.ecobss_pmax_zakupu", hasSw = !!S(c.hass, swId);
   const b = S(c.hass, bs) || S(c.hass, swId), on = b ? b.state === "on" : p?.wlaczony;
   const st = on == null ? "nieodczytany" : on ? `<b>☑ zaznaczony</b>` : `<b>☐ odznaczony</b>`;
-  return c.group(`⚡ Pmax zakupu – limit poboru z sieci${tip({ co: "Grid Peak Shaving – rejestr 278 (bit 4) i „Moc szczytowa sieci” (291).", jak: "Od YAML v5.7 (zapis 10H) zaznaczasz / odznaczasz tutaj. EMS go sam nie rusza. Limit (291) też tutaj." })}`,
+  return c.group(`⚡ Pmax zakupu – limit poboru z sieci${tip({ co: "Grid Peak Shaving – rejestr 278 (bit 4) i „Moc szczytowa sieci” (291).", jak: "Od YAML v5.7 (zapis 10H). EMS (algorytm i ręczne): odznaczony TYLKO przy sprzedaży, w każdym innym trybie (kupno, trzymanie, autokonsumpcja – pobór z sieci) zaznaczony. Ręczna zmiana zostanie nadpisana przy następnej zmianie trybu. Limit (291) tutaj." })}`,
     `<div class="g3"><div><label class="f">Pmax zakupu${hasSw ? "" : " (tylko odczyt – YAML v5.7 da przełącznik)"}</label><div style="padding:8px 0">${hasSw ? c.sw(swId, "Zaznaczony") : st}${!b && p?.r278 ? ` <span class="lab">(278 = ${esc(p.r278)})</span>` : ""}</div></div>
       <div><label class="f">Moc szczytowa sieci (limit)</label>${c.field(nm, "W")}</div></div>`, [nm]);
 }

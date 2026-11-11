@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.41
+- Pmax zakupu sterowany przez EMS (algorytm i ręczne): **odznaczony TYLKO przy sprzedaży (zaznaczony ją blokuje), w każdym innym trybie (kupno, trzymanie, autokonsumpcja, blokada – pobór z sieci) zaznaczony**. Przez `switch.<dev>_pmax_zakupu` z YAML v5.7 (zapis 10H); bez przełącznika nic nie robi. Jeden zapis na zmianę (bez powtarzania w kółko), wpis w logu.
+
 ## 0.6.40
 - Harmonogram TOU (Ustawienia i Plan): kolumna **„Do”** (start następnego punktu, ostatni do 23:59) + czas trwania, tryb punktu wyliczony z ustawień (Ładowanie / Sprzedaż / Trzymanie / Autokonsumpcja), podświetlony punkt aktywny teraz, ostrzeżenie gdy punkt 1 nie startuje o 00:00 albo start jest po następnym punkcie.
 

@@ -1,8 +1,8 @@
 """„Pmax zakupu” (menu Tryb pracy na LCD) = Grid Peak Shaving: rejestr 278, bity 5:4 (11 = wlaczony, 10 = wylaczony),
 wartosc w 291 [W]. Zaznaczony blokuje sprzedaz (falownik wraca 242 na „Limit wbudowany”).
 
-DECYZJA UZYTKOWNIKA (v0.6.37): 278 NIE DA SIE ZAPISAC przez Modbus – EMS NIGDY go nie zapisuje (ani algorytm, ani reczne).
-Tylko odczyt (binary_sensor z YAML v5.6, inaczej raw_read) i ostrzezenie przy sprzedazy, gdy zaznaczony.
+DECYZJA UZYTKOWNIKA (v0.6.41): zapis dziala tylko 10H (YAML v5.7, przelacznik). EMS (algorytm i reczne):
+SPRZEDAZ = ODZNACZONY, wszystko inne (kupno, trzymanie, autokonsumpcja, blokada – pobieramy z sieci) = ZAZNACZONY.
 Limit poboru z sieci trzyma falownik wg "Moc szczytowa sieci" (291) – uzytkownik ustawia go recznie w panelu.
 """
 from __future__ import annotations
@@ -89,10 +89,20 @@ class PeakShave:
         self._chk = 0.0
 
     # --- v0.6.37: TYLKO ODCZYT (278 nie da sie zapisac przez Modbus) -----------------------------------
-    async def ensure(self, on: bool, limit_w: float) -> None:
-        """Tylko podglad stanu do panelu (binary_sensor z YAML v5.6). Bez zapisu, bez ostrzezen, bez raw_read."""
-        st = self.hass.states.get(dev_entity(self.hass, self.dev, "switch", "pmax_zakupu")) or self.hass.states.get(dev_entity(self.hass, self.dev, "binary_sensor", "pmax_zakupu"))
-        self.status = {"wlaczony": st.state == "on", "przez_ems": False, "ostrzezenie": None} if st is not None and st.state in ("on", "off") else {}
+    async def ensure(self, act: str, limit_w: float = 0) -> None:
+        """v0.6.41 (decyzja uzytkownika): SPRZEDAZ = odznaczony, KUPNO (ladowanie z sieci) = zaznaczony – algorytm i reczne.
+        Odznaczony tylko przy sprzedazy, inaczej zaznaczony. Przez przelacznik z YAML v5.7 (zapis 10H); bez niego nic nie robi. Zapis tylko przy zmianie."""
+        sw = dev_entity(self.hass, self.dev, "switch", "pmax_zakupu")
+        st = self.hass.states.get(sw)
+        if st is None or st.state not in ("on", "off"):
+            self.status = {}
+            return
+        want = "off" if act == "sell" else "on"              # odznaczony TYLKO przy sprzedazy; pobor z sieci (kupno, trzymanie, autokonsumpcja) = zaznaczony
+        if want and st.state != want and getattr(self, "_sent", None) != (want, st.last_updated):
+            self._sent = (want, st.last_updated)               # jeden zapis na zmiane – nie w kolko, gdy falownik nie przyjmie
+            await self.hass.services.async_call("switch", f"turn_{want}", {"entity_id": sw}, blocking=True)
+            LOG.info("ZAPIS %s: %s -> %s (Pmax zakupu %s)", sw, st.state, want, "ODZNACZONY – sprzedaz" if want == "off" else "ZAZNACZONY – kupno")
+        self.status = {"wlaczony": (want or st.state) == "on", "przez_ems": True, "ostrzezenie": None}
 
     async def restore(self) -> None:
         """Nic do przywracania – EMS nie zapisuje 278."""
