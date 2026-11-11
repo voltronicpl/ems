@@ -1,7 +1,7 @@
 // Dymki (i) dla pol Czesci Inwerter. Klucz = ID encji bez "domena.<datalogger>_". Format jak w tips.js: {co, jak, plus, minus, czytaj}.
 // Opisy wg dokumentacji ECOBSS / mapy Deye; "uwaga" = ustawienie, ktore moze wylaczyc dom albo baterie.
 export const INV = {
-  pmax_zakupu: { co: "„Pmax zakupu” z LCD (Tryb pracy) – rejestr 278 bit 4, limit w „Moc szczytowa sieci” (291).", jak: "Zmiana tylko na LCD – przez Modbus się nie da; EMS tylko pokazuje stan." },
+  pmax_zakupu: { co: "„Pmax zakupu” z LCD (Tryb pracy) – rejestr 278 bit 4, limit w „Moc szczytowa sieci” (291).", jak: "Zapis 10H od YAML v5.7 (wcześniej szło 06H i falownik ignorował). EMS go sam nie przestawia." },
   ustaw_czas_z_ha: { co: "Przepisuje zegar z Home Assistant do falownika (rejestry 162–164).", jak: "Falownik liczy strefy harmonogramu TOU według własnego zegara – jeśli się spieszy albo spóźnia, ładuje i sprzedaje o złych godzinach.", czytaj: "Kliknij po zmianie czasu (lato/zima) albo gdy godzina w falowniku się rozjechała." },
 
   max_napiecie_sieci: { co: "Górna granica napięcia sieci, przy której falownik jeszcze z nią pracuje.", jak: "Powyżej tej wartości odłącza się od sieci (ochrona) i przechodzi na baterię.", plus: "Wyżej = rzadziej się odłącza przy wysokim napięciu (np. w słoneczne południe).", minus: "Niżej = odłącza się szybciej. Norma w PL to zwykle 253 V (230 V + 10%)." },

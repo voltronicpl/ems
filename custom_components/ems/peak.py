@@ -91,7 +91,7 @@ class PeakShave:
     # --- v0.6.37: TYLKO ODCZYT (278 nie da sie zapisac przez Modbus) -----------------------------------
     async def ensure(self, on: bool, limit_w: float) -> None:
         """Tylko podglad stanu do panelu (binary_sensor z YAML v5.6). Bez zapisu, bez ostrzezen, bez raw_read."""
-        st = self.hass.states.get(dev_entity(self.hass, self.dev, "binary_sensor", "pmax_zakupu"))
+        st = self.hass.states.get(dev_entity(self.hass, self.dev, "switch", "pmax_zakupu")) or self.hass.states.get(dev_entity(self.hass, self.dev, "binary_sensor", "pmax_zakupu"))
         self.status = {"wlaczony": st.state == "on", "przez_ems": False, "ostrzezenie": None} if st is not None and st.state in ("on", "off") else {}
 
     async def restore(self) -> None:

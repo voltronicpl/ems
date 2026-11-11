@@ -17,7 +17,7 @@ RS485, 9600 bps, 8N1, Modbus RTU, adres 1. Odczyt 03H, zapis 10H (holding). Adre
 | 243 | max moc sprzedaży | W |
 | 245 | sprzedaj nadwyżkę PV | 0/1 |
 | 246 | harmonogram TOU + dni (bity) | – |
-| 278 | bity 5:4 „Pmax zakupu” (Grid Peak Shaving, LCD: Tryb pracy): 11 wł., 10 wył. (różni się tylko bit 4 = 0x10) – zaznaczony blokuje sprzedaż; NIE DA SIĘ ZAPISAĆ przez Modbus (tylko LCD) – EMS tylko czyta; YAML v5.6: `binary_sensor` „Pmax zakupu” (bit 0x10) | – |
+| 278 | bity 5:4 „Pmax zakupu” (Grid Peak Shaving, LCD: Tryb pracy): 11 wł., 10 wył. (różni się tylko bit 4 = 0x10) – zaznaczony blokuje sprzedaż; zapis TYLKO 10H (06H falownik ignoruje – stąd wcześniej „nie da się zapisać”); YAML v5.7: `switch` „Pmax zakupu” (bit 0x10, zapis 10H); EMS sam nie przestawia | – |
 | 291 | wartość „Pmax zakupu” (moc szczytowa sieci) | W |
 | 248–253 | start punktów TOU | HHMM |
 | 254–259 | moc punktów TOU | W |

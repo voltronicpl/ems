@@ -339,6 +339,12 @@ export const GROUPS = [
     "r": 227
    },
    {
+    "t": "s",
+    "id": "switch.ecobss_pmax_zakupu",
+    "l": "Pmax zakupu",
+    "r": 278
+   },
+   {
     "t": "n",
     "id": "number.ecobss_moc_szczytowa_sieci",
     "l": "Moc szczytowa sieci",
