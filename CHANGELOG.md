@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## 0.6.34
+- Nauka: pasek okresu przyklejony (jedzie ze stroną, pod nagłówkiem panelu).
+- Wszystkie ramki liczone z wybranego okresu (`GET /api/ems/nauka?od=&do=`): kafle (kalibracja PV i pompa z okresu vs poprzedni), „było → jest” tylko ze snapshotów okresu, dni podobne do średniej pogody okresu, pompa – punkty z okresu + model okresu (zielony) obok rocznego, profil dobowy z okresu vs ten sam okres rok temu, kalibracja PV okresu z podświetleniem miesięcy.
+- Urządzenia – czego się nauczył (z okresu, strzałka vs poprzedni okres): cykli / rok, cykli / tydz., cykli w okresie, kWh / cykl, kWh / tydz., kWh / rok, co ile dni, dni tygodnia, godziny startu, kalendarz dni okresu (Rok – cykle w miesiącach).
+
 ## 0.6.33 – algorytm „per wszystko”
 - PV: mnożnik na każdy dzień prognozy z **dni podobnych** (±30 dni roku z każdego roku, zachmurzenie ±20 %, nasłonecznienie ±30 %, T ±5 °C) zmieszany z miesięcznym, a ten z rocznym (waga podobnych n / (n + 5)). W logu `PV <data>: mnoznik xN (dni podobnych: n)`.
 - Pompa ciepła: modele miesięczne i sezonowe (min. 168 h) + roczny, mieszane wg ilości danych; bezpiecznik – na ostatnich 14 dniach mieszanka vs sam roczny, gorsza → roczny.

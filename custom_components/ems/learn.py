@@ -272,10 +272,19 @@ class LearnView(HomeAssistantView):
             return self.json_message("EMS nie jest skonfigurowany", 404)
         eng = e[0]
         L = eng.learn
+        q = request.query
         try:
-            d0 = date.fromisoformat(request.query.get("dzien", "")) if request.query.get("dzien") else datetime.now(WAW).date()
+            d0 = date.fromisoformat(q.get("do") or q.get("dzien") or "") if (q.get("do") or q.get("dzien")) else datetime.now(WAW).date()
         except ValueError:
             d0 = datetime.now(WAW).date()
+        try:
+            d1 = date.fromisoformat(q["od"]) if q.get("od") else d0
+        except ValueError:
+            d1 = d0
+        d1 = min(d1, d0)
+        n_d = (d0 - d1).days + 1
+        p1, p0 = d1 - timedelta(days=n_d), d1 - timedelta(days=1)          # poprzedni okres tej samej dlugosci
+        inr = lambda h, a=d1, b=d0: a <= h.astimezone(WAW).date() <= b      # noqa: E731
         wx = hour_wx(eng._wx_learn or eng._weather)
         wh = eng.p.get("weekend_od_godz", 15)
         dom_d = daily(eng._hist)
@@ -339,22 +348,33 @@ class LearnView(HomeAssistantView):
         ser = [{"data": dd.isoformat(), **feats[dd], "dom_p": round(fc_day[dd]["dom"], 2) if dd in fc_day else None,
                 "pv_p": round(fc_day[dd]["pv"], 2) if dd in fc_day else None} for dd in days if dd <= datetime.now(WAW).date()]
         # probka pompy do wykresu (max 400 punktow)
-        pts = [(wx[h]["temp"], wx[h].get("wind") or 0, v / 1000) for h, v in eng._pump.items() if h in wx and wx[h].get("temp") is not None]
+        pts = [(wx[h]["temp"], wx[h].get("wind") or 0, v / 1000) for h, v in eng._pump.items() if h in wx and wx[h].get("temp") is not None and inr(h)]
+        pump_okres = None
+        if len(pts) >= 48:
+            c2 = regress([([1.0, t], v) for t, _, v in pts], 0.01)
+            if c2:
+                pump_okres = {"coef": [round(x, 4) for x in c2], "n": len(pts)}
         step = max(1, len(pts) // 400)
         # profil dobowy wg pory roku: (sezon, typ, godzina) -> kW
         prof: dict = defaultdict(list)
+        ly0, ly1 = d1 - timedelta(days=365), d0 - timedelta(days=365)
         for h, w in eng._hist.items():
             loc = h.astimezone(WAW)
-            sez = "zima" if loc.month in (11, 12, 1, 2, 3) else "lato" if loc.month in (5, 6, 7, 8) else "przejsciowy"
             typ = "weekend" if day_type(loc, wh) == "weekend" else "roboczy"
-            prof[f"{sez}|{typ}"].append((loc.hour, w / 1000))
+            if inr(h):
+                prof[f"okres|{typ}"].append((loc.hour, w / 1000))
+            elif ly0 <= loc.date() <= ly1:
+                prof[f"rok_temu|{typ}"].append((loc.hour, w / 1000))
         profil = {k: [round(sum(v for h, v in a if h == i) / max(sum(1 for h, _ in a if h == i), 1), 3) for i in range(24)] for k, a in prof.items()}
         return self.json({
             "dzien": d0.isoformat(), "przeliczono": L.at, "snapshoty": L.snap, "seria": ser, "godziny": [hours[i] for i in range(24)],
             "pompa": {k: v for k, v in (L.pump or {}).items() if k not in ("mies", "sez")} if L.pump else None, "pompa_pkt": [[round(a, 1), round(b, 1), round(c, 3)] for a, b, c in pts[::step]],
-            "urzadzenia": {n: {k: v for k, v in d.items() if k != "profil"} for n, d in L.dev.items()},
+            "urzadzenia": {n: {**range_dev(L.dev_h.get(n, {}), d1, d0), "ikona": d.get("ikona"), "od": d.get("od"),
+                               "poprz": range_dev(L.dev_h.get(n, {}), p1, p0)} for n, d in L.dev.items()},
+            "pompa_okres": pump_okres, "od": d1.isoformat(), "do": d0.isoformat(),
+            "pv_okres": _pv_range(L.pv_day, d1, d0), "pv_poprz": _pv_range(L.pv_day, p1, p0),
             "pv_kal_m": L.pv_cal_m, "kal_pv": (eng.summary or {}).get("kalibracja_pv"), "wsp_temp": (eng.summary or {}).get("wsp_temp"),
-            "profil": profil, "podobne": similar(d0, feats), "dzien_cechy": {k: (round(v, 2) if isinstance(v, float) else v) for k, v in feats.get(d0, {}).items()},
+            "profil": profil, "podobne": similar(d0, _range_feats(feats, d1, d0)), "dzien_cechy": {k: (round(v, 2) if isinstance(v, float) else v) for k, v in _range_feats(feats, d1, d0).get(d0, {}).items()},
             "dni_hist": len(dom_d), "bezpiecznik": (eng.summary or {}).get("nauka_bezpiecznik"), "pv_mnozniki": L.pv_mult_now,
             "pompa_warstwy": {"mies": {str(k): v for k, v in (L.pump or {}).get("mies", {}).items()}, "sez": (L.pump or {}).get("sez", {}),
                               "uzywa": "warstwy" if (L.pump or {}).get("warstwy") else "roczny", "mae_warstwy": (L.pump or {}).get("mae_warstwy"), "mae_roczny": (L.pump or {}).get("mae_roczny")},
@@ -503,4 +523,42 @@ def device_profile_l(hourly: dict) -> dict:
     for k in keys:
         a, b = wa(rec.get(k)), wa(ly.get(k))
         out[f"{k[0]}-{k[1]}"] = (0.7 * a + 0.3 * b) if a is not None and b is not None else (a if a is not None else b * 0.5)
+    return out
+
+
+def range_dev(hourly: dict, a: date, b: date) -> dict:
+    """Statystyki urzadzenia w zakresie dni [a, b]: cykle, cykle / tydz / rok, kWh / cykl / tydz / rok, kalendarz."""
+    sub = {h: v for h, v in hourly.items() if a <= h.astimezone(WAW).date() <= b}
+    n = (b - a).days + 1
+    if not sub:
+        return {"cykle": 0, "dni_okresu": n}
+    st = device_stats(sub, 15)
+    day: dict = defaultdict(float)
+    for h, v in sub.items():
+        day[h.astimezone(WAW).date()] += v
+    tot = sum(day.values())
+    span = max(n, 1)
+    return {"cykle": st.get("cykle", 0), "dni_okresu": n, "cykle_tydz": round(st.get("cykle", 0) / span * 7, 2), "cykle_rok": round(st.get("cykle", 0) / span * 365),
+            "kwh_cykl": st.get("kwh_cykl"), "kwh_tydz": round(tot / span * 7, 2), "kwh_rok": round(tot / span * 365, 1), "kwh_okres": round(tot, 2),
+            "co_ile_dni": st.get("co_ile_dni"), "dni_tyg": st.get("dni_tyg"), "godz_startu": st.get("godz_startu"),
+            "kalendarz": {d.isoformat(): round(v, 2) for d, v in day.items() if v >= 0.05}}
+
+
+def _pv_range(pvd: dict, a: date, b: date) -> float | None:
+    f = sum(x["f"] for d, x in pvd.items() if a <= d <= b)
+    p = sum(x["p"] for d, x in pvd.items() if a <= d <= b)
+    return round(f / p, 3) if p >= 0.5 else None
+
+
+def _range_feats(feats: dict, a: date, b: date) -> dict:
+    """Dla okresu > 1 dzien: cechy dnia b = srednia pogody okresu (dni podobne do calego okresu)."""
+    if a == b:
+        return feats
+    sel = [f for d, f in feats.items() if a <= d <= b]
+    if not sel:
+        return feats
+    m = lambda k: (lambda v: sum(v) / len(v) if v else None)([f[k] for f in sel if f.get(k) is not None])   # noqa: E731
+    out = {d: f for d, f in feats.items() if not (a <= d <= b)}
+    out[b] = {**feats.get(b, {}), "t": m("t"), "wiatr": m("wiatr"), "nasl": m("nasl"), "dom": m("dom"), "pv": m("pv"),
+              "typ": feats.get(b, {}).get("typ", "roboczy")}
     return out

@@ -1,7 +1,7 @@
 {
   "domain": "ems",
   "name": "EMS",
-  "version": "0.6.33",
+  "version": "0.6.34",
   "config_flow": true,
   "documentation": "https://github.com/voltronicpl/ems",
   "issue_tracker": "https://github.com/voltronicpl/ems/issues",

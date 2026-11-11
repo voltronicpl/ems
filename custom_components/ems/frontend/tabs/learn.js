@@ -11,10 +11,11 @@ const MIES = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "pa
 const WD = ["pn", "wt", "śr", "cz", "pt", "so", "nd"];
 
 function load(c) {
-  const end = st.end || today(), key = end;
+  const end = st.end || today(), t0 = new Date(end + "T12:00"); t0.setDate(t0.getDate() - OKR[st.okres][1] + 1);
+  const od = iso(t0), key = od + "|" + end;
   if (st.busy || (st.key === key && Date.now() - st.at < 300000)) return;
   st.busy = true;
-  c.hass.callApi("GET", `ems/nauka?dzien=${end}`).then(r => { st.d = r; st.key = key; }).catch(e => { st.d = { err: e.message || String(e) }; })
+  c.hass.callApi("GET", `ems/nauka?od=${od}&do=${end}`).then(r => { st.d = r; st.key = key; }).catch(e => { st.d = { err: e.message || String(e) }; })
     .finally(() => { st.busy = false; st.at = Date.now(); c.render(true); });
 }
 const avg = a => { const v = a.filter(x => x != null && !isNaN(x)); return v.length ? v.reduce((p, q) => p + q, 0) / v.length : null; };
@@ -57,13 +58,13 @@ function tiles(d, P) {
   const ed = rows => avg(rows.map(r => errPct(r.dom, r.dom_p))), ep = rows => avg(rows.map(r => errPct(r.pv, r.pv_p)));
   const cur = ed(P.rows), prv = ed(P.prev), cpv = ep(P.rows), ppv = ep(P.prev);
   const arrow = (a, b) => a == null || b == null ? `<span class="lab">brak porównania</span>` : `<b style="color:${a <= b ? C.green : C.red}">${a <= b ? "↓" : "↑"} ${fmt(Math.abs(a - b), 1)} pp</b>`;
-  const m = new Date().getMonth() + 1, km = (d.pv_kal_m || {})[m], pm = d.pompa, k = pm?.coef || [];
+  const m = new Date((st.end || today()) + "T12:00").getMonth() + 1, km = d.pv_okres ?? (d.pv_kal_m || {})[m], pm = d.pompa, k = pm?.coef || [], po = d.pompa_okres;
   const t = (ic, lab, val, sub) => `<div class="tile"><div class="ic">${ic}</div><div style="min-width:0"><div class="lab">${lab}</div><div class="val">${val}</div><div class="sub">${sub}</div></div></div>`;
   return `<div class="tiles" style="margin-bottom:14px">
     ${t("🏠", "Błąd prognozy domu (dobowo)", cur == null ? "–" : fmt(cur, 1, "%"), `${arrow(cur, prv)} vs poprzedni okres${prv != null ? ` (${fmt(prv, 1, "%")})` : ""}`)}
     ${t("☀", "Błąd prognozy PV (dobowo)", cpv == null ? "–" : fmt(cpv, 0, "%"), `${arrow(cpv, ppv)} vs poprzedni okres`)}
-    ${t("📐", `Kalibracja PV – ${MIES[m - 1]}`, km != null ? "× " + fmt(km, 2) : d.kal_pv != null ? "× " + fmt(d.kal_pv, 2) : "–", km != null ? `roczna × ${fmt(d.kal_pv, 2)}` : "brak danych z tego miesiąca – roczna")}
-    ${t("♨", "Model pompy ciepła", pm ? `${fmt(k[0], 2)} ${k[1] < 0 ? "−" : "+"} ${fmt(Math.abs(k[1]), 3)}·T` : "–", pm ? `${pm.pelny ? `wiatr ${k[2] >= 0 ? "+" : "−"}${fmt(Math.abs(k[2]), 3)} · słońce ${k[3] >= 0 ? "+" : "−"}${fmt(Math.abs(k[3]), 2)}` : "tylko T (pełny gorszy)"} · R² ${fmt(pm.r2, 2)}` : "brak encji pompy")}
+    ${t("📐", "Kalibracja PV w okresie", km != null ? "× " + fmt(km, 2) : "–", `${d.pv_poprz != null ? `poprzedni × ${fmt(d.pv_poprz, 2)} · ` : ""}roczna × ${fmt(d.kal_pv, 2)}`)}
+    ${t("♨", "Pompa w okresie (kWh/h)", po ? `${fmt(po.coef[0], 2)} ${po.coef[1] < 0 ? "−" : "+"} ${fmt(Math.abs(po.coef[1]), 3)}·T` : pm ? `${fmt(k[0], 2)} ${k[1] < 0 ? "−" : "+"} ${fmt(Math.abs(k[1]), 3)}·T (rok)` : "–", pm ? `${pm.pelny ? `wiatr ${k[2] >= 0 ? "+" : "−"}${fmt(Math.abs(k[2]), 3)} · słońce ${k[3] >= 0 ? "+" : "−"}${fmt(Math.abs(k[3]), 2)}` : "tylko T (pełny gorszy)"} · R² ${fmt(pm.r2, 2)}` : "brak encji pompy")}
     ${t("📚", "Historia do nauki", `${d.dni_hist || 0} dni`, `snapshotów współczynników: ${Object.keys(d.snapshoty || {}).length}`)}
     ${t("⟳", "Ostatnie przeliczenie", d.przeliczono ? new Date(d.przeliczono).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }) : "–", "modele co 1 h · plan co 15 min")}</div>`;
 }
@@ -108,7 +109,8 @@ function coefBox(d, P) {
   const devN = [...new Set(sn.flatMap(([, s]) => Object.keys(s.urz || {})))];
   const all = { ...WSP, ...Object.fromEntries(devN.flatMap(n => [[`u_${n}_c`, [`${n}: cykli/tydz.`, s => s.urz?.[n]?.cykle_tydz]], [`u_${n}_k`, [`${n}: kWh/cykl`, s => s.urz?.[n]?.kwh_cykl]]])) };
   if (!sn.length) return `<div class="box"><div class="h"><span>🧮 Współczynniki – było → jest</span></div><div class="lab">Historia współczynników zbiera się od wdrożenia v0.6.32 (snapshot raz na dobę, pierwszy po północy). Na razie brak.</div></div>`;
-  const use = inP.length ? inP : sn.slice(-1), a = use[0][1], b = use[use.length - 1][1];
+  if (!inP.length) return `<div class="box"><div class="h"><span>🧮 Współczynniki – było → jest</span></div><div class="lab">Brak snapshotów w tym okresie (pierwszy: ${sn[0][0]}). Snapshot raz na dobę od v0.6.32.</div></div>`;
+  const use = inP, a = use[0][1], b = use[use.length - 1][1];
   const rows = Object.entries(all).map(([k, [lab, f]]) => { const x = f(a), y = f(b); if (x == null && y == null) return "";
     const ch = x != null && y != null ? y - x : null;
     return `<tr><td>${esc(lab)}</td><td class="r">${fmt(x, 3)}</td><td class="r">${fmt(y, 3)}</td><td class="r">${ch == null ? "–" : `<b>${ch >= 0 ? "+" : "−"}${fmt(Math.abs(ch), 3)}</b>`}</td><td><button class="btn" style="padding:2px 8px;font-size:11px" data-wsp="${k}">wykres</button></td></tr>`; }).join("");
@@ -137,7 +139,7 @@ function dayCoefBox(P) {
 function simBox(d) {
   const s = d.podobne || [], c0 = d.dzien_cechy || {};
   const dom = avg(s.map(x => x.dom)), pv = avg(s.map(x => x.pv));
-  return `<div class="box"><div class="h"><span>🔎 Dni podobne do ${esc(d.dzien)}${tip({ co: "Dni z historii z podobną pogodą i porą roku: temperatura ±3 °C, wiatr ±2 m/s, nasłonecznienie ±30 %, ±30 dni od daty (każdy rok), ten sam typ dnia (roboczy / weekend).", czytaj: "Średnia z podobnych dni = czego się spodziewać w taki dzień." })}</span>
+  return `<div class="box"><div class="h"><span>🔎 Dni podobne do ${d.od && d.od !== d.do ? `okresu ${esc(d.od)} – ${esc(d.do)} (średnia pogoda)` : esc(d.do || d.dzien)}${tip({ co: "Dni z historii z podobną pogodą i porą roku: temperatura ±3 °C, wiatr ±2 m/s, nasłonecznienie ±30 %, ±30 dni od daty (każdy rok), ten sam typ dnia (roboczy / weekend).", czytaj: "Średnia z podobnych dni = czego się spodziewać w taki dzień." })}</span>
     <span class="lab">${fmt(c0.t, 1)} °C · wiatr ${fmt(c0.wiatr, 1)} m/s · nasł. ${fmt(c0.nasl, 2)} kWh/m² · ${esc(c0.typ || "")}${c0.dom != null ? ` · dom ${fmt(c0.dom, 1)} kWh` : ""}</span></div>
     ${s.length ? `<div class="lab" style="margin-bottom:6px">Średnio w podobne dni: dom <b>${fmt(dom, 1, "kWh")}</b>${pv != null ? ` · PV <b>${fmt(pv, 1, "kWh")}</b>` : ""} (${s.length} dni)</div>
     <div style="overflow:auto"><table class="tbl rt"><tr><th>Data</th><th class="r">Podob.</th><th class="r">Temp.</th><th class="r">Wiatr</th><th class="r">Nasł.</th><th class="r">Dom</th><th class="r">PV</th><th>Typ</th></tr>
@@ -148,17 +150,22 @@ function simBox(d) {
 function devBox(d) {
   const u = Object.entries(d.urzadzenia || {});
   if (!u.length) return `<div class="box"><div class="h"><span>🔌 Urządzenia</span></div><div class="lab">Dodaj urządzenia (zmywarka, pralka…) w Ustawienia → 📚 Historia do nauki → 🔌 Urządzenia.</div></div>`;
-  const days = []; for (let i = 34; i >= 0; i--) { const t = new Date(); t.setDate(t.getDate() - i); days.push(iso(t)); }
-  return `<div class="box"><div class="h"><span>🔌 Urządzenia – czego się nauczył</span></div><div class="g2">${u.map(([n, x]) => {
-    const mx = Math.max(...x.dni_tyg || [1], 1), hmax = Math.max(...x.godz_startu || [1], 1), top = (x.godz_startu || []).map((v, h) => [v, h]).sort((a, b) => b[0] - a[0]).slice(0, 2).filter(q => q[0]).map(q => `${q[1]}:00`);
+  const days = []; for (let t = new Date(d.od + "T12:00"); iso(t) <= d.do; t.setDate(t.getDate() + 1)) days.push(iso(t));
+  const cmp = (a, b, dig = 1) => a == null || b == null || !b ? "" : ` <span style="color:${a >= b ? C.or : C.green};font-size:11px">${a >= b ? "↑" : "↓"}${fmt(Math.abs(a - b), dig)}</span>`;
+  const cal = x => {
+    if (days.length > 62) { const mm = {}; Object.entries(x.kalendarz || {}).forEach(([dd, v]) => { const k = dd.slice(0, 7); mm[k] = (mm[k] || 0) + 1; }); const ks = [...new Set(days.map(dd => dd.slice(0, 7)))], mx = Math.max(1, ...Object.values(mm));
+      return `<div style="display:grid;grid-template-columns:repeat(${Math.min(ks.length, 12)},1fr);gap:3px;margin-top:8px">${ks.map(k => `<div title="${k}: ${mm[k] || 0} cykli" style="text-align:center"><div style="height:${8 + (mm[k] || 0) / mx * 30}px;background:${C.green};opacity:${mm[k] ? .85 : .12};border-radius:3px"></div><div class="lab" style="font-size:10px">${MIES[+k.slice(5) - 1]}</div></div>`).join("")}</div><div class="lab" style="font-size:10px">cykle w miesiącach</div>`; }
+    return `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px">${days.map(dd => { const v = (x.kalendarz || {})[dd]; return `<div title="${dd}${v ? `: ${v} kWh` : ""}" style="height:16px;border-radius:3px;background:${v ? C.green : "#ffffff10"};opacity:${v ? Math.min(.35 + v / (x.kwh_cykl || 1) * .5, 1) : 1}"></div>`; }).join("")}</div><div class="lab" style="font-size:10px">dni okresu (zielone = cykl)</div>`; };
+  return `<div class="box"><div class="h"><span>🔌 Urządzenia – czego się nauczył <span class="lab" style="font-size:inherit">(${esc(d.od)} – ${esc(d.do)}, strzałka = vs poprzedni okres)</span></span></div><div class="g2">${u.map(([n, x]) => {
+    const pp = x.poprz || {}, mx = Math.max(...(x.dni_tyg || [1]), 1), hmax = Math.max(...(x.godz_startu || [1]), 1), top = (x.godz_startu || []).map((v, h) => [v, h]).sort((a, b) => b[0] - a[0]).slice(0, 2).filter(q => q[0]).map(q => `${q[1]}:00`);
+    const cell = (lab, v, pv, dig = 1) => `<div><div class="lab">${lab}</div><b>${fmt(v, dig)}</b>${cmp(v, pv, dig)}</div>`;
     return `<div class="box" style="margin:0"><div class="h" style="font-size:15px"><span>${esc(x.ikona || "🔌")} ${esc(n)}</span><span class="lab">dane od ${esc(x.od || "–")}</span></div>
-      <div class="tiles" style="grid-template-columns:repeat(3,1fr)"><div><div class="lab">cykli / tydz.</div><b>${fmt(x.cykle_tydz, 1)}</b></div><div><div class="lab">kWh / cykl</div><b>${fmt(x.kwh_cykl, 2)}</b></div><div><div class="lab">co ile dni</div><b>${fmt(x.co_ile_dni, 1)}</b></div></div>
-      <div class="lab" style="margin-top:6px">Rocznie ~${fmt(x.kwh_rok, 0, "kWh")} · najczęściej start: ${top.join(", ") || "–"}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${cell("cykli / rok", x.cykle_rok, pp.cykle_rok, 0)}${cell("cykli / tydz.", x.cykle_tydz, pp.cykle_tydz)}${cell("cykli w okresie", x.cykle, pp.cykle, 0)}
+        ${cell("kWh / cykl", x.kwh_cykl, pp.kwh_cykl, 2)}${cell("kWh / tydz.", x.kwh_tydz, pp.kwh_tydz, 2)}${cell("kWh / rok", x.kwh_rok, pp.kwh_rok, 0)}</div>
+      <div class="lab" style="margin-top:6px">co ${fmt(x.co_ile_dni, 1)} dni · w okresie ${fmt(x.kwh_okres, 1, "kWh")} · najczęściej start: ${top.join(", ") || "–"}</div>
       <div style="display:flex;gap:4px;align-items:flex-end;height:46px;margin-top:6px">${(x.dni_tyg || []).map((v, i) => `<div style="flex:1;text-align:center"><div style="height:${v / mx * 30}px;background:${C.dom};border-radius:3px 3px 0 0;opacity:.8"></div><div class="lab" style="font-size:10px">${WD[i]}</div></div>`).join("")}</div>
       <div style="display:flex;gap:1px;align-items:flex-end;height:28px;margin-top:4px" title="godzina startu">${(x.godz_startu || []).map(v => `<div style="flex:1;height:${Math.max(v / hmax * 26, 1)}px;background:${C.or};opacity:.75"></div>`).join("")}</div>
-      <div class="lab" style="font-size:10px;display:flex;justify-content:space-between"><span>0:00</span><span>12:00</span><span>23:00</span></div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px">${days.map(dd => { const v = (x.kalendarz || {})[dd]; return `<div title="${dd}${v ? `: ${v} kWh` : ""}" style="height:16px;border-radius:3px;background:${v ? C.green : "#ffffff10"};opacity:${v ? Math.min(.35 + v / (x.kwh_cykl || 1) * .5, 1) : 1}"></div>`; }).join("")}</div>
-      <div class="lab" style="font-size:10px">ostatnie 35 dni (zielone = cykl)</div></div>`; }).join("")}</div></div>`;
+      <div class="lab" style="font-size:10px;display:flex;justify-content:space-between"><span>0:00</span><span>12:00</span><span>23:00</span></div>${cal(x)}</div>`; }).join("")}</div></div>`;
 }
 
 function pumpBox(d) {
@@ -168,30 +175,33 @@ function pumpBox(d) {
   let g = ""; for (let k = 0; k <= 4; k++) { const v = y1 * k / 4; g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#ffffff12"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end" class="xl">${fmt(v, 1)}</text>`; }
   for (let t = Math.ceil(t0 / 5) * 5; t <= t1; t += 5) g += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle" class="xl">${t}°</text>`;
   p.forEach(([t, w, v]) => { const k = Math.min(w / w1, 1); g += `<circle cx="${X(t).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.2" fill="hsl(${200 - k * 200},90%,60%)" opacity=".55"/>`; });
-  if (m) { const [a, b] = m.coef; g += `<line x1="${X(t0)}" y1="${Y(Math.max(a + b * t0, 0))}" x2="${X(t1)}" y2="${Y(Math.max(a + b * t1, 0))}" stroke="${C.red}" stroke-width="2.6"/>`; }
-  return `<div class="box"><div class="h"><span>♨ Pompa ciepła vs temperatura${tip({ co: "Każda kropka = godzina z roku: zużycie pompy vs temperatura. Kolor = wiatr (niebieski słaby → czerwony silny).", czytaj: "Czerwona linia = model przy bezwietrznej nocy. Wiatr i słońce przesuwają ją w górę / w dół." })}</span></div>
+  if (m) { const [a, b] = m.coef; g += `<line x1="${X(t0)}" y1="${Y(Math.max(a + b * t0, 0))}" x2="${X(t1)}" y2="${Y(Math.max(a + b * t1, 0))}" stroke="${C.red}" stroke-width="2.2" stroke-dasharray="6 5" opacity=".7"/>`; }
+  const po = d.pompa_okres; if (po) { const [a, b] = po.coef; g += `<line x1="${X(t0)}" y1="${Y(Math.max(a + b * t0, 0))}" x2="${X(t1)}" y2="${Y(Math.max(a + b * t1, 0))}" stroke="${C.green}" stroke-width="2.6"/>`; }
+  return `<div class="box"><div class="h"><span>♨ Pompa ciepła vs temperatura <span class="lab" style="font-size:inherit">(okres; zielona = model okresu, czerwona przerywana = roczny)</span>${tip({ co: "Każda kropka = godzina z roku: zużycie pompy vs temperatura. Kolor = wiatr (niebieski słaby → czerwony silny).", czytaj: "Czerwona linia = model przy bezwietrznej nocy. Wiatr i słońce przesuwają ją w górę / w dół." })}</span></div>
     <svg viewBox="0 0 ${W} ${H}" width="100%" class="nk-svg">${g}</svg>${m ? `<div class="lab">kWh/h = ${fmt(m.coef[0], 3)} ${m.coef[1] < 0 ? "−" : "+"} ${fmt(Math.abs(m.coef[1]), 3)}·T ${m.pelny ? `${m.coef[2] < 0 ? "−" : "+"} ${fmt(Math.abs(m.coef[2]), 3)}·wiatr ${m.coef[3] < 0 ? "−" : "+"} ${fmt(Math.abs(m.coef[3]), 3)}·słońce` : ""} · R² ${fmt(m.r2, 2)} · ${m.n} h<br>
     Bezpiecznik (ostatnie 14 dni, MAE kWh/h): pełny ${fmt(m.mae_pelny, 3)} · prosty ${fmt(m.mae_prosty, 3)} → używa <b>${m.pelny ? "pełnego (T + wiatr + słońce)" : "prostego (tylko T)"}</b></div>` : ""}</div>`;
 }
 
 function profBox(d) {
-  const pr = d.profil || {}, m = new Date().getMonth() + 1, sez = [11, 12, 1, 2, 3].includes(m) ? "zima" : [5, 6, 7, 8].includes(m) ? "lato" : "przejsciowy";
-  const xs = [...Array(24).keys()].map(h => `${h}:00`), S = [];
-  [["zima", "#60a5fa"], ["przejsciowy", C.green], ["lato", C.pv]].forEach(([z, col]) => { if (pr[`${z}|roboczy`]) S.push({ v: pr[`${z}|roboczy`], c: col, name: `${z} – roboczy`, w: z === sez ? 2.6 : 1.4, op: z === sez ? 1 : .55 });
-    if (pr[`${z}|weekend`]) S.push({ v: pr[`${z}|weekend`], c: col, dash: "6 4", name: `${z} – weekend`, w: z === sez ? 2.2 : 1.2, op: z === sez ? 1 : .5 }); });
-  return `<div class="box"><div class="h"><span>🕒 Profil dobowy domu wg pory roku <span class="lab" style="font-size:inherit">(kW, średnio)</span></span></div>${chart(xs, S, { h: 230, every: 3 })}</div>`;
+  const pr = d.profil || {}, xs = [...Array(24).keys()].map(h => `${h}:00`), S = [];
+  if (pr["okres|roboczy"]) S.push({ v: pr["okres|roboczy"], c: C.dom, name: "okres – roboczy", w: 2.6 });
+  if (pr["okres|weekend"]) S.push({ v: pr["okres|weekend"], c: C.vio, name: "okres – weekend / święto", w: 2.4 });
+  if (pr["rok_temu|roboczy"]) S.push({ v: pr["rok_temu|roboczy"], c: C.dom, dash: "6 4", op: .55, name: "rok temu – roboczy", w: 1.4 });
+  if (pr["rok_temu|weekend"]) S.push({ v: pr["rok_temu|weekend"], c: C.vio, dash: "6 4", op: .55, name: "rok temu – weekend", w: 1.4 });
+  return `<div class="box"><div class="h"><span>🕒 Profil dobowy domu w okresie <span class="lab" style="font-size:inherit">(kW, średnio; przerywane = ten sam okres rok temu)</span></span></div>${S.length ? chart(xs, S, { h: 230, every: 3 }) : `<div class="lab">Brak danych w tym okresie.</div>`}</div>`;
 }
 
 function pvBox(d) {
   const k = d.pv_kal_m || {}; if (!Object.keys(k).length) return "";
   return `<div class="box"><div class="h"><span>☀ Kalibracja PV per miesiąc${tip({ co: "Fakt PV / prognoza z archiwum pogody, osobno dla każdego miesiąca (słońce w listopadzie ≠ w lipcu). Używane w prognozie PV.", czytaj: "1,0 = prognoza trafia; < 1 = panele dają mniej niż wynika z pogody (cień, kurz, śnieg, nachylenie)." })}</span><span class="lab">roczna × ${fmt(d.kal_pv, 2)}</span></div>
-    ${chart(MIES, [{ v: MIES.map((_, i) => k[i + 1] ?? null), c: C.pv, bar: true, name: "mnożnik" }], { h: 200 })}</div>`;
+    ${(() => { const ms = new Set(); for (let t = new Date(d.od + "T12:00"); iso(t) <= d.do; t.setDate(t.getDate() + 1)) ms.add(t.getMonth()); return chart(MIES, [{ v: MIES.map((_, i) => ms.has(i) ? (k[i + 1] ?? null) : null), c: C.pv, bar: true, name: "miesiące okresu" }, { v: MIES.map((_, i) => ms.has(i) ? null : (k[i + 1] ?? null)), c: C.pv, bar: true, op: .25, name: "pozostałe" }], { h: 200 }); })()}
+    <div class="lab">W okresie: × ${fmt(d.pv_okres, 2)}${d.pv_poprz != null ? ` · poprzedni × ${fmt(d.pv_poprz, 2)}` : ""}</div></div>`;
 }
 
 export function render(c) {
   load(c);
   const d = st.d;
-  const bar = `<div class="box" style="padding:10px 14px"><div class="ctrl" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+  const bar = `<div class="box nk-bar" style="padding:10px 14px;position:sticky;top:${st.top || 0}px;z-index:20;background:#081826f2;backdrop-filter:blur(8px)"><div class="ctrl" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
     ${Object.entries(OKR).map(([k, [n]]) => `<button class="btn ${st.okres === k ? "pri" : ""}" data-okr="${k}">${n}</button>`).join("")}
     <span style="flex:1"></span><button class="btn" data-mv="-1">◀</button><input type="date" class="date" data-end value="${st.end || today()}" max="${today()}"><button class="btn" data-mv="1">▶</button><button class="btn" data-mv="0">Dziś</button></div></div>`;
   if (!d) return bar + `<div class="box"><div class="lab">Wczytuję naukę…</div></div>`;
@@ -202,6 +212,8 @@ export function render(c) {
 }
 
 export function bind(c, r) {
+  const hd = r.querySelector(".pf-head"), top = hd && getComputedStyle(hd).position === "sticky" ? hd.offsetHeight : 0;
+  if (top !== (st.top || 0)) { st.top = top; const b = r.querySelector(".nk-bar"); if (b) b.style.top = top + "px"; }
   r.querySelectorAll("[data-okr]").forEach(b => b.onclick = () => { st.okres = b.dataset.okr; c.render(true); });
   r.querySelectorAll("[data-mv]").forEach(b => b.onclick = () => { const v = +b.dataset.mv; if (!v) st.end = null; else { const t = new Date((st.end || today()) + "T12:00"); t.setDate(t.getDate() + v * OKR[st.okres][1]); const s = iso(t); st.end = s >= today() ? null : s; } st.at = 0; c.render(true); });
   r.querySelector("[data-end]")?.addEventListener("change", e => { st.end = e.target.value && e.target.value < today() ? e.target.value : null; st.at = 0; c.render(true); });
