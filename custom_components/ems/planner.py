@@ -284,18 +284,32 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                     act = "charge"
                     why = f"tania strefa G12: laduje pod cel {tgt or res_min:.0f}% + sprzedaz w innej godzinie" + (f"; szybciej niz {p.get('ladowanie_lagodne_c', 0.2):.2g}C – inaczej nie zdazy" if need > soft + 1e-6 else "")
             elif is_ch:
-                imp += max(-net, 0)                                    # dom z sieci w taniej strefie
+                imp += max(-net, 0)                                    # dom z sieci w taniej strefie (bateria trzyma)
                 e, over = store(e, max(net, 0))
-                if tgt is not None and soc < tgt - 0.5:
-                    left = b - k
-                    need = (kwh(tgt) - e) / max(left, 1)
-                    put = min(ch_slot, max(soft, need), kwh(tgt) - e)  # lagodnie (0,2C), szybciej tylko gdy nie zdazy
-                    if put > 0.005:
-                        grid = put / ec
-                        e += put
-                        imp += grid
-                        act = "charge"
-                        why = f"tania strefa G12, cel {tgt:.0f}% (dom + sprzedaz do nastepnej taniej strefy, miejsce na PV)" + (f"; szybciej niz {p.get('ladowanie_lagodne_c', 0.2):.2g}C – inaczej nie zdazy" if need > soft + 1e-6 else "")
+                if k == a:                                             # jeden ciagly blok ladowania, koniec `ladowanie_zapas_min` przed koncem strefy
+                    blk = None
+                    if tgt is not None and kwh(tgt) - e > 0.005:
+                        zap = int(p.get("ladowanie_zapas_min", 120) // 15)
+                        if b - a < zap + 4:                            # krotka strefa (np. 13–15): zapas 30 min
+                            zap = min(2, max(b - a - 1, 0))
+                        end = b - zap
+                        tot = kwh(tgt) - e
+                        n_ch = max(4, -(-tot // max(soft, 1e-6)))      # min. 1 h, lagodnie 0,2C
+                        if n_ch > end - a:                             # nie miesci sie -> zjada zapas, potem szybciej
+                            end = b
+                        n_ch = int(min(n_ch, end - a))
+                        blk = (end - n_ch, end, min(ch_slot, tot / max(n_ch, 1)))
+                if blk and blk[0] <= k < blk[1] and kwh(tgt) - e > 0.005:
+                    rest = kwh(tgt) - e
+                    put = min(ch_slot, max(blk[2], rest / (blk[1] - k)), rest)
+                    grid = put / ec
+                    e += put
+                    imp += grid
+                    act = "charge"
+                    why = f"tania strefa G12, cel {tgt:.0f}%: ladowanie jednym blokiem {slots[blk[0]].astimezone(WAW):%H:%M}–{slots[blk[1] - 1].astimezone(WAW) + timedelta(minutes=15):%H:%M}" + (f" (szybciej niz {p.get('ladowanie_lagodne_c', 0.2):.2g}C – inaczej nie zdazy)" if blk[2] > soft + 1e-6 else "")
+                else:
+                    act = "hold"
+                    why = "tania strefa G12: bateria trzyma, dom z sieci" + (" (po naladowaniu, do drogiej strefy)" if blk and k >= blk[1] else "")
             else:
                 if net >= 0:
                     e, over = store(e, net)
@@ -313,6 +327,8 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                     act, why = "block", f"RCE {price[k]:.2f} < prog za bezcen {bezcen:.2f}, eksport zablokowany"
                 else:
                     exp += over
+            if act == "hold" and exp > 0:
+                act = "self"
             if act == "self":
                 why = "zapas na burze" if reserve[k] > res_min else "autokonsumpcja"
             soc = pct(e)

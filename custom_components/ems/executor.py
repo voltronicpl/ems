@@ -136,12 +136,15 @@ class Executor:
             # sprzedaj do = SOC punktu = rezerwa + 1 (musi byc co najmniej 1 % wyzej niz autokonsumpcja)
             auto = min(res, 99)
             return ("sell", True, auto + 1, int(max_sell_w // 100 * 100), auto, auto + 1)
+        if slot["action"] == "hold":                                     # tania strefa: bateria trzyma (SOC punktu = soc_max), dom z sieci
+            smax = round(p["soc_max"])
+            return ("hold", False, smax, int(max_sell_w // 100 * 100), smax, 100)
         return (slot["action"], False, res, int(max_sell_w // 100 * 100), res, 100)
 
     def points(self, plan: list[dict], p: dict, max_charge_w: float, max_sell_w: float) -> list[tuple]:
         now = datetime.now(WAW)
         horizon = now + timedelta(hours=24)
-        segs = []
+        segs, hi = [], []
         for s in plan:
             t = datetime.fromisoformat(s["start"]).astimezone(WAW)
             if t + timedelta(minutes=15) <= now or t >= horizon:
@@ -149,13 +152,39 @@ class Executor:
             m = self.mode(s, p, max_charge_w, max_sell_w)
             t = max(t, now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 15))
             if segs and segs[-1][1] == m:
+                if m[0] == "charge" and not s.get("manual"):
+                    hi[-1] = max(hi[-1], s.get("soc") or 0)
                 continue
             segs.append((t, m))
+            hi.append(s.get("soc") or 0 if m[0] == "charge" and not s.get("manual") else 0)
         if not segs:
             return []
-        if len(segs) > 6:                      # falownik ma 6 punktow: reszta doby -> tryb "self"
+        # ladowanie algorytmu: SOC punktu = cel z planu (max SOC w bloku, w gore do 1 %), nie soc_max – inaczej po scaleniu ladowalby do pelna
+        segs = [(t, (m[:2] + (min(int(-(-h // 1)), m[2]),) + m[3:4] + (min(int(-(-h // 1)), m[4]), min(int(-(-h // 1)) + 1, 100))) if h and m[0] == "charge" else m)
+                for (t, m), h in zip(segs, hi)]
+        if len(segs) > 1 and segs[-1][1] == segs[0][1]:   # doba w kolko: ostatni punkt = pierwszy -> jeden punkt
+            segs.pop(0)
+        # punkty krotsze niz `tou_min_blok_min` (autokonsumpcja / trzymanie / blokada) doklejane do poprzedniego – bez cykania
+        mn = timedelta(minutes=p.get("tou_min_blok_min", 60))
+        i = 1
+        while i < len(segs):
+            nxt = segs[i + 1][0] if i + 1 < len(segs) else None
+            if nxt is not None and nxt - segs[i][0] < mn and segs[i][1][0] not in ("charge", "sell"):
+                del segs[i]
+                if i < len(segs) and segs[i][1] == segs[i - 1][1]:
+                    del segs[i]
+                continue
+            i += 1
+        if len(segs) > 6:                      # falownik ma 6 punktow: scalaj najkrotsze autokonsumpcje / trzymania (ladowanie i sprzedaz zostaja)
             LOG.debug("Plan ma %d segmentow w 24 h, scalam do 6", len(segs))
-            segs = segs[:5] + [(segs[5][0], ("self", False, round(p["soc_min"]), int(max_sell_w // 100 * 100), round(p["soc_min"]), 100))]
+            end = segs[0][0] + timedelta(days=1)
+            while len(segs) > 6:
+                ln = [((segs[i + 1][0] if i + 1 < len(segs) else end) - segs[i][0], i) for i in range(1, len(segs))]
+                soft_ = [x for x in ln if segs[x[1]][1][0] not in ("charge", "sell")]
+                _, i = min(soft_ or ln)
+                del segs[i]
+                if i < len(segs) and segs[i][1] == segs[i - 1][1]:
+                    del segs[i]
         while len(segs) < 6:                   # dopelnij: podziel najdluzszy segment na pol
             gaps = [((segs[(i + 1) % len(segs)][0] if i + 1 < len(segs) else segs[0][0] + timedelta(days=1)) - segs[i][0], i)
                     for i in range(len(segs))]

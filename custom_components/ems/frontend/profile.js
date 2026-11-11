@@ -1,6 +1,6 @@
 // Profil mocy (Przeglad) wg wzoru uzytkownika: okno teraz ±12 h ("teraz" na srodku), pomiar co 1 min linia ciagla,
 // prognoza (to, co sie jeszcze nie wydarzylo) linia przerywana; klik -> modal "Prognoza vs rzeczywistosc".
-import { fmt, esc } from "./core.js";
+import { fmt, esc, num } from "./core.js";
 import { ic } from "./icons.js";
 import { range, nowWindow, dayWindow } from "./minute.js";
 import { slots, kw, dayData } from "./forecast.js";
@@ -30,9 +30,14 @@ export function profile(c) {
   for (let t = Math.ceil(w.t0 / 108e5) * 108e5; t <= w.t1; t += 108e5) { const d = new Date(t); g += `<line x1="${X(t)}" x2="${X(t)}" y1="${T}" y2="${H - B}" class="pf-grid"/><text x="${X(t)}" y="${H - 12}" text-anchor="middle" class="pf-ax">${String(d.getHours()).padStart(2, "0")}:00</text>`; }
   g += `<text transform="translate(16 ${(H - B + T) / 2}) rotate(-90)" text-anchor="middle" class="pf-yl">Moc [kW]</text>`;
   // kolumny kupna / sprzedazy przez cala wysokosc (delikatne): reczne zlecenia + plan EMS do przodu; bez napisow (szczegoly w dymku)
-  const colr = (a, e, k) => { if (e - a > 0.5) g += `<rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${H - T - B}" fill="${BUYSELL[k]}" opacity=".075"/>`; };
+  const colr = (a, e, k) => { if (e - a > 0.5) g += `<rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${H - T - B}" fill="${BUYSELL[k]}" opacity=".22"/><rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="3" fill="${BUYSELL[k]}" opacity=".9"/>`; };
   for (const b of bands(w.t0, w.t1)) { const a = Math.max(L, X(b.a)), e = Math.min(W - R, X(b.b)); colr(a, e, b.typ === "sprzedaj" ? "sprzedaj" : "kup"); }
   for (let t = Math.floor(Math.max(w.now, w.t0) / 9e5) * 9e5; t < w.t1; t += 9e5) { const a = (sm.get(t) || {}).action, k = a === "charge" ? "kup" : a === "sell" ? "sprzedaj" : null; if (k) colr(Math.max(L, X(Math.max(t, w.now))), Math.min(W - R, X(t + 9e5)), k); }
+  // RCE (zl/kWh) – delikatna linia na ukrytej osi cen (0…max), schodki co 15 min
+  const pr = []; for (let t = Math.floor(w.t0 / 9e5) * 9e5; t < w.t1; t += 9e5) { const v = (sm.get(t) || {}).price; if (v != null) pr.push([t, v]); }
+  const pMax = Math.max(0.5, ...pr.map(p => p[1])) * 1.1, YP = v => T + (pMax - Math.max(0, v)) / pMax * (H - T - B);
+  if (!OFF.rce && pr.length) { let d = "", lt = null; for (const [t, v] of pr) { const x0 = X(Math.max(t, w.t0)), x1 = X(Math.min(t + 9e5, w.t1)); d += `${lt === t ? "L" : "M"}${x0.toFixed(1)} ${YP(v).toFixed(1)}L${x1.toFixed(1)} ${YP(v).toFixed(1)}`; lt = t + 9e5; }
+    g += `<path d="${d}" fill="none" stroke="#22d3ee" stroke-width="1.4" opacity=".35"/>`; }
   const path = (rows, k, y) => { let d = "", on = false; rows.forEach(r => { const v = r[k]; if (v == null) { on = false; return; } d += `${on ? "L" : "M"}${X(r.t).toFixed(1)} ${y(v).toFixed(1)}`; on = true; }); return d; };
   const smr = ["pv", "bat", "grid", "dom", "soc"].reduce((o, k) => { const s = sma(meas, k, k === "soc" ? 0 : 4); meas.forEach((r, i) => { (o[i] = o[i] || { t: r.t })[k] = s[i]; }); return o; }, []);
   for (const [k, col] of SER) { const y = k === "soc" ? YS : Y;   // OFF[k] = pomiar, OFF["p_" + k] = prognoza (osobno)
@@ -41,10 +46,10 @@ export function profile(c) {
     if (d) g += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${k === "soc" ? 1.8 : 2.4}" stroke-linejoin="round" filter="url(#pf-gl)"/>`;
     if (f) g += `<path d="${f}" fill="none" stroke="${col}" stroke-width="1.8" stroke-dasharray="6 5" opacity=".85"/>`; }
   g += `<line x1="${X(w.now)}" x2="${X(w.now)}" y1="${T}" y2="${H - B}" stroke="#e2e8f0" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${X(w.now) + 5}" y="${H - B - 6}" class="pf-ax">teraz</text>`;
-  cur = { w, meas, fc, X, Y, YS };
+  cur = { w, meas, fc, X, Y, YS, sm, dep: num(c.hass, "number.ems_depozyt_mnoznik", 1.23) };
   const last = meas.length ? meas[meas.length - 1] : {};
   const lrow = (lab, pre, dash) => `<div class="pf-lrow"><span class="pf-lt">${lab}</span><button class="pf-lg pf-all${SER.every(([k]) => OFF[pre + k]) ? " off" : ""}" data-pflg="${SER.map(([k]) => pre + k).join(",")}">Wszystkie</button>${SER.map(([k, col, n]) => `<button class="pf-lg${OFF[pre + k] ? " off" : ""}" data-pflg="${pre + k}"><svg width="22" height="8"><line x1="1" y1="4" x2="21" y2="4" stroke="${col}" stroke-width="2.4" ${dash ? 'stroke-dasharray="4 3"' : ""}/></svg>${n}</button>`).join("")}</div>`;
-  const leg = lrow("── Faktyczne", "", false) + lrow("┄┄ Prognozy", "p_", true);
+  const leg = lrow("── Faktyczne", "", false) + lrow("┄┄ Prognozy", "p_", true) + `<div class="pf-lrow"><span class="pf-lt">Inne</span><button class="pf-lg${OFF.rce ? " off" : ""}" data-pflg="rce"><svg width="22" height="8"><line x1="1" y1="4" x2="21" y2="4" stroke="#22d3ee" stroke-width="2" opacity=".6"/></svg>Cena RCE</button></div>`;
   return `<div class="pf-wrap" data-prof><svg viewBox="0 0 ${W} ${H}" width="100%" class="pf-svg">${g}<line class="pcl" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#fff" stroke-width="1.4" stroke-dasharray="5 4" style="display:none"/><g class="pdots"></g></svg><div class="pf-tip" style="display:none"></div></div>
     <div class="pf-foot"><div class="pf-legs">${leg}</div><div class="pf-soc">${ic("battery", 18)} SOC: <b>${fmt(last.soc, 0, "%")}</b></div></div>`;
 }
@@ -63,6 +68,7 @@ function tip(box, t) {
     + (r.grid != null ? row("#ff4d5e", `Sieć: ${sg(r.grid)} ${r.grid < -0.02 ? "(pobór)" : r.grid > 0.02 ? "(oddawanie)" : ""}`) : "")
     + (r.dom != null ? row("#1e9bff", `Dom: ${fmt(r.dom, 2)} kW`) : "")
     + (r.soc != null ? row("#a78bfa", `SOC: ${fmt(r.soc, 0, "%")}`) : "")
+    + (() => { const p = (cur.sm.get(Math.floor(t / 9e5) * 9e5) || {}).price; return p == null ? "" : row("#22d3ee", `RCE: ${fmt(p, 2)} zł · depozyt: ${fmt(p * cur.dep, 2)} zł`); })()
     + bands(t, t + 6e4).map(b => `<div style="color:${MC[b.typ]}">● ${esc(b.txt)}</div>`).join("");
   tp.style.display = ""; const bw = box.clientWidth, px = x / W * bw;
   tp.style.left = (px + 14 + tp.offsetWidth > bw ? Math.max(px - tp.offsetWidth - 14, 0) : px + 14) + "px";

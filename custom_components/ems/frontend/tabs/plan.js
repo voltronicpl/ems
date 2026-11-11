@@ -2,12 +2,12 @@ import { S, num, fmt, tip, chart, pwChart, setSocMin, PINK, CYAN, g12Price, hm, 
 import { T } from "../tips.js";
 import { loadManual, bands as mBands, MC, line as mLine } from "../manual.js";
 import { range, nowWindow, dayWindow, stats, weekWindow, monthWindow } from "../minute.js";
-import { slots } from "../forecast.js";
+import { slots, cmpHead } from "../forecast.js";
 import { tou } from "../tou.js";
 import { accuracyModal, bindProfile } from "../profile.js";
 export const title = "Plan";
-const NAME = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", block: "Blokada eksportu" };
-const COL = { charge: "#3d8dff", sell: "#1fe090", self: "#4a6378", block: "#ff4757" };
+const NAME = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", hold: "Trzymanie (dom z sieci)", block: "Blokada eksportu" };
+const COL = { charge: "#3d8dff", sell: "#1fe090", self: "#4a6378", hold: "#a78bfa", block: "#ff4757" };
 const st = { sel: null, mode: "fwd", day: null, d0: null, d1: null, data: null, fakt: null, loading: false, first: null, err: null };
 const iso = d => d.toLocaleDateString("sv-SE");
 const MB = () => mBands(0, 9e15).map(b => ({ a: b.a, b: b.b, typ: b.typ }));   // kolumny recznych zlecen (kolor w pwChart: kup / sprzedaj)
@@ -97,7 +97,7 @@ function fwd(c) {
     tipf: r => `<div class="tt2">${r.t.toLocaleString("pl-PL", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</div><div><span>${DOT(col)}Prognoza</span><b>${fmt((r[pk] || 0) * 4, 2, "kW")}</b></div><div><span>${DOT(col)}Pomiar</span><b>${r[mk] == null ? "–" : fmt(r[mk], 2, "kW")}</b></div>${r[mk] != null && r[pk] != null ? `<div><span>Różnica</span><b>${fmt(r[mk] - r[pk] * 4, 2, "kW")}</b></div>` : ""}`,
     lines: [{ k: mk, raw: true, c: col, name: `${nm} (pomiar)`, lg: nm, w: 2.2, fill: true }, { k: pk, c: col, name: `${nm} (prognoza)`, lg: nm, dash: "6 5", nofill: true, w: 2 }] });
   const pvc = fcChart("fpv", "pv_m", "pv", "#facc15", "PV"), ldc = fcChart("fdom", "dom_m", "loadp", "#1e9bff", "Dom");
-  const fsum = (pk, mk) => `<b class="${pk === "pv" ? "t-o" : "t-b"}">${fmt(sumK(pk, false), 1, "kWh")} prognoza</b>${mrows.some(r => r[mk] != null) ? ` <span class="lab">· ${fmt(sumK(mk, true), 1, "kWh")} faktycznie</span>` : ""}`;
+  const fsum = (pk, mk) => cmpHead(mrows, { pk, dk: pk === "pv" ? "pv" : "load", mk, cls: pk === "pv" ? "t-o" : "t-b", step, now });
   const acts = []; rows.forEach(r => { if (r.action === "self") return; const l = acts[acts.length - 1]; if (l && l.action === r.action && l.end === r.t.getTime()) { l.kwh += r.grid_kwh; l.end += 9e5; l.pr.push(r.price); } else acts.push({ action: r.action, start: r.t, end: r.t.getTime() + 9e5, kwh: r.grid_kwh, pr: [r.price], why: r.why }); });
   const tile = (ic, cls, lab, val, sub) => `<div class="tile"><div class="ic ${cls}">${ic}</div><div><div class="lab">${lab}</div><div class="val">${val}</div><div class="sub">${sub}</div></div></div>`;
   return `${a.blad ? `<div class="box err">Błąd planu: ${esc(a.blad)}</div>` : ""}

@@ -1,5 +1,11 @@
 # Zmiany EMS
 
+## 0.6.30
+- Ładowanie z sieci jednym ciągłym blokiem (0,2C, min. 1 h), który kończy się `Koniec ładowania przed końcem taniej strefy` (domyślnie 120 min; strefa 13–15 – 30 min). Reszta taniej strefy = nowa akcja „Trzymanie”: bateria nie rozładowuje się, dom z sieci; z baterii dopiero w drogiej strefie. Koniec „cykania” ładowania co 15 min.
+- Executor: punkt TOU „Trzymanie” (Z sieci OFF, SOC = soc_max), punkt ładowania ma SOC = cel z planu (nie zawsze soc_max), punkty autokonsumpcji / trzymania krótsze niż `Najkrótszy punkt TOU` (60 min) doklejane do poprzedniego, przy > 6 punktach scalane najkrótsze (ładowanie i sprzedaż zostają), ostatni = pierwszy przez północ → jeden punkt.
+- Profil mocy (Przegląd): delikatna linia RCE (przycisk „Cena RCE” w legendzie), w dymku RCE i depozyt (zł/kWh), mocniejsze kolumny kupno / sprzedaż (22 %) z paskiem u góry.
+- Produkcja PV / Zużycie domu (Przegląd i Plan): w rogu „Do teraz: faktycznie vs prognoza z początku dnia (±%)” (zielony ≤ 10 %, żółty ≤ 25 %, czerwony więcej; przy < 0,2 kWh różnica w kWh), pod spodem reszta okna i całość.
+
 ## 0.6.29
 - Przybliżanie wykresów (Plan, prognozy PV / domu w Planie i Przeglądzie): Ctrl + kółko albo kliknij wykres i kręć kółkiem (w miejscu kursora, do 1 h), przeciąganie = przesuwanie, dwa palce na telefonie, przyciski 1 / 3 / 6 / 12 h · Całość · ◀ ▶, dwuklik = całość. Oś co 15 / 30 min przy przybliżeniu. Zmiana dnia na pasku wraca do całości.
 
