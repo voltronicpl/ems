@@ -1,5 +1,9 @@
 # Zmiany EMS
 
+## 0.6.36
+- Pmax zakupu jako przełącznik: `switch.<dev>_pmax_zakupu` (YAML v5.6, rejestr 278 bit 4) – w Ustawieniach (ramka „⚡ Pmax zakupu”, z limitem „Moc szczytowa sieci” 291) i w Inwerterze (Tryb pracy – podstawowe). Można zaznaczyć / odznaczyć ręcznie; EMS przestawia go przy zmianie akcji (sprzedaż = odznaczony, reszta = zaznaczony z limitem = Max pobór z sieci).
+- EMS steruje przez encje (switch + number), gdy są; bez YAML v5.6 – jak dotąd surowy zapis rejestru.
+
 ## 0.6.35 – PILNA POPRAWKA
 - BŁĄD v0.6.30–0.6.34: przy scalaniu punktów TOU (krótkie punkty / więcej niż 6) usuwany punkt autokonsumpcji był doklejany do POPRZEDNIEGO – gdy był to punkt ładowania, falownik ładował z sieci dalej (11.11: „13:00 ładowanie 6000 W” trwało do 22:00 → ~12 kW z sieci w drogiej strefie). Teraz punkt miękki (autokonsumpcja / trzymanie / blokada) jest usuwany tylko, gdy sąsiad też jest miękki (do poprzedniego miękkiego albo następny miękki przejmuje start); ładowanie i sprzedaż NIGDY nie są wydłużane. Gdy dalej > 6 punktów – reszta doby jako autokonsumpcja (jak przed v0.6.30).
 - Sąsiednie ładowania z inną mocą scalane w jeden punkt.

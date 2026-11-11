@@ -107,6 +107,23 @@ class PeakShave:
                     old = {"r278": v0, "r291": await self._read(REG_W)}
                     await self.store.async_save(old)
             self._saved = old
+        sw = dev_entity(self.hass, self.dev, "switch", "pmax_zakupu")
+        nm = dev_entity(self.hass, self.dev, "number", "moc_szczytowa_sieci")
+        if self.hass.states.get(sw) is not None:                   # YAML v5.6: przelacznik (278 bit 4) – zapis jak inne ustawienia
+            if on and limit_w and self.hass.states.get(nm) is not None:
+                try:
+                    if abs(float(self.hass.states.get(nm).state) - limit_w) > 50:
+                        await self.hass.services.async_call("number", "set_value", {"entity_id": nm, "value": int(limit_w)}, blocking=True)
+                        LOG.info("ZAPIS %s -> %d W (limit Pmax zakupu)", nm, int(limit_w))
+                except ValueError:
+                    pass
+            cur = self.hass.states.get(sw).state
+            if cur != ("on" if on else "off"):
+                await self.hass.services.async_call("switch", f"turn_{'on' if on else 'off'}", {"entity_id": sw}, blocking=True)
+                LOG.info("ZAPIS %s: %s -> %s (Pmax zakupu %s)", sw, cur, "on" if on else "off", "kupno / limit" if on else "sprzedaz")
+            self._want = want
+            self.status = {"wlaczony": on, "przez_ems": True, "ostrzezenie": None, "encja": sw, "odczyt": datetime.now().isoformat(timespec="seconds")}
+            return
         for attempt in (1, 2):
             v = await self._read()
             if v is None:
