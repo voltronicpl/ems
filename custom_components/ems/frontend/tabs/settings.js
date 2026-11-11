@@ -5,16 +5,26 @@ import { INV } from "../inverter_tips.js";
 import { tou } from "../tou.js";
 
 // Stare encje z HA do nauki (/api/ems/zrodla)
-const SRC = { d: null, busy: false, edit: {}, msg: "" };
+const SRC = { d: null, busy: false, edit: {}, dev: [], msg: "" };
 function srcBox(c) {
-  if (!SRC.d && !SRC.busy) { SRC.busy = true; c.hass.callApi("GET", "ems/zrodla").then(r => { SRC.d = r; SRC.edit = { ...r.encje }; }).catch(e => { SRC.msg = "Błąd: " + (e.message || e); }).finally(() => { SRC.busy = false; c.render(true); }); }
+  if (!SRC.d && !SRC.busy) { SRC.busy = true; c.hass.callApi("GET", "ems/zrodla").then(r => { SRC.d = r; SRC.edit = { ...r.encje }; SRC.dev = (r.urzadzenia || []).map(x => ({ ...x })); }).catch(e => { SRC.msg = "Błąd: " + (e.message || e); }).finally(() => { SRC.busy = false; c.render(true); }); }
   const d = SRC.d; if (!d) return `<div class="box" id="s-src"><div class="h"><span>📚 Historia do nauki (stare encje)</span></div><div class="lab">${SRC.msg || "Wczytuję…"}</div></div>`;
   const opts = `<datalist id="src-ents">${d.kandydaci.map(x => `<option value="${esc(x.id)}">${esc(x.nazwa)} [${esc(x.jedn)}]</option>`).join("")}</datalist>`;
-  const rows = Object.entries(d.klucze).map(([k, lab]) => { const inf = d.info[k] || {}, v = SRC.edit[k] || "";
-    return `<div><label class="f">${esc(lab)}${k === "pompa" ? " (opcjonalnie)" : ""}</label><div class="inp"><input type="text" list="src-ents" data-src="${k}" value="${esc(v)}" placeholder="sensor.…" style="width:100%"></div>
-      <div class="lab" style="margin-top:3px">${v ? (inf.blad ? `<span class="t-r">${esc(inf.blad)}</span>` : inf.od ? `statystyki od ${inf.od} (${inf.dni} dni) · ${esc(inf.jednostka || "?")}` : d.encje[k] === v ? "brak statystyk w HA" : "zapisz, żeby sprawdzić") : "–"}</div></div>`; }).join("");
+  const infoTxt = (ent, inf, saved) => ent ? (inf?.blad ? `<span class="t-r">${esc(inf.blad)}</span>` : inf?.od ? `dane od ${inf.od} (${inf.dni} dni) · ${esc(inf.jednostka || "?")}` : saved ? "brak statystyk w HA" : "zapisz, żeby sprawdzić") : "–";
+  const one = (k, lab) => { const v = SRC.edit[k] || "";
+    return `<div><label class="f">${esc(lab)}</label><div class="inp"><input type="text" list="src-ents" data-src="${k}" value="${esc(v)}" placeholder="sensor.…" style="width:100%"></div>
+      <div class="lab" style="margin-top:3px">${infoTxt(v, d.info[k], d.encje[k] === v)}</div></div>`; };
+  const rows = Object.entries(d.klucze).filter(([k]) => k !== "pompa").map(([k, lab]) => one(k, lab)).join("");
+  const devs = SRC.dev.map((x, i) => { const ent = x.kwh || x.moc, saved = (d.urzadzenia || []).some(y => (y.kwh || y.moc) === ent);
+    return `<div class="box" style="margin:0;padding:10px"><div style="display:flex;gap:6px;align-items:center"><input data-dev="${i}" data-k="ikona" value="${esc(x.ikona || "🔌")}" style="width:38px;text-align:center"><input data-dev="${i}" data-k="nazwa" value="${esc(x.nazwa || "")}" placeholder="Nazwa (np. Zmywarka)" style="flex:1"><button class="btn" data-devdel="${i}" title="Usuń">✕</button></div>
+      <label class="f" style="margin-top:6px">Moc (W)</label><div class="inp"><input type="text" list="src-ents" data-dev="${i}" data-k="moc" value="${esc(x.moc || "")}" placeholder="sensor.…_moc" style="width:100%"></div>
+      <label class="f">Energia (kWh, licznik narastający)</label><div class="inp"><input type="text" list="src-ents" data-dev="${i}" data-k="kwh" value="${esc(x.kwh || "")}" placeholder="sensor.…_energia" style="width:100%"></div>
+      <div class="lab" style="margin-top:3px">${infoTxt(ent, d.info["u:" + ent], saved)}</div></div>`; }).join("");
   return `<div class="box" id="s-src"><div class="h"><span>📚 Historia do nauki (stare encje)${tip({ co: "Liczniki narastające kWh (lub moc W) z HA sprzed dataloggera. EMS uczy się z nich: konsumpcja domu → prognoza zużycia (do 365 dni), pompa ciepła → osobny model wg temperatury, produkcja PV → kalibracja prognozy PV. Dane z dataloggera mają pierwszeństwo." })}</span><span class="lab">${esc(SRC.msg)}</span></div>
-    ${opts}<div class="g3">${rows}</div><div class="btns"><button class="btn pri" data-srcsave>Zapisz</button></div></div>`;
+    ${opts}<div class="lab" style="margin:4px 0 6px;font-weight:600">⚡ Główne</div><div class="g3">${rows}</div>
+    <div class="lab" style="margin:14px 0 6px;font-weight:600">🔌 Urządzenia${tip({ co: "Duże odbiorniki liczone osobno. EMS uczy się z nich: ile cykli w tygodniu, co ile dni, w jakie dni i o której, ile kWh na cykl – i dokłada to do prognozy zużycia. Reszta domu (dom − urządzenia) liczona jak dotąd.", jak: "Wystarczy licznik kWh; moc (W) pomaga, gdy licznika brak. Liczone od początku statystyk HA.", czytaj: "Wyniki w zakładce Nauka." })}</div>
+    <div class="g3">${one("pompa", "♨ Pompa ciepła (kWh lub W)")}${devs}<div style="display:flex;align-items:center"><button class="btn" data-devadd>＋ Dodaj urządzenie</button></div></div>
+    <div class="btns"><button class="btn pri" data-srcsave>Zapisz</button></div></div>`;
 }
 
 // Rozliczenie PGE (dawna integracja PGE Net-Billing) – /api/ems/pge
@@ -117,10 +127,14 @@ export function bind(c, r) {
     c.render(true);
   });
   r.querySelectorAll("[data-src]").forEach(el => { el.onfocus = () => { c._hold = true; }; el.onblur = () => { c._hold = false; }; el.onchange = () => { SRC.edit[el.dataset.src] = el.value.trim(); }; });
+  r.querySelectorAll("[data-dev]").forEach(el => { el.onfocus = () => { c._hold = true; }; el.onblur = () => { c._hold = false; }; el.oninput = () => { SRC.dev[+el.dataset.dev][el.dataset.k] = el.value.trim(); }; });
+  r.querySelector("[data-devadd]")?.addEventListener("click", () => { SRC.dev.push({ nazwa: "", moc: "", kwh: "", ikona: "🔌" }); c.render(true); });
+  r.querySelectorAll("[data-devdel]").forEach(b => b.onclick = () => { SRC.dev.splice(+b.dataset.devdel, 1); c.render(true); });
   r.querySelector("[data-srcsave]")?.addEventListener("click", async () => {
     r.querySelectorAll("[data-src]").forEach(el => { SRC.edit[el.dataset.src] = el.value.trim(); });
+    r.querySelectorAll("[data-dev]").forEach(el => { SRC.dev[+el.dataset.dev][el.dataset.k] = el.value.trim(); });
     SRC.msg = "Zapisuję…"; c.render(true);
-    try { await c.hass.callApi("POST", "ems/zrodla", { encje: SRC.edit }); SRC.msg = "✅ Zapisano – EMS przelicza historię"; SRC.d = null; }
+    try { await c.hass.callApi("POST", "ems/zrodla", { encje: SRC.edit, urzadzenia: SRC.dev }); SRC.msg = "✅ Zapisano – EMS przelicza historię"; SRC.d = null; }
     catch (e) { SRC.msg = "❌ " + (e.message || e); }
     c.render(true);
   });

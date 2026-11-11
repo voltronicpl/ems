@@ -29,15 +29,21 @@ class Sources:
         self.hass = hass
         self.store = Store(hass, 1, f"ems_zrodla_{entry_id}")
         self.cfg: dict = {}
+        self.dev: list = []
 
     async def load(self) -> None:
-        self.cfg = (await self.store.async_load() or {}).get("encje", {})
-        LOG.info("Stare encje do nauki: %s", self.cfg or "brak")
+        d = await self.store.async_load() or {}
+        self.cfg = d.get("encje", {})
+        self.dev = d.get("urzadzenia", [])
+        LOG.info("Stare encje do nauki: %s, urzadzenia: %s", self.cfg or "brak", [x.get("nazwa") for x in self.dev] or "brak")
 
-    async def save(self, cfg: dict) -> None:
+    async def save(self, cfg: dict, dev: list | None = None) -> None:
         self.cfg = {k: v for k, v in cfg.items() if k in KEYS and v}
-        await self.store.async_save({"encje": self.cfg})
-        LOG.info("Zapisano stare encje do nauki: %s", self.cfg)
+        if dev is not None:
+            self.dev = [{"nazwa": str(x.get("nazwa") or "Urządzenie")[:40], "moc": (x.get("moc") or "").strip(), "kwh": (x.get("kwh") or "").strip(),
+                         "ikona": x.get("ikona") or "🔌"} for x in dev if (x.get("moc") or x.get("kwh"))]
+        await self.store.async_save({"encje": self.cfg, "urzadzenia": self.dev})
+        LOG.info("Zapisano stare encje do nauki: %s, urzadzenia: %s", self.cfg, self.dev)
 
     def unit(self, entity: str) -> str | None:
         st = self.hass.states.get(entity)
@@ -45,7 +51,9 @@ class Sources:
 
     async def hourly(self, key: str, start: datetime, end: datetime) -> dict[datetime, float]:
         """{godzina_utc: kWh w tej godzinie} ze statystyk HA (licznik -> 'change', moc -> 'mean')."""
-        ent = self.cfg.get(key)
+        return await self.hourly_ent(self.cfg.get(key), start, end)
+
+    async def hourly_ent(self, ent: str | None, start: datetime, end: datetime) -> dict[datetime, float]:
         if not ent:
             return {}
         u = self.unit(ent) or "kWh"
@@ -69,7 +77,7 @@ class Sources:
     async def info(self) -> dict:
         out = {}
         now = datetime.now(timezone.utc)
-        for k, ent in self.cfg.items():
+        for k, ent in [*self.cfg.items(), *((f"u:{x['kwh'] or x['moc']}", x["kwh"] or x["moc"]) for x in self.dev)]:
             try:
                 st = await get_instance(self.hass).async_add_executor_job(
                     statistics_during_period, self.hass, now - timedelta(days=3650), now, {ent}, "month", None, {"mean", "change"})
@@ -100,7 +108,7 @@ class SourcesView(HomeAssistantView):
             return self.json_message("EMS nie jest skonfigurowany", 404)
         cand = sorted(({"id": s.entity_id, "nazwa": s.attributes.get("friendly_name", s.entity_id), "jedn": s.attributes.get("unit_of_measurement")}
                        for s in hass.states.async_all("sensor") if s.attributes.get("unit_of_measurement") in (*ENERGY, *POWER)), key=lambda x: x["id"])
-        return self.json({"klucze": KEYS, "encje": eng.src.cfg, "info": await eng.src.info(), "kandydaci": cand})
+        return self.json({"klucze": KEYS, "encje": eng.src.cfg, "urzadzenia": eng.src.dev, "info": await eng.src.info(), "kandydaci": cand})
 
     async def post(self, request):
         hass = request.app["hass"]
@@ -108,7 +116,7 @@ class SourcesView(HomeAssistantView):
         if not eng:
             return self.json_message("EMS nie jest skonfigurowany", 404)
         body = await request.json()
-        await eng.src.save(body.get("encje", {}))
+        await eng.src.save(body.get("encje", {}), body.get("urzadzenia"))
         eng._hist_at = None                     # przelicz historie przy nastepnym planie
         hass.async_create_task(eng.replan("zmiana starych encji"))
         return self.json({"ok": True, "encje": eng.src.cfg})

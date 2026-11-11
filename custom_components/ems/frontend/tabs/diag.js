@@ -19,7 +19,7 @@ function dumpBox(c) {
     <div class="ctrl">${btns}</div>${trwa}${d.err ? `<div class="box err">${esc(d.err)}</div>` : ""}<div style="margin:8px 0">${ost}</div>${tab}</div>`;
 }
 export function render(c) {
-  if (!timer) { load(c); timer = setInterval(() => { if (c.tab === 4) load(c); }, 5000); }
+  if (!timer) { load(c); timer = setInterval(() => { if (c.tab === 5) load(c); }, 5000); }
   const lines = cache.lines.filter(l => !filter || l.toLowerCase().includes(filter));
   const col = l => / ERROR /.test(l) ? "#ff8c97" : / WARNING /.test(l) ? "#ffd58a" : /ZAPIS|SUROWY/.test(l) ? "#7fb3ff" : "";
   return `<div class="box"><div class="h"><span>🩺 Logi na żywo${tip(TIP)}</span>

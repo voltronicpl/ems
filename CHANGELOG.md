@@ -1,5 +1,13 @@
 # Zmiany EMS
 
+## 0.6.32 – Nauka
+- Nowa zakładka **🧠 Nauka** (między Plan a Ustawienia): okres Dzień / Tydzień / Miesiąc / Rok z ◀ ▶ i kalendarzem; błąd prognozy domu i PV vs poprzedni okres, prognoza vs fakt (godzinowo / dziennie / tygodniowo) z trendem błędu, pogoda okresu (temperatura, wiatr, nasłonecznienie, pompa), współczynniki „było → jest” + wykres historii, dni podobne (temperatura ±3 °C, wiatr ±2 m/s, nasłonecznienie ±30 %, ±30 dni od daty z każdego roku, typ dnia), urządzenia (cykle / tydz., kWh / cykl, co ile dni, dni tygodnia, godziny startu, kalendarz 35 dni), pompa vs temperatura (kolor = wiatr), profil dobowy wg pory roku, kalibracja PV per miesiąc.
+- Prognoza zużycia ze składników: baza (dom − pompa − urządzenia) + pompa ciepła `a + b·T + c·wiatr + d·słońce` (bezpiecznik: model uczony na danych sprzed 14 dni, sprawdzany na ostatnich 14 – gdy gorszy od `a + b·T`, zostaje prosty) + urządzenia (średnie kWh w dniu tygodnia i godzinie z 120 dni).
+- Prognoza PV: mnożnik kalibracji osobno dla każdego miesiąca (min. 3 kWh prognozy w miesiącu, inaczej roczny). PV do kalibracji z dataloggera, gdy brak starej encji.
+- Pogoda: wiatr (m/s) i zachmurzenie (także archiwum roczne), UV w prognozie. Archiwum: kategoria „pochmurno” przy zachmurzeniu ≥ 30 % (wcześniej zawsze „słonecznie”).
+- Snapshot współczynników raz na dobę (Store `ems_nauka_<entry>`), API `GET /api/ems/nauka?dzien=`.
+- Ustawienia → 📚 Historia do nauki: grupy **⚡ Główne** i **🔌 Urządzenia** (pompa ciepła + „＋ Dodaj urządzenie”: nazwa, ikona, encja mocy W, encja energii kWh; „dane od …”).
+
 ## 0.6.31
 - Sprzedaż blokami min. „Najkrótszy punkt TOU” (60 min): bliskie kawałki sklejane, krótkie rozszerzane o najdroższe sąsiednie sloty; ta sama energia rozłożona równo (niższa moc, te same kWh). Koniec sprzedaży pojedynczymi kwadransami.
 

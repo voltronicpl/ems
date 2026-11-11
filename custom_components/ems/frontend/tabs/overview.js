@@ -4,7 +4,7 @@ import { ic, icR } from "../icons.js";
 import { flowSvg, lines, FLOW_CSS } from "../flow.js";
 import { loadManual, recent, modal, bindManual, today, bands, line, MC, MANUAL_CSS } from "../manual.js";
 export const title = "Przegląd";
-export const ACT = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", block: "Blokada eksportu", wylaczony: "Algorytm wyłączony", brak_planu: "Brak planu", reczne_buy: "Ręczne kupno", reczne_sell: "Ręczna sprzedaż" };
+export const ACT = { charge: "Ładowanie z sieci", sell: "Sprzedaż", self: "Autokonsumpcja", hold: "Trzymanie (dom z sieci)", block: "Blokada eksportu", wylaczony: "Algorytm wyłączony", brak_planu: "Brak planu", reczne_buy: "Ręczne kupno", reczne_sell: "Ręczna sprzedaż" };
 const WX = { sunny: "sun", "clear-night": "moon", partlycloudy: "cloudSun", cloudy: "cloud", fog: "cloud", rainy: "rain", pouring: "rain", snowy: "snow", "snowy-rainy": "snow", lightning: "storm", "lightning-rainy": "storm", hail: "snow", windy: "cloud", "windy-variant": "cloudSun", exceptional: "cloudSun" };
 const SCENE = new URL("../scene.jpg", import.meta.url).href;
 // Scena = obrazek uzytkownika (bez linii przesylu); kafelki nakladane DOKLADNIE na miejsca kafelkow wpisanych w obrazek (procenty kadru 1671x400, grafika uzytkownika bez kafelkow).

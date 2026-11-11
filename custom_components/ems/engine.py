@@ -6,6 +6,7 @@ Cykle:
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -14,7 +15,8 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 
-from . import load_forecast, prices, pv_forecast, tariff, weather
+from . import learn, load_forecast, prices, pv_forecast, tariff, weather
+from .learn import Learn
 from .const import MANUAL, PARAMS
 from .diag import get_logger
 from .executor import Executor
@@ -52,6 +54,7 @@ class Engine:
         self._mstore = Store(hass, 1, f"ems_reczne_{entry_id}")
         self.bat = BatCost(hass, entry_id)                 # koszt energii w baterii
         self.src = Sources(hass, entry_id)                 # stare encje z HA do nauki
+        self.learn = Learn(hass, entry_id)                 # nauka: modele skladnikow, historia wspolczynnikow
         self._pump: dict = {}
         self._pv_cal = 1.0
         self._wx_learn: dict = {}
@@ -87,6 +90,7 @@ class Engine:
         self.manual_log = (await self._mstore.async_load() or {}).get("wpisy", [])
         self.fc_log = (await self._fstore.async_load() or {}).get("sloty", {})
         await self.src.load()
+        await self.learn.load()
         await self.bat.load()
         self.push()
 
@@ -216,7 +220,23 @@ class Engine:
                     self._hist = merged
                     LOG.info("Historia zuzycia: %d h (datalogger %d h + stara encja %d h)", len(merged), n_dl, len(old))
                 self._pump = {h: v * 1000 for h, v in (await self.src.hourly("pompa", now - timedelta(days=365), now)).items()}
+                pv_act = await self.src.hourly("pv", now - timedelta(days=365), now - timedelta(hours=1))
+                if not pv_act:                                                         # brak starej encji -> PV z dataloggera
+                    pv_act = {h: w / 1000 for h, w in (await load_forecast.history(self.hass, f"sensor.{self.dev}_pv_moc_suma", 365)).items()}
+                self.learn.pv_act = pv_act
                 self._pv_cal = await self._pv_calibration(now)
+                wxh = learn.hour_wx(self._wx_learn)
+                self.learn.pump = learn.pump_model({h: v / 1000 for h, v in self._pump.items()}, wxh) if self._pump else None
+                devs = {}
+                for d in self.src.dev:
+                    hh = await self.src.hourly_ent(d.get("kwh") or d.get("moc"), now - timedelta(days=365), now)
+                    if hh:
+                        self.learn.dev_h[d["nazwa"]] = hh
+                        devs[d["nazwa"]] = {**learn.device_stats(hh, self.p["weekend_od_godz"]), "ikona": d.get("ikona", "🔌")}
+                        LOG.info("Urzadzenie %s: %s cykli/tydz, %s kWh/cykl, co %s dni", d["nazwa"], devs[d["nazwa"]].get("cykle_tydz"),
+                                 devs[d["nazwa"]].get("kwh_cykl"), devs[d["nazwa"]].get("co_ile_dni"))
+                self.learn.dev = devs
+                self.learn.at = now.isoformat()
                 self._hist_at = now
 
             start = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
@@ -234,15 +254,31 @@ class Engine:
             pv_now_w = self.r("pv_moc_suma", None)
             fact = pv_forecast.intraday_factor((pv_now_w or 0) / 1000 * 2, sum(pv_prev.values())) if pv_now_w is not None else 1.0
             pvk = pv_forecast.forecast(slots, self._weather, pp, fact)
+            if self.learn.pv_cal_m and self._pv_cal:                                 # kalibracja PV per miesiac (pora roku)
+                pvk = {s: v * self.learn.pv_cal_m.get(s.astimezone(WAW).month, self._pv_cal) / self._pv_cal for s, v in pvk.items()}
 
             wl = self._wx_learn or self._weather
-            base_hist, pump_model = load_forecast.split_pump(self._hist, self._pump, wl)
+            # zuzycie ze skladnikow: baza (dom − pompa − urzadzenia) + pompa (T, wiatr, slonce) + urzadzenia (profil cykli)
+            pm = self.learn.pump
+            sub = defaultdict(float)
+            if pm:
+                for h, w in self._pump.items():
+                    sub[h] += w
+            for hh in self.learn.dev_h.values():
+                for h, v in hh.items():
+                    sub[h] += v * 1000
+            base_hist = {h: max(w - sub.get(h, 0.0), 0.0) for h, w in self._hist.items()}
             coeff = self.p["wsp_temp"] or load_forecast.temp_coeff(base_hist, wl, self.p["weekend_od_godz"])
             ldk = load_forecast.forecast(slots, base_hist, {**wl, **self._weather}, self.p, coeff)
-            if pump_model:
-                pmp = load_forecast.pump_forecast(slots, self._weather, pump_model)
+            pump_model = pm["coef"] if pm else None
+            if pm:
+                pmp = learn.pump_forecast(slots, {**wl, **self._weather}, pm)
                 ldk = {k: v + pmp.get(k, 0.0) for k, v in ldk.items()}
-                LOG.info("Pompa ciepla w prognozie: %.2f kWh w horyzoncie", sum(pmp.values()))
+                LOG.info("Pompa ciepla w prognozie: %.2f kWh w horyzoncie (%s)", sum(pmp.values()), "T + wiatr + slonce" if pm.get("pelny") else "tylko T")
+            for n, st in self.learn.dev.items():
+                dv = learn.device_forecast(slots, st)
+                ldk = {k: v + dv.get(k, 0.0) for k, v in ldk.items()}
+                LOG.info("%s w prognozie: %.2f kWh w horyzoncie", n, sum(dv.values()))
 
             soc = self.r("bateria_soc", 50.0)
             ch_w, sell_w = self.limits()
@@ -254,7 +290,9 @@ class Engine:
             self.plan = as_dicts(res)
             self._log_forecast(now)
             self.summary = {**summ, "koszt_baterii": self.bat.info(), "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2), "kalibracja_pv": round(self._pv_cal, 2),
-                            "pompa_model": [round(x, 3) for x in pump_model] if pump_model else None}
+                            "pompa_model": [round(x, 3) for x in pump_model] if pump_model else None,
+                            "nauka_bezpiecznik": {"pompa": ("pelny" if pm.get("pelny") else "prosty") if pm else None}}
+            self.learn.snapshot(self)
             self.last_plan = now
             self.error = None
         except Exception as err:  # noqa: BLE001
@@ -291,7 +329,7 @@ class Engine:
 
     async def _pv_calibration(self, now: datetime) -> float:
         """Fakt PV (stara encja 'pv') / prognoza PV z pogody wstecz (rok, archiwum Open-Meteo) -> mnoznik sprawnosci, 0,5-1,5."""
-        act = await self.src.hourly("pv", now - timedelta(days=365), now - timedelta(hours=1))
+        act = self.learn.pv_act
         wl = self._wx_learn or self._weather
         if not act or not wl:
             return 1.0
@@ -302,6 +340,9 @@ class Engine:
         for s, v in fc.items():
             h = s.replace(minute=0)
             fh[h] = fh.get(h, 0.0) + v
+        self.learn.pv_cal_m = learn.pv_month_cal(act, fh)
+        if self.learn.pv_cal_m:
+            LOG.info("Kalibracja PV per miesiac: %s", ", ".join(f"{m}: x{v:.2f}" for m, v in sorted(self.learn.pv_cal_m.items())))
         pairs = [(act[h], fh[h]) for h in act if h in fh and (act[h] > 0.02 or fh[h] > 0.02)]
         sa, sf = sum(a for a, _ in pairs), sum(f for _, f in pairs)
         if sf < 5:

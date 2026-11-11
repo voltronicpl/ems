@@ -15,6 +15,7 @@ from .backtest import BacktestView, BillView
 from .engine import Engine
 from .manual import DayView, ManualView
 from .sources import SourcesView
+from .learn import LearnView
 from . import pge_link
 from .energy import EnergyView
 from .verify import ReadView, WriteView
@@ -39,6 +40,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.http.register_view(ManualView)
     hass.http.register_view(DayView)
     hass.http.register_view(SourcesView)
+    hass.http.register_view(LearnView)
     hass.http.register_view(pge_link.PgeRceView)
     hass.http.register_view(EnergyView)
     hass.http.register_view(pge_link.PgeSettingsView)
