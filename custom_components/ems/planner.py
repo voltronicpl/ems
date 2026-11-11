@@ -239,7 +239,7 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
         if sel:
             sell_h[bi] = sel
             LOG.info("Tania strefa od %s: sprzedaz w godzinach %s (%.2f kWh)", slots[a].astimezone(WAW).strftime("%d.%m %H:%M"),
-                     ", ".join(h.strftime("%H:00") for h in sorted(sel)), sum(amt.values()))
+                     ", ".join(h.astimezone(WAW).strftime("%H:00") for h in sorted(sel)), sum(amt.values()))
 
     # --- symulacja slot po slocie (z przeplywami sieci) ---------------------------------------------
     out: list[Slot] = []
@@ -335,7 +335,7 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
              n, summ["ladowanie_kwh"], summ["sprzedaz_kwh"], summ["przychod_zl"], summ["pv_kwh"], summ["zuzycie_kwh"])
     for s in out:
         if s.action != "self":
-            LOG.debug("  %s %-6s %.3f kWh RCE %s SOC %.0f%%", s.start[11:16], s.action, s.grid_kwh,
+            LOG.debug("  %s %-6s %.3f kWh RCE %s SOC %.0f%%", datetime.fromisoformat(s.start).astimezone(WAW).strftime("%H:%M"), s.action, s.grid_kwh,
                       f"{s.price:.2f}" if s.price is not None else "-", s.soc)
     return out, summ
 

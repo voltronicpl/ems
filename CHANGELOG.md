@@ -1,5 +1,11 @@
 # Zmiany EMS
 
+## 0.6.28
+- Log planu: godziny slotów w czasie polskim (było UTC).
+- Główna przyczyna: przy oknie „Teraz ±12 h” (np. 20:55 → 20:55) dane dzisiejszego dnia (ceny RCE i zapisany plan: sprzedaż 01:00, ładowanie 02:00…) w ogóle się nie wczytywały – pętla dni startowała od godziny okna zamiast od północy. Poprawione w forecast.js (dotyczy też Profilu mocy).
+- Wykres Planu: ceny RCE dla minionych godzin dzisiaj (DayView bierze ceny z planu EMS + PSE dla dziś / jutro, cache 15 min).
+- Kolumny kupno / sprzedaż w przeszłości z pomiaru: zielona = faktyczny eksport do sieci (> 0,3 kW), czerwona = ładowanie baterii z sieci; przyszłość z planu.
+
 ## 0.6.27
 - Podjeżdżanie strony: wysokość panelu w zakładce tylko rośnie, przewinięcie przywracane po wstawieniu całej treści (+ następna klatka), wyłączone scroll anchoring; wpis `[EMS] przewinięcie` w konsoli (debug), gdy coś przesunie stronę.
 

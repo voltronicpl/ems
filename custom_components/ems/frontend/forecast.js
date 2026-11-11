@@ -17,7 +17,8 @@ export const dayData = (c, d) => loadDay(c, d);
 // slot (ms, poczatek 15 min) -> { pv, load, soc, action, grid_kwh, imp, exp, price, rano, plan: bool }
 export function slots(c, t0, t1) {
   const m = new Map(), q = t => Math.floor(t / 9e5) * 9e5;
-  for (let d = new Date(t0); d.getTime() < t1; d.setDate(d.getDate() + 1)) {
+  // kazdy dzien kalendarzowy, ktory zahacza o okno (od polnocy dnia t0) – inaczej przy oknie 20:55 → 20:55 dzisiejszy dzien wypadal
+  for (let d = new Date(t0), _ = d.setHours(0, 0, 0, 0); d.getTime() < t1; d.setDate(d.getDate() + 1)) {
     const data = loadDay(c, isoDay(d)); if (!data) continue;
     for (const [k, v] of Object.entries(data.prognozy || {})) m.set(q(Date.parse(k)), { ...(v.ost || v.rano), rano: v.rano, dzien: v.dzien || v.rano, h: v.h || [], plan: false });
     for (const [k, v] of Object.entries(data.ceny || {})) { const t = q(Date.parse(k)), o = m.get(t) || {}; if (o.price == null) o.price = v; m.set(t, o); }

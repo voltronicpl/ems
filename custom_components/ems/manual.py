@@ -109,6 +109,9 @@ class ManualView(HomeAssistantView):
         return self.json({"wpisy": rows})
 
 
+_DAY_RCE: dict = {}                      # dzien -> (czas pobrania, ceny) – dzis / jutro z PSE
+
+
 class DayView(HomeAssistantView):
     """GET /api/ems/dzien?day=YYYY-MM-DD -> zapisane prognozy slotow (rano / ostatnia) + ceny RCE tego dnia (slot UTC ISO -> zl/kWh)."""
 
@@ -138,6 +141,18 @@ class DayView(HomeAssistantView):
         except Exception as err:  # noqa: BLE001
             LOG.warning("Ceny RCE %s dla wykresu: blad %s", d, err)
             rce = {}
+        if d >= _date.today():                       # dzis / jutro: fetch_days ich nie pobiera – ceny z planu EMS + PSE (cache 15 min)
+            rce = {**rce, **{k: v for k, v in (getattr(eng, "_prices", None) or {}).items() if t0 <= k < t1}}
+            if len([k for k in rce if t0 <= k < t1]) < 90:
+                hit = _DAY_RCE.get(d)
+                if not hit or (datetime.now(timezone.utc) - hit[0]).total_seconds() > 900:
+                    try:
+                        hit = (datetime.now(timezone.utc), await prices.fetch(hass, [d]))
+                        _DAY_RCE[d] = hit
+                    except Exception as err:  # noqa: BLE001
+                        LOG.warning("Ceny RCE %s (dzis): blad %s", d, err)
+                if hit:
+                    rce = {**hit[1], **rce}
         if not rce:
             LOG.warning("Ceny RCE %s dla wykresu: brak danych z PSE", d)
         ceny = {k.isoformat(): v for k, v in rce.items() if t0 <= k < t1}

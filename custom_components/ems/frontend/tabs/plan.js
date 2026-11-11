@@ -72,7 +72,16 @@ function fwd(c) {
   }
   const thr = [["prog_tania", "#facc15", "tania"], ["prog_droga", "#ff4757", "droga"], ["prog_bezcen", "#cbd5e1", "za bezcen"]].map(([k, col, nm]) => ({ v: num(c.hass, `number.ems_${k}_${sez}`, 0), c: col, name: `${nm} ${fmt(num(c.hass, `number.ems_${k}_${sez}`), 2)}` }));
   setSocMin(num(c.hass, "number.ems_soc_min", null));
-  const main = pwChart({ key: "fwd", rows: mrows, h: 420, order: "mp", bsOp: 0.28, bsTop: true, tipf: tipRow, hlines: thr, bands: MB(), act: r => r.action === "charge" ? "kup" : r.action === "sell" ? "sprzedaj" : null,
+  // kolumny: przeszlosc z POMIARU (faktyczna sprzedaz do sieci / ladowanie baterii z sieci), przyszlosc z planu EMS
+  const actOf = r => {
+    if (r.grid_m != null) {
+      if (r.grid_m < -0.3) return "sprzedaj";
+      if (r.grid_m > 0.3 && (r.bat_m || 0) > 0.3 && (r.bat_m || 0) > Math.max(0, (r.pv_m || 0) - (r.dom_m || 0)) + 0.3) return "kup";
+      return null;
+    }
+    return r.action === "charge" ? "kup" : r.action === "sell" ? "sprzedaj" : null;
+  };
+  const main = pwChart({ key: "fwd", rows: mrows, h: 420, order: "mp", bsOp: 0.28, bsTop: true, tipf: tipRow, hlines: thr, bands: MB(), act: actOf,
     prices: [{ k: "price", c: CYAN, name: "Cena sprzedaży (RCE)", g: "Ceny RCE / G12", act: r => r.sl > 0 }, { f: r => g12Price(r.t), c: PINK, name: "Cena kupna (G12)", g: "Ceny RCE / G12", act: r => r.ch > 0 }],
     socs: [{ k: "soc_m", c: "#a78bfa", name: "SOC (pomiar)", g: "SOC", fill: true }, { k: "soc_p", c: "#a78bfa", name: "SOC (prognoza)", g: "SOC", dash: "6 5", w: 2 }],
     lines: [{ k: "dom_m", raw: true, c: "#1e9bff", name: "Dom (pomiar)", g: "Dom", w: 2.2, fill: true }, { k: "loadp", c: "#1e9bff", name: "Dom (prognoza)", g: "Dom", nofill: true, dash: "6 5" },
