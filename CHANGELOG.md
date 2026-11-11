@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.29
+- Przybliżanie wykresów (Plan, prognozy PV / domu w Planie i Przeglądzie): Ctrl + kółko albo kliknij wykres i kręć kółkiem (w miejscu kursora, do 1 h), przeciąganie = przesuwanie, dwa palce na telefonie, przyciski 1 / 3 / 6 / 12 h · Całość · ◀ ▶, dwuklik = całość. Oś co 15 / 30 min przy przybliżeniu. Zmiana dnia na pasku wraca do całości.
+
 ## 0.6.28
 - Log planu: godziny slotów w czasie polskim (było UTC).
 - Główna przyczyna: przy oknie „Teraz ±12 h” (np. 20:55 → 20:55) dane dzisiejszego dnia (ceny RCE i zapisany plan: sprzedaż 01:00, ładowanie 02:00…) w ogóle się nie wczytywały – pętla dni startowała od godziny okna zamiast od północy. Poprawione w forecast.js (dotyczy też Profilu mocy).

@@ -68,12 +68,21 @@ export const PINK = "#ff2bd6", CYAN = "#00f5ff";
 export const G12_ZL = { cheap: 0.61, expensive: 1.25 };   // jak tariff.py (brutto energia + dystrybucja)
 export const g12Price = t => cheapAt(t) ? G12_ZL.cheap : G12_ZL.expensive;
 const OFF = {};
+export const ZOOM = {};                  // przyblizenie wykresow pwChart: key -> {a, b}
+let ZACT = null;
+const DR = { k: null, on: false, pts: null };
+window.addEventListener("pointerdown", e => { if (!e.composedPath().some(n => n.classList && n.classList.contains("pw-svg"))) ZACT = null; }, true);
+window.addEventListener("pointerup", e => { if (DR.pts) DR.pts.delete(e.pointerId); if (!DR.pts || !DR.pts.size) { DR.on = false; DR.k = null; } }, true);                         // wykres "aktywny" do przyblizania kolkiem bez Ctrl (po kliknieciu)
+export const resetZoom = k => { delete ZOOM[k]; };
 const niceStep = (span, n) => [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100].find(s => span / s <= n) || 200;
 const ICC = { coins: "#facc15", bolt: "#facc15", batteryBolt: "#3ee07a" };
 // Kolumny kupna / sprzedazy (przez cala wysokosc, delikatne): czerwone = kupno z sieci, zielone = sprzedaz do sieci
 export const BUYSELL = { kup: "#ff4d5e", sprzedaj: "#22e07a" };
 export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs = [], hlines = [], now = true, h = 400, tipf, bands = [], order = "pms", act = null, socIn = true, mName = "Moc", mUnit = "kW", mSub = null, bsOp = 0.16, bsTop = false }) {
   if (!rows.length) return `<div class="nohist">Brak danych</div>`;
+  // przyblizenie (ZOOM[key] = {a, b} ulamki calego okna): kolko z Ctrl / po kliknieciu w wykres, przeciaganie, przyciski, dwuklik = calosc
+  const full = rows, fullSpan = full[full.length - 1].t - full[0].t || 1, Z = ZOOM[key];
+  if (Z && full.length > 10) { const i0 = Math.max(0, Math.floor(Z.a * full.length)), i1 = Math.min(full.length, Math.max(i0 + 4, Math.ceil(Z.b * full.length))); rows = full.slice(i0, i1); }
   // Trzy pasy na wspolnej osi czasu (kazdy z jedna osia): ceny zl/kWh | moc kW | SOC %. Na komputerze opis pasa z ikona po lewej.
   const off = OFF[key] = OFF[key] || {}, mob = ui.mob;
   const id = "c" + (++CH), W = vbW(), L = mob ? 44 : 150, R = (socIn && socs.length) ? (mob ? 34 : 50) : (mob ? 10 : 18), T = mob ? 22 : 14, B = 30, GAP = mob ? 30 : 18, n = rows.length, bw = (W - L - R) / n;
@@ -116,7 +125,9 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   if (sIn) for (const p of [0, 25, 50, 75, 100]) g += `<text x="${W - R + 6}" y="${YS(p) + 4}" class="ax" style="fill:#c4b5fd">${p}%</text>`;
   if (hasS && !sIn) { pane(tS, hS, "batteryBolt", "SOC|baterii", ""); for (const p of [0, 25, 50, 75, 100]) g += `<line x1="${L}" x2="${W - R}" y1="${YS(p)}" y2="${YS(p)}" class="grid"/><text x="${L - 8}" y="${YS(p) + 4}" text-anchor="end" class="ax">${p}%</text>`; }
   const span = rows[n - 1].t - rows[0].t, every = Math.max(span > 26 * 36e5 ? 3 : 2, xEvery(span / 36e5, W - L - R));
-  rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % every === 0) g += `${d.getHours() === 0 ? `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="vgrid"/>` : ""}<text x="${x(i)}" y="${bot + 22}" text-anchor="middle" class="xl">${d.getHours() === 0 && span > 26 * 36e5 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0") + ":00"}</text>`; });
+  const zm = span / 36e5 <= 3 ? 15 : span / 36e5 <= 8 ? 30 : 0;   // przyblizenie: os co 15 / 30 min
+  if (zm) rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() % zm === 0 && (i === 0 || rows[i - 1].t.getMinutes() !== d.getMinutes())) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="vgrid" opacity=".5"/><text x="${x(i)}" y="${bot + 22}" text-anchor="middle" class="xl">${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}</text>`; });
+  else rows.forEach((r, i) => { const d = r.t; if (d.getMinutes() === 0 && d.getHours() % every === 0) g += `${d.getHours() === 0 ? `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${bot}" class="vgrid"/>` : ""}<text x="${x(i)}" y="${bot + 22}" text-anchor="middle" class="xl">${d.getHours() === 0 && span > 26 * 36e5 ? d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : String(d.getHours()).padStart(2, "0") + ":00"}</text>`; });
   const steps = (f, y) => { let d = "", on = false; rows.forEach((r, i) => { const v = f(r); if (v == null) { on = false; return; } d += on ? `V${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}` : `M${x(i).toFixed(1)} ${y(v).toFixed(1)}H${x(i + 1).toFixed(1)}`; on = true; }); return d; };
   const gp = bw > 5 ? 1.5 : 0;
   for (const s of areas) { if (off[s.name]) continue; rows.forEach((r, i) => { const v = val(s, r); if (!v) return; const y0 = Y(0), y1 = Y(v);
@@ -139,7 +150,7 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   // kropki na liniach w miejscu kursora
   const dots = rows.map(r => [...prices.filter(p => !off[p.name]).map(p => { const v = p.f ? p.f(r) : r[p.k]; return v == null || isNaN(v) ? null : { y: YP(v), c: p.c }; }),
     ...socs.filter(s => !off[s.name]).map(s => r[s.k] == null ? null : { y: YS(r[s.k]), c: s.c })].filter(Boolean));
-  CHARTS[id] = { key, rows, P: { l: L }, bw, W, tipf, dots };
+  CHARTS[id] = { key, rows, P: { l: L }, bw, W, tipf, dots, zoomable: true, fullSpan };
   // legenda w wierszach: Faktyczne (ciagle) | Prognozy / plan (przerywane) | reszta (ceny, kupno / sprzedaz). Kazda seria osobno + [Wszystkie] na wiersz.
   const ico = s => s.dash ? `<svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="${s.c}" stroke-width="2.2" stroke-dasharray="4 3"/></svg>` : `<svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="${s.c}" stroke-width="2.6"/></svg>`;
   const btn = s => `<button class="pw-lg${off[s.name] ? " off" : ""}" data-lg="${esc(key)}|${esc(s.name)}" title="${esc(s.name)}">${ico(s)}${esc(s.lg || s.g || s.name)}</button>`;
@@ -149,7 +160,9 @@ export function pwChart({ key, rows, areas = [], lines = [], prices = [], socs =
   const prc = prices.length ? `<button class="pw-lg${prices.every(x => off[x.name]) ? " off" : ""}" data-lg="${esc(key)}|${esc(prices.map(x => x.name).join("\u0001"))}"><svg width="26" height="10">${prices.slice(0, 2).map((p, i) => `<line x1="1" y1="${3 + i * 5}" x2="25" y2="${3 + i * 5}" stroke="${p.c}" stroke-width="2"/>`).join("")}</svg>${esc(prices[0].g || "Ceny")}</button>` : "";
   const bsLeg = (act || bands.length) ? ["kup", "sprzedaj"].map(k => `<button class="pw-lg${off["__" + k] ? " off" : ""}" data-lg="${esc(key)}|__${k}"><svg width="16" height="12"><rect x="1" y="0" width="14" height="12" rx="2" fill="${BUYSELL[k]}" opacity=".7"/></svg>${k === "kup" ? "Kupno" : "Sprzedaż"}</button>`).join("") : "";
   const legend = rowL("── Faktyczne", fakt) + rowL("┄┄ Prognozy / plan", prog) + (prc || bsLeg ? `<div class="pw-lrow"><span class="pw-lt">Inne</span>${prc}${bsLeg}</div>` : "");
-  return `<div class="pw-legend">${legend}</div><div class="fc-plot pw-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T - 7}" y2="${bot + 7}" style="display:none"/><g class="cd"></g></svg>${tipBox()}</div>`;
+  const zv = Z ? (Z.b - Z.a) * fullSpan / 36e5 : null;
+  const zbar = `<div class="pw-zoom">🔍 ${[1, 3, 6, 12].filter(hh => hh * 36e5 < fullSpan).map(hh => `<button class="pw-lg${zv && Math.abs(zv - hh) < 0.01 ? " on" : ""}" data-zoom="${esc(key)}|${hh}">${hh} h</button>`).join("")}<button class="pw-lg${Z ? "" : " on"}" data-zoom="${esc(key)}|0">Całość</button>${Z ? `<button class="pw-lg" data-zpan="${esc(key)}|-1">◀</button><button class="pw-lg" data-zpan="${esc(key)}|1">▶</button>` : ""}<span class="pw-zh">Ctrl + kółko albo kliknij wykres i kręć kółkiem · przeciągnij = przesuń · dwuklik = całość</span></div>`;
+  return `${zbar}<div class="pw-legend">${legend}</div><div class="fc-plot pw-plot" data-chart="${id}"><svg class="fc-svg pw-svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="xMidYMid meet">${g}<line class="cl" x1="0" x2="0" y1="${T - 7}" y2="${bot + 7}" style="display:none"/><g class="cd"></g></svg>${tipBox()}</div>`;
 }
 export const setSocMin = v => { OFF.socMin = v; };
 
@@ -158,8 +171,30 @@ const tipBox = () => ui.mob ? `<div class="fc-tip">👆 Dotknij albo przesuń pa
 const SEL = {};                                         // wybrany slot per wykres (key) – przezywa odswiezenie panelu
 export function bindCharts(root, rerender) {
   root.querySelectorAll("[data-lg]").forEach(b => b.onclick = () => { const [k, nm] = b.dataset.lg.split("|"); const o = OFF[k] = OFF[k] || {}, names = nm.split("\u0001"), v = !names.every(n => o[n]); names.forEach(n => { o[n] = v; }); if (rerender) rerender(); });
+  const setZ = (k, a, b) => { const w = Math.min(1, b - a); if (w >= 0.999) { delete ZOOM[k]; } else { a = Math.max(0, Math.min(1 - w, a)); ZOOM[k] = { a, b: a + w }; } };
+  let zt = 0; const redraw = () => { const n = Date.now(); if (n - zt < 60) { clearTimeout(redraw._t); redraw._t = setTimeout(redraw, 70); return; } zt = n; if (rerender) rerender(); };
+  root.querySelectorAll("[data-zoom]").forEach(b => b.onclick = () => { const [k, hh] = b.dataset.zoom.split("|"), c = Object.values(CHARTS).find(x => x.key === k && x.zoomable); if (!c) return;
+    if (+hh === 0) { delete ZOOM[k]; } else { const w = +hh * 36e5 / c.fullSpan, z = ZOOM[k] || { a: 0, b: 1 }, now = c.rows.length ? (Date.now() - c.rows[0].t) / (c.rows[c.rows.length - 1].t - c.rows[0].t || 1) : 0.5;
+      const mid = now >= 0 && now <= 1 ? z.a + (z.b - z.a) * now : (z.a + z.b) / 2; setZ(k, mid - w / 2, mid + w / 2); } redraw(); });
+  root.querySelectorAll("[data-zpan]").forEach(b => b.onclick = () => { const [k, d] = b.dataset.zpan.split("|"), z = ZOOM[k]; if (!z) return; const w = z.b - z.a; setZ(k, z.a + +d * w * 0.5, z.a + +d * w * 0.5 + w); redraw(); });
   root.querySelectorAll("[data-chart]").forEach(el => {
     const c = CHARTS[el.dataset.chart]; if (!c) return;
+    if (c.zoomable && c.key) {
+      const svg0 = el.querySelector("svg"), K = c.key, minW = Math.min(1, 36e5 / c.fullSpan);
+      const rel = e => { const b = svg0.getBoundingClientRect(), px = (e.clientX - b.left) / b.width * c.W; return Math.max(0, Math.min(1, (px - c.P.l) / (c.bw * c.rows.length))); };
+      el.classList.toggle("pw-zact", ZACT === K);
+      svg0.addEventListener("wheel", e => { if (!e.ctrlKey && ZACT !== K) return; e.preventDefault(); const z = ZOOM[K] || { a: 0, b: 1 }, w = z.b - z.a, f = z.a + w * rel(e);
+        const nw = Math.max(minW, Math.min(1, w * (e.deltaY > 0 ? 1.25 : 0.8))); setZ(K, f - (f - z.a) / w * nw, f - (f - z.a) / w * nw + nw); redraw(); }, { passive: false });
+      // stan przeciagania globalnie (wykres jest przerysowywany w trakcie, wiec nowy <svg> musi go znac)
+      svg0.addEventListener("pointerdown", e => { ZACT = K; el.classList.add("pw-zact"); if (!DR.k || DR.k !== K) { DR.k = K; DR.pts = new Map(); } DR.pts.set(e.pointerId, e.clientX);
+        DR.x = e.clientX; DR.z = { ...(ZOOM[K] || { a: 0, b: 1 }) }; DR.d = DR.pts.size === 2 ? Math.abs([...DR.pts.values()][0] - [...DR.pts.values()][1]) : null; DR.on = !!ZOOM[K] || DR.pts.size === 2; });
+      svg0.addEventListener("pointermove", e => { if (DR.k !== K || !DR.on || !DR.pts.has(e.pointerId)) return; const drag = DR, pts = DR.pts; pts.set(e.pointerId, e.clientX); const b = svg0.getBoundingClientRect(), w = drag.z.b - drag.z.a;
+        if (pts.size === 2 && drag.d) { const d = Math.abs([...pts.values()][0] - [...pts.values()][1]); if (d > 10) { const nw = Math.max(minW, Math.min(1, w * drag.d / d)), m = (drag.z.a + drag.z.b) / 2; setZ(K, m - nw / 2, m + nw / 2); redraw(); } return; }
+        const dx = (e.clientX - drag.x) / b.width; if (Math.abs(dx) < 0.005) return; setZ(K, drag.z.a - dx * w, drag.z.a - dx * w + w); redraw(); });
+      const up = e => { if (DR.pts) DR.pts.delete(e.pointerId); if (!DR.pts || !DR.pts.size) { DR.on = false; DR.k = null; } };
+      svg0.addEventListener("pointerup", up); svg0.addEventListener("pointercancel", up);
+      svg0.addEventListener("dblclick", () => { delete ZOOM[K]; redraw(); });
+    }
     const svg = el.querySelector("svg"), cl = svg.querySelector(".cl"), tp = el.querySelector(".fc-tip");
     const hide = () => { cl.style.display = "none"; const cd = svg.querySelector(".cd"); if (cd) cd.innerHTML = ""; if (!ui.mob) tp.style.display = "none"; if (c.key) delete SEL[c.key]; };
     let my = null;   // pozycja myszy w pionie (px w ramce wykresu) – dymek idzie za nia
@@ -203,7 +238,7 @@ export const CSS = `
 .pw-svg .pw-pane{fill:#0e2234;fill-opacity:.55;stroke:#1d3a55}.pw-svg .pw-ic{fill:#13314c;stroke:#2b5b86}.pw-svg .pw-ict{font-size:17px}.pw-svg .pw-pt{fill:#e8eef5;font-size:14.5px;font-weight:700}.pw-svg .pw-pu{fill:#8fa6bd;font-size:11.5px}
 .pw-svg .cl{stroke:#e8eef5;stroke-dasharray:4 4;stroke-width:1.5}.fc-tip i.d{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:middle}
 .pw-plot .fc-tip{min-width:290px;border-color:#3b5a73;border-radius:12px;font-size:14px;padding:11px 14px}.pw-plot .fc-tip div{margin-top:4px}
-.pw-legend .pw-lg{border-radius:20px;padding:5px 12px;background:#0e2234}.pw-legend{display:grid!important;gap:6px}.pw-lrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.pw-lt{font-size:12px;color:#8fa6bd;min-width:118px}.pw-all{font-weight:700;border-style:dashed!important}
+.pw-zoom{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 6px;font-size:13px;color:#8fa6bd}.pw-zoom .pw-lg{border-radius:20px;padding:4px 11px;background:#0e2234}.pw-zoom .pw-lg.on{border-color:#2a8cff;color:#fff;background:#163a63}.pw-zh{font-size:11.5px;color:#6f8ba1;margin-left:6px}.pw-zact svg{outline:1px solid #2a8cff55;border-radius:10px;touch-action:none}.pw-legend .pw-lg{border-radius:20px;padding:5px 12px;background:#0e2234}.pw-legend{display:grid!important;gap:6px}.pw-lrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.pw-lt{font-size:12px;color:#8fa6bd;min-width:118px}.pw-all{font-weight:700;border-style:dashed!important}
 .pf-brand img.brand{height:64px;width:auto;display:block;margin:-6px 4px -6px 0;flex:none}@media(max-width:700px){.pf-brand img.brand{height:44px}}
 :host{display:block;--bg:#06111b;--card1:#0c1f2e;--card2:#081826;--line:#14293a;--txt:#eaf2f9;--mut:#9bb3c6;--mut2:#6f8ba1;--o:#ffaa22;--g:#1fe090;--b:#3d8dff;--r:#ff4757;--v:#a78bfa;color:var(--txt);font-family:var(--paper-font-body1_-_font-family,Roboto),Roboto,"Segoe UI",Arial,sans-serif}
 *{box-sizing:border-box}

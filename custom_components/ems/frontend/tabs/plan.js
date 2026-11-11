@@ -1,4 +1,4 @@
-import { S, num, fmt, tip, chart, pwChart, setSocMin, PINK, CYAN, g12Price, hm, esc } from "../core.js";
+import { S, num, fmt, tip, chart, pwChart, setSocMin, PINK, CYAN, g12Price, hm, esc, resetZoom } from "../core.js";
 import { T } from "../tips.js";
 import { loadManual, bands as mBands, MC, line as mLine } from "../manual.js";
 import { range, nowWindow, dayWindow, stats, weekWindow, monthWindow } from "../minute.js";
@@ -212,8 +212,8 @@ export function render(c) {
 }
 export function bind(c, r) {
   bindProfile(c, r);
-  r.querySelectorAll("[data-pday]").forEach(b => b.onclick = () => { st.sel = b.dataset.pday || null; c.render(true); });
-  const cal = r.querySelector("[data-pcal]"); if (cal) cal.onchange = () => { if (cal.value) { st.sel = cal.value; c.render(true); } };
+  r.querySelectorAll("[data-pday]").forEach(b => b.onclick = () => { st.sel = b.dataset.pday || null; ["fwd", "fpv", "fdom"].forEach(resetZoom); c.render(true); });
+  const cal = r.querySelector("[data-pcal]"); if (cal) cal.onchange = () => { if (cal.value) { st.sel = cal.value; ["fwd", "fpv", "fdom"].forEach(resetZoom); c.render(true); } };
   // przewin tylko pasek dni w poziomie (bez scrollIntoView – ten przewijal cala strone na srodek)
   const bar = r.querySelector("[data-pdays]"), pd = bar?.querySelector(".on");
   if (bar && pd && !st.scrolled && bar.scrollWidth > bar.clientWidth) { bar.scrollLeft = pd.offsetLeft - bar.offsetLeft - (bar.clientWidth - pd.clientWidth) / 2; st.scrolled = true; }
