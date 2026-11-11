@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.42
+- ⟳ w nagłówku: odczyt OD RAZU pomiarów (moce, przepływy, SOC) i ustawień – akcja `esphome.<dev>_odczytaj_wszystko` (YAML v5.8); ze starszym YAML jak dotąd same ustawienia. Przycisk „Odczyt” w ramkach Ustawień bez zmian.
+
 ## 0.6.41
 - Pmax zakupu sterowany przez EMS (algorytm i ręczne): **odznaczony TYLKO przy sprzedaży (zaznaczony ją blokuje), w każdym innym trybie (kupno, trzymanie, autokonsumpcja, blokada – pobór z sieci) zaznaczony**. Przez `switch.<dev>_pmax_zakupu` z YAML v5.7 (zapis 10H); bez przełącznika nic nie robi. Jeden zapis na zmianę (bez powtarzania w kółko), wpis w logu.
 

@@ -187,9 +187,12 @@ async def write_verified(hass: HomeAssistant, dev: str, items: list[dict]) -> li
     return out
 
 
-async def read_now(hass: HomeAssistant, dev: str, ids: list[str], timeout: float = 25.0) -> dict:
-    """Przycisk "Odczyt": datalogger czyta ustawienia z falownika OD RAZU, czekamy na potwierdzenie i zwracamy wartosci."""
+async def read_now(hass: HomeAssistant, dev: str, ids: list[str], timeout: float = 25.0, wszystko: bool = False) -> dict:
+    """Przycisk "Odczyt": datalogger czyta ustawienia z falownika OD RAZU, czekamy na potwierdzenie i zwracamy wartosci.
+    wszystko=True (⟳ w naglowku, YAML v5.8): pomiary + ustawienia (akcja odczytaj_wszystko), bez niej jak dotad."""
     svc = f"{dev}_odczytaj_ustawienia"
+    if wszystko and hass.services.has_service("esphome", f"{dev}_odczytaj_wszystko"):
+        svc = f"{dev}_odczytaj_wszystko"
     if not hass.services.has_service("esphome", svc):
         return {"ok": False, "msg": f"datalogger nie ma akcji esphome.{svc} – wgraj ecobss.yaml v5.4", "items": []}
     eid = dev_entity(hass, dev, "sensor", "ostatni_odczyt_ustawien")
@@ -227,7 +230,7 @@ class ReadView(HomeAssistantView):
         body = await request.json()
         ids = [i for i in body.get("ids", []) if i]
         LOG.info("Panel: Odczyt %d pol (%s…)", len(ids), ", ".join(i.split(".")[1] for i in ids[:4]))
-        return self.json(await read_now(hass, body.get("dev") or "ecobss", ids))
+        return self.json(await read_now(hass, body.get("dev") or "ecobss", ids, wszystko=bool(body.get("wszystko"))))
 
 
 class WriteView(HomeAssistantView):
