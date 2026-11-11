@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.45
+- Plan: przycisk 📅 Kalendarz otwiera wybór daty (`showPicker()`; ukryty input w Chrome nie otwierał się sam) i panel nie przerysowuje się w trakcie wybierania (przerysowanie co 2 s zamykało kalendarz).
+
 ## 0.6.44
 - Nowe tło użytkownika: `bg.jpg` (wszystkie zakładki) i scena Przeglądu `scene.jpg` (kadr 1672×400), nowe ścieżki linii przesyłu.
 - Magazyn w scenie: 6 poprzeczek SOC na ekranie magazynu (od dołu, ~16,7 % każda) – ładowanie pomarańczowe (następna pulsuje), rozładowanie / postój zielone; nad magazynem % + strzałka ↑ pomarańczowa / ↓ zielona, bez ramki.

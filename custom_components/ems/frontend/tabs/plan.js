@@ -213,7 +213,10 @@ export function render(c) {
 export function bind(c, r) {
   bindProfile(c, r);
   r.querySelectorAll("[data-pday]").forEach(b => b.onclick = () => { st.sel = b.dataset.pday || null; ["fwd", "fpv", "fdom"].forEach(resetZoom); c.render(true); });
-  const cal = r.querySelector("[data-pcal]"); if (cal) cal.onchange = () => { if (cal.value) { st.sel = cal.value; ["fwd", "fpv", "fdom"].forEach(resetZoom); c.render(true); } };
+  const cal = r.querySelector("[data-pcal]");
+  if (cal) { cal.onclick = e => { e.stopPropagation(); try { cal.showPicker(); } catch (_) { cal.focus(); } };   // ukryty input: Chrome nie otwiera kalendarza sam
+    cal.onfocus = () => { c._hold = true; }; cal.onblur = () => { setTimeout(() => { c._hold = false; }, 300); }; }
+  if (cal) cal.onchange = () => { c._hold = false; if (cal.value) { st.sel = cal.value; ["fwd", "fpv", "fdom"].forEach(resetZoom); c.render(true); } };
   // przewin tylko pasek dni w poziomie (bez scrollIntoView – ten przewijal cala strone na srodek)
   const bar = r.querySelector("[data-pdays]"), pd = bar?.querySelector(".on");
   if (bar && pd && !st.scrolled && bar.scrollWidth > bar.clientWidth) { bar.scrollLeft = pd.offsetLeft - bar.offsetLeft - (bar.clientWidth - pd.clientWidth) / 2; st.scrolled = true; }
