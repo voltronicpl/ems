@@ -52,34 +52,38 @@ export function profile(c) {
     g += `<path d="${d}" fill="none" stroke="#22d3ee" stroke-width="1.4" opacity=".35"/>`; }
   const path = (rows, k, y) => { let d = "", on = false; rows.forEach(r => { const v = r[k]; if (v == null) { on = false; return; } d += `${on ? "L" : "M"}${X(r.t).toFixed(1)} ${y(v).toFixed(1)}`; on = true; }); return d; };
   const smr = ["pv", "bat", "grid", "dom", "soc"].reduce((o, k) => { const s = sma(meas, k, k === "soc" ? 0 : 4); meas.forEach((r, i) => { (o[i] = o[i] || { t: r.t })[k] = s[i]; }); return o; }, []);
-  let hlNote = "";
+  let hlNote = ""; const hlSp = [];
   const H0 = HL.k && (HLR[HL.k] || HL.k.startsWith("man_")) ? HL.k : null;
   if (H0) {
     const subs = H0.startsWith("man_") ? [] : (HLR[H0].multi || [H0]);
-    let kwh = 0, first = null, last = null;
+    let kwh = 0, first = null, last = null, kwhF = 0, firstF = null, lastF = null;
     if (H0.startsWith("man_")) {
       for (const b of bands(w.t0, w.t1)) { if ((H0 === "man_k") !== (b.typ !== "sprzedaj")) continue; const a = Math.max(L, X(b.a)), e = Math.min(W - R, X(b.b));
-        if (e - a > 0.5) { g += `<rect x="${a}" y="${T}" width="${e - a}" height="${H - T - B}" fill="${BUYSELL[H0 === "man_k" ? "kup" : "sprzedaj"]}" opacity=".45" stroke="#fff" stroke-width="1.5"/>`; first = first ?? b.a; last = b.b; } }
+        if (e - a > 0.5) { g += `<rect x="${a}" y="${T}" width="${e - a}" height="${H - T - B}" fill="${BUYSELL[H0 === "man_k" ? "kup" : "sprzedaj"]}" opacity=".3"/>`; hlSp.push([a, e - a]); first = first ?? b.a; last = b.b; } }
       hlNote = H0 === "man_k" ? "Ręcznie kupione" : "Ręcznie sprzedane";
-    } else for (const sk of subs) {
+    } else for (const sk of subs) for (const [rows, fut] of [[smr, false], [fc, true]]) {
       const R0 = HLR[sk]; let run = null;
-      const flush = (i) => { if (run) { const col = typeof R0.c === "function" ? R0.c(smr[run.i]) : R0.c; g += `<rect x="${X(run.t)}" y="${T}" width="${Math.max(X(smr[i - 1].t + 6e4) - X(run.t), 1.5)}" height="${H - T - B}" fill="${col}" opacity=".28"/>`; run = null; } };
-      smr.forEach((r, i) => { const v = R0.f(r);
-        if (v > 0) { kwh += v / 60; first = first == null ? r.t : Math.min(first, r.t); last = Math.max(last ?? 0, r.t + 6e4);
-          const col = typeof R0.c === "function" ? R0.c(r) : R0.c; if (run && (typeof R0.c !== "function" || (typeof R0.c === "function" && R0.c(smr[run.i]) === col))) return; flush(i); run = { t: r.t, i }; }
+      const flush = (i) => { if (run) { const col = typeof R0.c === "function" ? R0.c(rows[run.i]) : R0.c, wd = Math.max(X(rows[i - 1].t + 6e4) - X(run.t), 1.5);
+        g += `<rect x="${X(run.t)}" y="${T}" width="${wd}" height="${H - T - B}" fill="${col}" opacity="${fut ? .14 : .22}" ${fut ? `stroke="${col}" stroke-dasharray="5 4" stroke-width="1.2"` : ""}/>`; hlSp.push([X(run.t), wd]); run = null; } };
+      rows.forEach((r, i) => { if (r.t < w.t0 || r.t >= w.t1) { flush(i); return; } const v = R0.f(r);
+        if (v > 0) { if (fut) { kwhF += v / 60; firstF = firstF == null ? r.t : Math.min(firstF, r.t); lastF = Math.max(lastF ?? 0, r.t + 6e4); } else { kwh += v / 60; first = first == null ? r.t : Math.min(first, r.t); last = Math.max(last ?? 0, r.t + 6e4); }
+          const col = typeof R0.c === "function" ? R0.c(r) : R0.c; if (run && (typeof R0.c !== "function" || R0.c(rows[run.i]) === col)) return; flush(i); run = { t: r.t, i }; }
         else flush(i); });
-      flush(smr.length);
+      flush(rows.length);
     }
     const hm = t => new Date(t).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
-    hlNote = `✦ ${hlNote || HLR[H0].n}${H0.startsWith("man_") || HLR[H0].multi ? "" : `: ${fmt(kwh, 2, "kWh")} w oknie wykresu`}${first != null ? ` · ${hm(first)}–${hm(last)}` : " · brak w oknie wykresu"}${first != null && first > w.t0 + 36e5 && !H0.startsWith("man_") ? "" : ""}`;
+    const sumOn = !H0.startsWith("man_") && !HLR[H0].multi;
+    hlNote = `✦ ${hlNote || HLR[H0].n}: ${first != null ? `było ${sumOn ? fmt(kwh, 2, "kWh") + " " : ""}${hm(first)}–${hm(last)}` : "wcześniej brak"}${firstF != null ? ` · plan ${sumOn ? fmt(kwhF, 2, "kWh") + " " : ""}${hm(firstF)}–${hm(lastF)}` : " · w planie brak"}`;
   }
   const hlSer = H0 ? (H0.startsWith("man_") ? [] : HLR[H0].s) : null;
   for (const [k, col] of SER) { const y = k === "soc" ? YS : Y;   // OFF[k] = pomiar, OFF["p_" + k] = prognoza (osobno)
-    g += `<g opacity="${hlSer && !hlSer.includes(k) ? 0.22 : 1}">`;
+    g += `<g opacity="${hlSer && !hlSer.includes(k) ? 0.35 : 1}">`;
     const d = OFF[k] ? "" : path(smr, k, y), f = OFF["p_" + k] ? "" : path(fc, k, y);
     if (d && k !== "soc") g += d.split("M").filter(Boolean).map(q => { const pts = q.split("L"), x0 = pts[0].split(" ")[0], x1 = pts[pts.length - 1].split(" ")[0]; return `<path d="M${q}L${x1} ${Y(0)}L${x0} ${Y(0)}Z" fill="url(#pf-${k})"/>`; }).join("");
     if (d) g += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${k === "soc" ? 1.8 : 2.4}" stroke-linejoin="round" filter="url(#pf-gl)"/>`;
     if (f) g += `<path d="${f}" fill="none" stroke="${col}" stroke-width="1.8" stroke-dasharray="6 5" opacity=".85"/>`; g += `</g>`; }
+  if (H0) g += `<mask id="pf-hlm"><rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>${hlSp.map(([x, wd]) => `<rect x="${x - 1}" y="${T}" width="${wd + 2}" height="${H - T - B}" fill="#000"/>`).join("")}</mask>
+    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="#050c14" opacity=".62" mask="url(#pf-hlm)"/>${hlSp.map(([x, wd]) => `<line x1="${x}" x2="${x + wd}" y1="${T + 1}" y2="${T + 1}" stroke="#fff" stroke-width="2" opacity=".8"/>`).join("")}`;
   if (hlNote) g += `<rect x="${L + 6}" y="${T + 4}" width="${hlNote.length * 6.6 + 16}" height="22" rx="8" fill="#0b1828e6" stroke="#2a4560"/><text x="${L + 14}" y="${T + 19}" style="fill:#fff;font-size:12.5px;font-weight:600">${esc(hlNote)}</text>`;
   g += `<line x1="${X(w.now)}" x2="${X(w.now)}" y1="${T}" y2="${H - B}" stroke="#e2e8f0" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${X(w.now) + 5}" y="${H - B - 6}" class="pf-ax">teraz</text>`;
   cur = { w, meas, fc, X, Y, YS, sm, dep: num(c.hass, "number.ems_depozyt_mnoznik", 1.23) };
