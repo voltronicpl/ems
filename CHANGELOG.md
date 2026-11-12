@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.50
+- Podświetlanie z „Energia dziś”: w trakcie podświetlenia znikają zwykłe kolumny kupna / sprzedaży (z planu i ręczne) – jasne zostaje tylko to, czego dotyczy wiersz; reszta wykresu mocniej przygaszona.
+
 ## 0.6.49
 - Podświetlanie z „Energia dziś”: cały Profil mocy przygasa, jasne zostają tylko kolumny, w których było zdarzenie (biała kreska u góry kolumny), i także **w przyszłości wg planu** (kolumny z kreskowaną ramką). U góry: „było X kWh od–do · plan Y kWh od–do”.
 

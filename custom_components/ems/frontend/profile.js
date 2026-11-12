@@ -42,7 +42,8 @@ export function profile(c) {
   for (let t = Math.ceil(w.t0 / 108e5) * 108e5; t <= w.t1; t += 108e5) { const d = new Date(t); g += `<line x1="${X(t)}" x2="${X(t)}" y1="${T}" y2="${H - B}" class="pf-grid"/><text x="${X(t)}" y="${H - 12}" text-anchor="middle" class="pf-ax">${String(d.getHours()).padStart(2, "0")}:00</text>`; }
   g += `<text transform="translate(16 ${(H - B + T) / 2}) rotate(-90)" text-anchor="middle" class="pf-yl">Moc [kW]</text>`;
   // kolumny kupna / sprzedazy przez cala wysokosc (delikatne): reczne zlecenia + plan EMS do przodu; bez napisow (szczegoly w dymku)
-  const colr = (a, e, k) => { if (e - a > 0.5) g += `<rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${H - T - B}" fill="${BUYSELL[k]}" opacity=".22"/><rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="3" fill="${BUYSELL[k]}" opacity=".9"/>`; };
+  const colr = (a, e, k) => { if (HL.k) return;                 // podswietlanie: zwykle kolumny kupna / sprzedazy znikaja – zostaje tylko to, czego dotyczy wiersz
+    if (e - a > 0.5) g += `<rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="${H - T - B}" fill="${BUYSELL[k]}" opacity=".22"/><rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(e - a, 1.5).toFixed(1)}" height="3" fill="${BUYSELL[k]}" opacity=".9"/>`; };
   for (const b of bands(w.t0, w.t1)) { const a = Math.max(L, X(b.a)), e = Math.min(W - R, X(b.b)); colr(a, e, b.typ === "sprzedaj" ? "sprzedaj" : "kup"); }
   for (let t = Math.floor(Math.max(w.now, w.t0) / 9e5) * 9e5; t < w.t1; t += 9e5) { const a = (sm.get(t) || {}).action, k = a === "charge" ? "kup" : a === "sell" ? "sprzedaj" : null; if (k) colr(Math.max(L, X(Math.max(t, w.now))), Math.min(W - R, X(t + 9e5)), k); }
   // RCE (zl/kWh) – delikatna linia na ukrytej osi cen (0…max), schodki co 15 min
@@ -83,7 +84,7 @@ export function profile(c) {
     if (d) g += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${k === "soc" ? 1.8 : 2.4}" stroke-linejoin="round" filter="url(#pf-gl)"/>`;
     if (f) g += `<path d="${f}" fill="none" stroke="${col}" stroke-width="1.8" stroke-dasharray="6 5" opacity=".85"/>`; g += `</g>`; }
   if (H0) g += `<mask id="pf-hlm"><rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>${hlSp.map(([x, wd]) => `<rect x="${x - 1}" y="${T}" width="${wd + 2}" height="${H - T - B}" fill="#000"/>`).join("")}</mask>
-    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="#050c14" opacity=".62" mask="url(#pf-hlm)"/>${hlSp.map(([x, wd]) => `<line x1="${x}" x2="${x + wd}" y1="${T + 1}" y2="${T + 1}" stroke="#fff" stroke-width="2" opacity=".8"/>`).join("")}`;
+    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="#050c14" opacity=".7" mask="url(#pf-hlm)"/>${hlSp.map(([x, wd]) => `<line x1="${x}" x2="${x + wd}" y1="${T + 1}" y2="${T + 1}" stroke="#fff" stroke-width="2" opacity=".8"/>`).join("")}`;
   if (hlNote) g += `<rect x="${L + 6}" y="${T + 4}" width="${hlNote.length * 6.6 + 16}" height="22" rx="8" fill="#0b1828e6" stroke="#2a4560"/><text x="${L + 14}" y="${T + 19}" style="fill:#fff;font-size:12.5px;font-weight:600">${esc(hlNote)}</text>`;
   g += `<line x1="${X(w.now)}" x2="${X(w.now)}" y1="${T}" y2="${H - B}" stroke="#e2e8f0" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${X(w.now) + 5}" y="${H - B - 6}" class="pf-ax">teraz</text>`;
   cur = { w, meas, fc, X, Y, YS, sm, dep: num(c.hass, "number.ems_depozyt_mnoznik", 1.23) };
