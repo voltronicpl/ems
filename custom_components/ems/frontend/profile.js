@@ -29,8 +29,8 @@ let cur = null;
 const disp = r => ({ t: r.t, pv: r.pv, dom: r.dom, bat: r.bat == null ? null : -r.bat, grid: r.grid == null ? null : -r.grid, soc: r.soc });
 const sma = (a, k, n = 5) => a.map((r, i) => { let s = 0, m = 0; for (let j = Math.max(0, i - n); j <= Math.min(a.length - 1, i + n); j++) { const v = a[j][k]; if (v != null) { s += v; m++; } } return a[i][k] == null ? null : s / m; });
 
-export function profile(c) {
-  const w = nowWindow(12), meas = range(c, w.t0, w.t0 + 24 * 36e5).map(disp), sm = slots(c, w.t0, w.t1);
+export function profile(c, w0) {
+  const w = w0 || nowWindow(12), meas = range(c, w.t0, w.t0 + 24 * 36e5).map(disp), sm = slots(c, w.t0, w.t1);
   const fc = []; for (let t = Math.max(w.now, w.t0) - (w.now % 6e4); t < w.t1; t += 6e4) { const k = kw(sm.get(Math.floor(t / 9e5) * 9e5)); fc.push(k ? { t, ...k } : { t }); }
   const X = t => L + (t - w.t0) / (w.t1 - w.t0) * (W - L - R);
   const all = [...meas.flatMap(r => ["pv", "bat", "grid", "dom"].filter(k => !OFF[k]).map(k => Math.abs(r[k] || 0))), ...fc.flatMap(r => ["pv", "bat", "grid", "dom"].filter(k => !OFF["p_" + k]).map(k => Math.abs(r[k] || 0)))];
@@ -86,7 +86,7 @@ export function profile(c) {
   if (H0) g += `<mask id="pf-hlm"><rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>${hlSp.map(([x, wd]) => `<rect x="${x - 1}" y="${T}" width="${wd + 2}" height="${H - T - B}" fill="#000"/>`).join("")}</mask>
     <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="#050c14" opacity=".7" mask="url(#pf-hlm)"/>${hlSp.map(([x, wd]) => `<line x1="${x}" x2="${x + wd}" y1="${T + 1}" y2="${T + 1}" stroke="#fff" stroke-width="2" opacity=".8"/>`).join("")}`;
   if (hlNote) g += `<rect x="${L + 6}" y="${T + 4}" width="${hlNote.length * 6.6 + 16}" height="22" rx="8" fill="#0b1828e6" stroke="#2a4560"/><text x="${L + 14}" y="${T + 19}" style="fill:#fff;font-size:12.5px;font-weight:600">${esc(hlNote)}</text>`;
-  g += `<line x1="${X(w.now)}" x2="${X(w.now)}" y1="${T}" y2="${H - B}" stroke="#e2e8f0" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${X(w.now) + 5}" y="${H - B - 6}" class="pf-ax">teraz</text>`;
+  if (w.now > w.t0 && w.now < w.t1) g += `<line x1="${X(w.now)}" x2="${X(w.now)}" y1="${T}" y2="${H - B}" stroke="#e2e8f0" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${X(w.now) + 5}" y="${H - B - 6}" class="pf-ax">teraz</text>`;
   cur = { w, meas, fc, X, Y, YS, sm, dep: num(c.hass, "number.ems_depozyt_mnoznik", 1.23) };
   const last = meas.length ? meas[meas.length - 1] : {};
   const lrow = (lab, pre, dash) => `<div class="pf-lrow"><span class="pf-lt">${lab}</span><button class="pf-lg pf-all${SER.every(([k]) => OFF[pre + k]) ? " off" : ""}" data-pflg="${SER.map(([k]) => pre + k).join(",")}">Wszystkie</button>${SER.map(([k, col, n]) => `<button class="pf-lg${OFF[pre + k] ? " off" : ""}" data-pflg="${pre + k}"><svg width="22" height="8"><line x1="1" y1="4" x2="21" y2="4" stroke="${col}" stroke-width="2.4" ${dash ? 'stroke-dasharray="4 3"' : ""}/></svg>${n}</button>`).join("")}</div>`;
@@ -117,7 +117,7 @@ function tip(box, t) {
 
 export function bindProfile(c, r) {
   r.querySelectorAll("[data-pflg]").forEach(b => b.onclick = () => { const ks = b.dataset.pflg.split(","), v = !ks.every(k => OFF[k]); ks.forEach(k => { OFF[k] = v; }); c.render(true); });
-  r.querySelectorAll("[data-pfopen]").forEach(b => b.onclick = () => { st.open = true; st.day = st.day || new Date().toLocaleDateString("sv-SE"); c._hold = true; c.render(true); });
+  r.querySelectorAll("[data-pfopen]").forEach(b => b.onclick = () => { st.open = true; st.day = c.ovDay || st.day || new Date().toLocaleDateString("sv-SE"); c._hold = true; c.render(true); });
   r.querySelectorAll("[data-pfclose]").forEach(b => b.onclick = e => { if (e.target !== b) return; st.open = false; c._hold = false; c.render(true); });
   r.querySelectorAll("[data-pfday]").forEach(b => b.onclick = () => { const d = new Date(st.day); d.setDate(d.getDate() + +b.dataset.pfday); if (d <= new Date()) st.day = d.toLocaleDateString("sv-SE"); c.render(true); });
   r.querySelectorAll("[data-prof]").forEach(box => {
@@ -127,7 +127,7 @@ export function bindProfile(c, r) {
     svg.addEventListener("mousemove", mv); svg.addEventListener("touchstart", mv, { passive: true }); svg.addEventListener("touchmove", mv, { passive: true });
     svg.addEventListener("mouseleave", () => { st.hover = null; c._hold = st.open; tip(box, null); });
     svg.addEventListener("touchend", () => { c._hold = st.open; });
-    svg.addEventListener("click", ev => { if (ev.pointerType === "touch" || ev.sourceCapabilities?.firesTouchEvents) return; st.open = true; st.day = new Date().toLocaleDateString("sv-SE"); c._hold = true; c.render(true); });
+    svg.addEventListener("click", ev => { if (ev.pointerType === "touch" || ev.sourceCapabilities?.firesTouchEvents) return; st.open = true; st.day = c.ovDay || new Date().toLocaleDateString("sv-SE"); c._hold = true; c.render(true); });
     if (st.hover != null) tip(box, st.hover);
   });
 }

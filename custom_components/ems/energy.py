@@ -92,10 +92,18 @@ class EnergyView(HomeAssistantView):
             return self.json_message("EMS nie jest skonfigurowany", 404)
         now = datetime.now(WAW)
         d0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = now
         if request.query.get("okres") == "miesiac":
             d0 = d0.replace(day=1)
+        elif request.query.get("dzien"):  # v0.6.54: dowolny miniony dzien (Przeglad – wybor dnia)
+            try:
+                dd = datetime.strptime(request.query["dzien"], "%Y-%m-%d")
+            except ValueError:
+                return self.json_message("zly dzien", 400)
+            d0 = d0.replace(year=dd.year, month=dd.month, day=dd.day)
+            end = min(now, d0 + timedelta(days=1))
         try:
-            return self.json({"okres": request.query.get("okres", "dzis"), "od": d0.isoformat(), **await summary(hass, engines[0], d0, now)})
+            return self.json({"okres": request.query.get("okres", "dzis"), "od": d0.isoformat(), **await summary(hass, engines[0], d0, end)})
         except Exception as err:  # noqa: BLE001
             LOG.exception("Energia: %s", err)
             return self.json_message(f"blad: {err}", 500)

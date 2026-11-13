@@ -56,11 +56,11 @@ const tile = (ic, cls, lab, val, sub, subc, t) => `<div class="ov-tile"><div cla
 
 import { profile, bindProfile, accuracyModal, PROFILE_CSS, HL } from "../profile.js";
 import { pwChart } from "../core.js";
-import { range, nowWindow } from "../minute.js";
+import { range, nowWindow, dayWindow } from "../minute.js";
 import { slots, cmpHead } from "../forecast.js";
 // Prognoza PV i zuzycia domu (teraz ±12 h): pomiar linia ciagla, prognoza przerywana – jak w Planie
-function fcRow(c) {
-  const w = nowWindow(12), meas = range(c, w.t0, w.t1), sm = slots(c, w.t0, w.t1), now = Date.now(), rows = [];
+function fcRow(c, w0, lab = "teraz ±12 h") {
+  const w = w0 || nowWindow(12), meas = range(c, w.t0, w.t1), sm = slots(c, w.t0, w.t1), now = Date.now(), rows = [];
   for (let t = w.t0, i = 0; t < w.t1; t += 6e4, i++) { const x = sm.get(Math.floor(t / 9e5) * 9e5) || {}, m = t < now ? meas[i] : null;
     rows.push({ t: new Date(t), pv: x.pv ?? null, loadp: x.load ?? null, dzien: x.dzien, pv_m: m?.pv ?? null, dom_m: m?.dom ?? null }); }
   const DOTc = col => `<i class="d" style="background:${col}"></i>`;
@@ -70,8 +70,8 @@ function fcRow(c) {
   const sum = (k, raw) => rows.reduce((q, r) => q + (r[k] == null ? 0 : raw ? r[k] / 60 : r[k] / 15), 0);
   const hd = (pk, mk, cls) => cmpHead(rows, { pk, dk: pk === "pv" ? "pv" : "load", mk, cls, now });
   return `<div class="ov-fc" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px;margin-top:14px">
-    <div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span>☀ Produkcja PV – prognoza i pomiar <span class="ov-mut">(teraz ±12 h)</span></span>${hd("pv", "pv_m", "t-o")}</div>${ch("ovpv", "pv_m", "pv", "#facc15", "PV")}</div>
-    <div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span>🏠 Zużycie domu – prognoza i pomiar <span class="ov-mut">(teraz ±12 h)</span></span>${hd("loadp", "dom_m", "t-b")}</div>${ch("ovdom", "dom_m", "loadp", "#1e9bff", "Dom")}</div></div>`;
+    <div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span>☀ Produkcja PV – prognoza i pomiar <span class="ov-mut">(${lab})</span></span>${hd("pv", "pv_m", "t-o")}</div>${ch("ovpv", "pv_m", "pv", "#facc15", "PV")}</div>
+    <div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span>🏠 Zużycie domu – prognoza i pomiar <span class="ov-mut">(${lab})</span></span>${hd("loadp", "dom_m", "t-b")}</div>${ch("ovdom", "dom_m", "loadp", "#1e9bff", "Dom")}</div></div>`;
 }
 // Rachunek za energie w biezacym miesiacu (/api/ems/rachunek), odswiezany co 10 min
 const bill = { at: 0, busy: false, d: null };
@@ -125,7 +125,70 @@ function enBox(c, x) {
     <div class="ov-h" style="margin:10px 0 4px;font-size:14px">${ic("coins", 16)} Handel${tip({ co: "Liczone co godzinę: sprzedane nie z PV = eksport ponad bieżącą nadwyżkę PV (PV − dom). Wartość = kWh × RCE × mnożnik depozytu. Zakup pod sprzedaż = sprzedane nie z PV ÷ (sprawność ład. × rozł.) × średni koszt kWh kupionego do baterii (G12). Godziny sprzed dataloggera ze starych encji." })}</div>${han}</div>`;
 }
 
+// v0.6.54: wybór dnia w Przeglądzie (c.ovDay = "YYYY-MM-DD"; null = dziś na żywo; zakładka zawsze startuje od dziś)
+const isoD = d => new Date(d).toLocaleDateString("sv-SE");
+const ED = {};
+function loadED(c, d) {
+  const e = ED[d] = ED[d] || { at: 0, busy: false, d: null };
+  if (!e.busy && !e.at) { e.busy = true; c.hass.callApi("GET", `ems/energia?dzien=${d}`).then(r => { e.d = r; }).catch(x => { e.d = { err: x.message || String(x) }; }).finally(() => { e.at = Date.now(); e.busy = false; c.render(true); }); }
+  return e.d;
+}
+function dayBar(c) {
+  const td = isoD(Date.now()), d = c.ovDay || td, mx = new Date(); mx.setDate(mx.getDate() + 2);
+  const lbl = d === td ? "Dziś (na żywo)" : d > td ? "Prognoza / plan" : "Podsumowanie dnia";
+  return `<div class="ov-box" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px">${icR("calendar", 22)}<b>Dzień:</b>
+    <button class="btn" data-ovd="-1">◀</button><input type="date" data-ovdate value="${d}" max="${isoD(mx)}" style="background:#0b1622;color:#e2e8f0;border:1px solid #2a4560;border-radius:8px;padding:5px 8px;color-scheme:dark">
+    <button class="btn" data-ovd="1" ${d >= isoD(mx) ? "disabled" : ""}>▶</button><button class="btn ${d === td ? "on" : ""}" data-ovtoday>Dziś</button>
+    <b style="color:${d === td ? "#3ee07a" : d > td ? "#a78bfa" : "#facc15"}">${lbl}</b><span class="ov-mut">${new Date(d + "T00:00").toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div>`;
+}
+function dayView(c) {
+  const d = c.ovDay, w = dayWindow(new Date(d + "T00:00")), fut = w.t0 > Date.now();
+  let x, err = null;
+  const sm = slots(c, w.t0, w.t1), sl = [...sm.entries()].filter(([t]) => t >= w.t0 && t < w.t1).map(([, v]) => v);
+  if (fut) {
+    const s = k => sl.reduce((q, v) => q + (v[k] || 0), 0); let bin = 0, bout = 0;
+    for (const v of sl) { const b = (v.pv || 0) + (v.imp || 0) - (v.load || 0) - (v.exp || 0); if (b > 0) bin += b; else bout -= b; }
+    x = { pv: s("pv"), dom: s("load"), imp: s("imp"), exp: s("exp"), bin, bout };
+  } else { const r = loadED(c, d); if (r?.err) err = r.err; x = r && !r.err ? r : null; }
+  const meas = fut ? [] : range(c, w.t0, w.t1), socs = (fut ? sl.map(v => v.soc) : meas.map(r => r.soc)).filter(v => v != null);
+  const soc0 = socs[0], soc1 = socs[socs.length - 1], smin = socs.length ? Math.min(...socs) : null, smax = socs.length ? Math.max(...socs) : null;
+  const pmax = k => meas.reduce((q, r) => Math.max(q, Math.abs(r[k] || 0)), 0);
+  const g = k => x ? x[k] : null, auto = x && x.pv > 0 ? Math.round(Math.max(x.pv - x.exp, 0) / x.pv * 100) : null;
+  const card = (icn, cls, lab, val, sub, sub2) => `<div class="sc-ic ${cls}">${icn}</div><div class="sc-tx"><div class="sc-lab">${lab}</div><div class="sc-val">${val}</div>${sub ? `<div class="sc-sub">${sub}</div>` : ""}${sub2 ? `<div class="sc-sm">${sub2}</div>` : ""}</div>`;
+  const pre = fut ? "Prognoza: " : "";
+  const scene = `<style>${FLOW_CSS}${MANUAL_CSS}${PROFILE_CSS}${SC_CSS}.ov-pp{position:relative}.ptip{position:absolute;top:4px;z-index:5;background:#0b1622f2;border:1px solid #2a4560;border-radius:8px;padding:6px 9px;font-size:12px;line-height:1.5;pointer-events:none;white-space:nowrap;box-shadow:0 0 12px #000a}.ptip i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}.ov-pp svg{touch-action:pan-y}</style><div class="sc"><img src="${SCENE}" alt="Dom, PV, bateria i sieć">
+    ${batBars(soc1, 0)}
+    ${box("top", `<span>${icR("calendar", 26)} ${new Date(d + "T00:00").toLocaleDateString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}</span><i></i><span>${fut ? "Prognoza dnia" : "Podsumowanie dnia"}</span>`, "sc-top")}
+    ${box("pv", card(icR("sun", 34), "y", "PV", fmt(g("pv"), 1, "kWh"), fut ? "prognoza" : `szczyt ${fmt(pmax("pv"), 1, "kW")}`))}
+    ${box("bat", card(icR("batteryBolt", 34), "g", "Bateria", soc1 == null ? "–" : `${fmt(soc0, 0)} → ${fmt(soc1, 0, "%")}`, `${fmt(g("bin"), 1)} / ${fmt(g("bout"), 1, "kWh")}`, smin == null ? "" : `SOC min ${fmt(smin, 0)} % · max ${fmt(smax, 0)} %`))}
+    ${box("dom", card(icR("home", 34), "b", "Dom", fmt(g("dom"), 1, "kWh"), fut ? "prognoza" : `szczyt ${fmt(pmax("dom"), 1, "kW")}`), "sc-dom")}
+    ${box("grid", card(icR("tower", 34), "r", "Sieć", `${fmt(g("imp"), 1)} / ${fmt(g("exp"), 1, "kWh")}`, "pobór / oddanie"))}
+  </div>`;
+  const tiles = `<div class="ov-tiles">
+    ${tile(icR("sun", 32), "y", "PV", fmt(g("pv"), 1, "kWh"), pre + "produkcja", "", T.pv)}
+    ${tile(icR("home", 32), "b", "Dom", fmt(g("dom"), 1, "kWh"), pre + "zużycie", "", T.dom)}
+    ${tile(icR("tower", 32), "r", "Import z sieci", fmt(g("imp"), 1, "kWh"), pre + "pobór", "#ff6b6b", T.siec)}
+    ${tile(icR("tower", 32), "g", "Eksport do sieci", fmt(g("exp"), 1, "kWh"), pre + "oddanie", "#3ee07a", T.siec)}
+    ${tile(icR("batteryBolt", 32), "o", "Bateria", `${fmt(g("bin"), 1)} / ${fmt(g("bout"), 1)}`, "kWh ład. / rozł.", "", T.bmoc)}
+    ${tile(icR("leaf", 32), "g", "Autokonsumpcja", auto == null ? "–" : `${auto} %`, "PV w domu", "", T.autokons)}</div>`;
+  const row = (a, b, cl = "") => `<div class="ov-row"><span>${a}</span><b ${cl ? `style="color:${cl}"` : ""}>${b}</b></div>`;
+  const han = fut ? `<div class="ov-mut">Dzień w przyszłości – handel będzie policzony po fakcie. Akcje z planu widać na Profilu mocy.</div>` : !x ? `<div class="ov-mut">${err ? "Nie udało się policzyć: " + esc(err) : "Liczę…"}</div>` :
+    row("Sprzedane nie z PV", `${fmt(x.nonpv_kwh, 2, "kWh")} · ${fmt(x.nonpv_zl, 2, "zł")}`, "#3ee07a") + row("Sprzedaż łącznie (depozyt)", `${fmt(x.exp, 1, "kWh")} · ${fmt(x.sprz_zl, 2, "zł")}`, "#3ee07a")
+    + row("Zakup pod sprzedaż", `${fmt(x.zakup_pod_sprzedaz_kwh, 2, "kWh")} · ${x.zakup_pod_sprzedaz_zl == null ? "–" : fmt(x.zakup_pod_sprzedaz_zl, 2, "zł")}`, "#ff6b6b")
+    + row("Zysk z handlu", x.zysk_handel_zl == null ? "–" : fmt(x.zysk_handel_zl, 2, "zł"), x.zysk_handel_zl >= 0 ? "#3ee07a" : "#ff6b6b");
+  const en = `<div class="ov-box"><div class="ov-h">${ic("stack", 20)} Energia ${fut ? "– prognoza dnia" : "w tym dniu"}</div>
+    ${row("Import z sieci", fmt(g("imp"), 1, "kWh"), "#ff6b6b")}${row("Eksport do sieci", fmt(g("exp"), 1, "kWh"), "#3ee07a")}${row("Bateria ład. / rozł.", `${fmt(g("bin"), 1)} / ${fmt(g("bout"), 1, "kWh")}`)}${row("Produkcja PV", fmt(g("pv"), 1, "kWh"), "#facc15")}${row("Zużycie domu", fmt(g("dom"), 1, "kWh"), "#1e9bff")}
+    <div class="ov-h" style="margin:10px 0 4px;font-size:14px">${ic("coins", 16)} Handel</div>${han}</div>`;
+  const mid = `<div class="ov-mid">${en}
+    <div class="ov-box"><div class="ov-h" style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px">${icR("chart", 26)} Profil mocy <span class="ov-mut">(cały dzień)</span></span>${fut ? "" : `<button class="btn" data-pfopen style="font-size:12px;padding:4px 10px">Prognoza vs rzeczywistość ↗</button>`}</div>${profile(c, w)}</div></div>`;
+  return `${dayBar(c)}${scene}${tiles}${mid}${fcRow(c, w, "cały dzień")}${modal()}${accuracyModal(c)}`;
+}
+
 export function render(c) {
+  if (c.ovDay && c.ovDay !== isoD(Date.now())) return dayView(c);
+  return dayBar(c) + renderLive(c);
+}
+function renderLive(c) {
   const h = c.hass, v = (k, d) => c.v(k, d);
   loadManual(c);
   const mt = today(h);
@@ -177,6 +240,10 @@ export function render(c) {
   return `${S(h, c.e("bateria_soc")) ? "" : `<div class="box err">Brak danych z dataloggera <b>${c.dev}</b>. Sprawdź, czy ESPHome jest online.</div>`}${scene}${tiles}<div data-pge-ov style="margin-bottom:14px">${pgeEl ? "" : `<div class="ov-box ov-mut" style="min-height:420px">Ładuję rozliczenie PGE…</div>`}</div>${mid}${fcRow(c)}<div style="margin-top:14px">${ster}</div><div style="margin-bottom:14px">${billBox(c)}</div>${bot}${modal()}${accuracyModal(c)}`;
 }
 export function bind(c, r) {
+  const setD = d => { const td = isoD(Date.now()); c.ovDay = !d || d === td ? null : d; c._hold = false; c.render(true); };
+  r.querySelectorAll("[data-ovd]").forEach(b => b.onclick = () => { const d = new Date((c.ovDay || isoD(Date.now())) + "T12:00"); d.setDate(d.getDate() + +b.dataset.ovd); setD(isoD(d)); });
+  r.querySelector("[data-ovtoday]")?.addEventListener("click", () => setD(null));
+  const di = r.querySelector("[data-ovdate]"); if (di) { di.onchange = () => setD(di.value); di.onfocus = () => { c._hold = true; }; di.onblur = () => { c._hold = false; }; di.onclick = () => { try { di.showPicker(); } catch (e) {} }; }
   r.querySelectorAll("[data-hl]").forEach(el => {
     const set = k => { if (HL.k === k) return; HL.k = k; c._hold = !!k; c.render(true); };
     el.addEventListener("mouseenter", () => set(el.dataset.hl));

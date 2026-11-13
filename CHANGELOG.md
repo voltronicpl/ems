@@ -1,5 +1,9 @@
 # Zmiany EMS
 
+## 0.6.54
+- Przegląd: pasek wyboru dnia (◀ data ▶, Dziś). Dzień miniony = podsumowanie całego dnia (scena i kafle w kWh, bateria SOC start→koniec/min/max, szczyty mocy, energia i handel z `/api/ems/energia?dzien=`, Profil mocy i wykresy PV/dom za cały dzień, „Prognoza vs rzeczywistość” otwiera ten dzień). Dzień przyszły (do +2) = prognoza z planu.
+- Po wyjściu na inną zakładkę i powrocie Przegląd zawsze startuje od dziś (na żywo).
+
 ## 0.6.53
 - Kafel „Szacowana kwota rachunku”: kwota opisana jako „do dziś (1–DD.MM)” + nowa linia „Prognoza na cały miesiąc: ~X zł”.
 - Prognoza na cały miesiąc (backend, atrybut forecast_month): reszta dni liczona tempem dziennym energii/dystrybucji/oddania z bieżącego miesiąca (przy <5 dniach mieszane z poprzednim miesiącem), rozliczona depozytem FIFO + opłaty stałe.

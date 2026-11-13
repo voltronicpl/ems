@@ -139,7 +139,7 @@ class EmsDashboard extends HTMLElement {
 
   bind() {
     const r = this.shadowRoot;
-    r.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => { this.tab = +el.dataset.tab; this.tabAt = Date.now(); this.render(); if (ui.mob) this.scrollIntoView?.({ block: "start" }); });
+    r.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => { this.ovDay = null; this.tab = +el.dataset.tab; this.tabAt = Date.now(); this.render(); if (ui.mob) this.scrollIntoView?.({ block: "start" }); });
     // ☰ – na waskim ekranie HA chowa pasek boczny; bez tego przycisku nie da sie wyjsc z panelu
     r.querySelector("[data-hdodczyt]")?.addEventListener("click", async () => { if (this.rd.__hd) return; this.rd.__hd = 1; this.render(true); try { await this.odczyt([this.rid(this.e("ostatni_odczyt_ustawien"), "Ostatni odczyt ustawien")], true); this.render(true); } finally { delete this.rd.__hd; this.render(true); } });
     r.querySelector("[data-menu]")?.addEventListener("click", () => this.dispatchEvent(new Event("hass-toggle-menu", { bubbles: true, composed: true })));
