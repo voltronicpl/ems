@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## 0.6.53
+- Kafel „Szacowana kwota rachunku”: kwota opisana jako „do dziś (1–DD.MM)” + nowa linia „Prognoza na cały miesiąc: ~X zł”.
+- Prognoza na cały miesiąc (backend, atrybut forecast_month): reszta dni liczona tempem dziennym energii/dystrybucji/oddania z bieżącego miesiąca (przy <5 dniach mieszane z poprzednim miesiącem), rozliczona depozytem FIFO + opłaty stałe.
+- Porównanie % z poprzednim miesiącem liczone z prognozy całego miesiąca; dymek (i) z rozbiciem.
+
 ## 0.6.52
 - Plan na jutro od razu (wstępny): gdy PSE nie opublikowało jeszcze RCE na jutro, EMS szacuje ją na każdy kwadrans (40 % wczoraj + 30 % ten sam dzień tydzień temu + 30 % średnia dni tego samego typu z 7 dni) i liczy plan do końca jutra. W Planie plakietka „⏳ jutro: plan wstępny – RCE szacowana”, w dymku „RCE – szacowana”.
 - Bezpiecznik: sprzedaż zaplanowana na szacowanej RCE NIE trafia do falownika (w TOU jako autokonsumpcja).

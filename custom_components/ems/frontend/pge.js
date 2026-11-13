@@ -172,7 +172,7 @@ function buildModel(hass, ids, raw, offset) {
 
   return {
     sel, prevD, isCurrent, hasStats, months, tariff, vat,
-    invoice, invoicePrev, deposit, dep, month, prev, periods, flow,
+    invoice, invoicePrev, fcm: isCurrent ? inv.forecast_month || null : null, deposit, dep, month, prev, periods, flow,
     spark: {
       invoice: series(30, r => r.invoice_forecast).filter(x => x.d >= sel).map(x => x.v).filter(isNum).map(Number), deposit: s30(r => r.deposit_estimate),
       imp: s30(imp), exp: s30(r => r.export_kwh), sell: s30(r => r.export_value), cost: s30(r => r.energy_cost),
@@ -1488,7 +1488,11 @@ class PGEPanel extends PGEBase {
     const ch = this._chart(m), bv = balView(ch.loading ? { imp: m.month.imp, exp: m.month.exp } : ch.tot);
     const info = t => `<ha-icon class="info" icon="mdi:information-outline" title="${esc(t)}"></ha-icon>`;
     const mAcc = MONTH_ACC[m.sel.getMonth()], prevI = MONTH_INSTR[m.prevD.getMonth()];
-    const invDiff = isNum(m.invoice) && isNum(m.invoicePrev) ? m.invoice - m.invoicePrev : null;
+    const fcm = m.fcm && isNum(m.fcm.invoice) ? m.fcm : null;
+    const invCmp = fcm ? fcm.invoice : m.invoice;
+    const invDiff = isNum(invCmp) && isNum(m.invoicePrev) ? invCmp - m.invoicePrev : null;
+    const invTip = fcm ? `Do dziś: ${zl(m.invoice)} (faktycznie zmierzone, ${fcm.days_done} z ${fcm.days_month} dni).\nPrognoza na cały miesiąc: ${zl(fcm.invoice)} — reszta dni liczona tempem dziennym z tego miesiąca${fcm.days_done < 5 ? " (zmieszanym z poprzednim miesiącem)" : ""}.\nW prognozie: energia ${zl(fcm.energy_gross)} − depozyt ${zl(fcm.deposit_used)} + dystrybucja ${zl(fcm.distribution_gross)} + opłaty stałe ${zl(fcm.fixed_gross)}. To nie jest faktura PGE.` : "Prognoza lokalna (energia po depozycie + dystrybucja + opłaty stałe, brutto). To nie jest faktura PGE.";
+    const invSub = fcm ? `do dziś (1–${new Date().getDate()}.${String(m.sel.getMonth() + 1).padStart(2, "0")})<br><span class="t-orange">Prognoza na cały miesiąc: ~${zl(fcm.invoice)}</span>` : `za ${mAcc} ${m.sel.getFullYear()}`;
     const sc = depositScale(m.deposit);
     const stale = m.updated && Date.now() - m.updated > 2 * 36e5;
     const tariff = m.tariff, zoneKey = tariff?.zone, zPrice = tariff?.price_gross?.[zoneKey];
@@ -1506,9 +1510,9 @@ class PGEPanel extends PGEBase {
   ${m.hasStats ? "" : `<div class="warn">Brak statystyk długoterminowych z Recordera – tabele, wykresy i porównania pojawią się po pierwszych godzinach/dobach zbierania danych.</div>`}
 
   <section class="top">
-    <div class="box hist" data-hist="invoice" tabindex="0" role="button"><div class="k-head"><span class="ic ic-orange">${CICON.bill}</span><div><div class="k-label">Szacowana kwota rachunku ${info("Prognoza lokalna (energia po depozycie + dystrybucja + opłaty stałe, brutto). To nie jest faktura PGE.")}</div>
-      <div class="k-val t-orange">${zl(m.invoice)}</div><div class="k-sub">za ${mAcc} ${m.sel.getFullYear()}</div></div></div>
-      <div class="k-bottom"><div>${delta(m.invoice, m.invoicePrev, true)}${invDiff !== null ? `<div class="muted">w porównaniu z ${prevI}<br>(${zl(invDiff, true)})</div>` : ""}</div>${sw(m.spark.invoice, TONE.red, 120, 60)}</div></div>
+    <div class="box hist" data-hist="invoice" tabindex="0" role="button"><div class="k-head"><span class="ic ic-orange">${CICON.bill}</span><div><div class="k-label">Szacowana kwota rachunku ${info(invTip)}</div>
+      <div class="k-val t-orange">${zl(m.invoice)}</div><div class="k-sub">${invSub}</div></div></div>
+      <div class="k-bottom"><div>${delta(invCmp, m.invoicePrev, true)}${invDiff !== null ? `<div class="muted">${fcm ? "prognoza vs" : "w porównaniu z"} ${prevI}<br>(${zl(invDiff, true)})</div>` : ""}</div>${sw(m.spark.invoice, TONE.red, 120, 60)}</div></div>
 
     <div class="box hist" data-hist="deposit" tabindex="0" role="button"><div class="k-head"><span class="ic ic-blue">${CICON.wallet}</span><div><div class="k-label">Saldo depozytu prosumenckiego ${info("Prognoza FIFO: wartość eksportu wg RCE × współczynnik, ważna 12 mies. To nie jest saldo bankowe.")}</div>
       <div class="k-val t-green">${zl(m.deposit, true)}</div><div class="k-sub">Dostępne środki do rozliczenia</div></div></div>

@@ -201,6 +201,45 @@ class PGELedger:
             else: cursor = date(cursor.year, cursor.month+1, 1)
         return settle_months(months, max(0., float(self.settings['initial_deposit']) + float(self.data.get('deposit_adjustment', 0))), credits_out=credits_out)
 
+    def _month_forecast(self):
+        """EMS v0.6.53: prognoza rachunku na cały bieżący miesiąc.
+        Reszta miesiąca = tempo dzienne z bieżącego miesiąca (przy <5 dniach mieszane z poprzednim miesiącem)."""
+        import calendar
+        now = dt_util.now().astimezone(WARSAW)
+        key = now.strftime('%Y-%m')
+        dim = calendar.monthrange(now.year, now.month)[1]
+        el = max(0.05, now.day - 1 + (now.hour * 60 + now.minute) / 1440)
+        rest = max(0., dim - el)
+        months = {k: dict(v) for k, v in self.data['months'].items()}
+        cur = months.get(key, {'energy': 0., 'distribution': 0., 'export_credit': 0., 'vat': float(self.settings['vat'])})
+        prev_key = add_months(date(now.year, now.month, 1), -1).strftime('%Y-%m')
+        prev = months.get(prev_key)
+        w = min(1., el / 5) if prev else 1.
+        pdim = calendar.monthrange(now.year - (now.month == 1), 12 if now.month == 1 else now.month - 1)[1]
+        def rate(f):
+            r = cur.get(f, 0.) / el
+            return w * r + (1 - w) * (prev.get(f, 0.) / pdim if prev else 0.)
+        fc = dict(cur)
+        for f in ('energy', 'distribution', 'export_credit'):
+            fc[f] = cur.get(f, 0.) + rate(f) * rest
+        months[key] = fc
+        self._settle_fill(months)
+        res = settle_months(months, max(0., float(self.settings['initial_deposit']) + float(self.data.get('deposit_adjustment', 0))))
+        c = res.get(key, {})
+        return {'invoice': c.get('invoice'), 'energy_gross': c.get('energy_gross'), 'deposit_used': c.get('deposit_used'),
+                'distribution_gross': c.get('distribution_gross'), 'fixed_gross': c.get('fixed_gross'),
+                'deposit_added': c.get('deposit_added'), 'days_done': round(el, 2), 'days_month': dim}
+
+    def _settle_fill(self, months):
+        start = date.fromisoformat(self.settings['start_date'])
+        today = dt_util.now().astimezone(WARSAW).date()
+        cursor = date(start.year, start.month, 1)
+        while cursor <= today:
+            k = cursor.strftime('%Y-%m')
+            m = months.setdefault(k, {'energy': 0., 'distribution': 0., 'export_credit': 0., 'vat': float(self.settings['vat'])})
+            m['fixed'] = self._fixed_month(k)
+            cursor = add_months(cursor, 1)
+
     def value(self, kind):
         d, s = self.data, self.settings
         if kind in d and isinstance(d[kind], (float, int)):
@@ -244,6 +283,7 @@ class PGELedger:
             credits = []
             return {
                 'months': self._settlements(credits),
+                'forecast_month': self._month_forecast(),
                 'deposit_credits': credits,
                 # EMS: stare encje (historia sprzed dataloggera) i stare sensory PGE (statystyki sprzed wcielenia do EMS)
                 'power_old': {k: src.get(v) for k, v in OLD_SRC.items() if (src := getattr(getattr(getattr(self, 'ems', None), 'src', None), 'cfg', {}) or {}).get(v)},
