@@ -1,5 +1,9 @@
 # Zmiany EMS
 
+## 0.6.57
+- Nauka (na dole): 🔋 Symulacja magazynu (`batsim.py`) – brak / obecny (15 kWh) / 2× (30 kWh) na historii godzinowej (dom, PV, G12, RCE × depozyt), ten sam algorytm, SOC min, sprawności, 0,2C, limit przyłącza. Kafelki oszczędności dziennie / miesięcznie / rocznie (15 vs brak, 30 vs 15), wykres dzień po dniu + narastająco, tabela zakup / oddane / koszt.
+- Nowy parametr `cena_dokupienia_zl` (number.ems_cena_dokupienia_zl) i zwrot w latach.
+
 ## 0.6.56
 - Nauka → Obecność vs zużycie: wszystkie wykresy i współczynniki dla całego domu (z pompą ciepła). Prognoza bez zmian (koryguje część bez pompy).
 

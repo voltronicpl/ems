@@ -369,7 +369,7 @@ class LearnView(HomeAssistantView):
         from . import presence as _pr
         _obec = _pr.view(getattr(eng, "pres_m", None), getattr(eng, "_pres", {}), getattr(eng, "_hist", {}), d1, d0)
         return self.json({
-            "obecnosc": _obec,
+            "obecnosc": _obec, "symulacja": getattr(eng, "sim", None),
             "dzien": d0.isoformat(), "przeliczono": L.at, "snapshoty": L.snap, "seria": ser, "godziny": [hours[i] for i in range(24)],
             "pompa": {k: v for k, v in (L.pump or {}).items() if k not in ("mies", "sez")} if L.pump else None, "pompa_pkt": [[round(a, 1), round(b, 1), round(c, 3)] for a, b, c in pts[::step]],
             "urzadzenia": {n: {**range_dev(L.dev_h.get(n, {}), d1, d0), "ikona": d.get("ikona"), "od": d.get("od"),

@@ -1,6 +1,6 @@
 // Zakladka Nauka: czy algorytm sie uczy (blad prognozy w czasie), wspolczynniki "bylo -> jest", dni podobne,
 // pompa ciepla, urzadzenia, profil dobowy, kalibracja PV per miesiac. Dane: GET /api/ems/nauka?dzien=
-import { fmt, esc, tip } from "../core.js";
+import { fmt, esc, tip, num } from "../core.js";
 export const title = "🧠 Nauka";
 
 const st = { dc: "kal_pv", okres: "tydz", end: null, d: null, busy: false, at: 0, key: "", wsp: "kal_pv" };
@@ -213,6 +213,33 @@ function presBox(d) {
     <div class="g2"><div><div class="lab" style="margin-top:8px">🔌 Urządzenia a obecność</div>${dtab}</div><div><div class="lab" style="margin-top:8px">🗓 Typowy tydzień obecności (90 dni; jaśniej = mniej osób)</div>${grid}</div></div></div>`;
 }
 
+// v0.6.57: symulacja magazynu – brak / obecny / 2× (30 kWh)
+function batSimBox(d, c) {
+  const S = d.symulacja, H = `<div class="h"><span>🔋 Symulacja magazynu <span class="lab" style="font-size:inherit">(na waszej historii: dom, PV, G12, RCE × depozyt)</span></span></div>`;
+  if (!S || !S.dni?.length) return `<div class="box">${H}<div class="lab">Liczę symulację (raz na godzinę razem z nauką)… Potrzeba min. 3 dni historii zużycia.</div></div>`;
+  const all = S.dni, inP = all.filter(r => r.d >= d.od && r.d <= d.do), last = all.filter(r => r.d > iso(new Date(Date.now() - 365 * 864e5)));
+  const sv = (rs, a, b) => rs.reduce((q, r) => q + (r["k" + a] - r["k" + b]), 0);
+  const per = (rs, a, b) => { const n = rs.length || 1, t = sv(rs, a, b); return { d: t / n, m: t / n * 30.4, y: last.length ? sv(last, a, b) / last.length * 365 : t / n * 365, t }; };
+  const P1 = per(inP.length ? inP : all, "0", "15"), P2 = per(inP.length ? inP : all, "15", "30"), poj = S.poj || 15;
+  const cena = num(c.hass, "number.ems_cena_dokupienia_zl", 15000), zw = P2.y > 0 ? cena / P2.y : null;
+  const kaf = (t, P, col) => `<div class="box" style="margin:0"><div class="h" style="font-size:14px"><span>${t}</span></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    <div><div class="lab">dziennie</div><b style="color:${col}">${fmt(P.d, 2, "zł")}</b></div><div><div class="lab">miesięcznie</div><b style="color:${col}">${fmt(P.m, 0, "zł")}</b></div><div><div class="lab">rocznie</div><b style="color:${col}">${fmt(P.y, 0, "zł")}</b></div></div>
+    <div class="lab" style="margin-top:4px">w wybranym okresie: ${fmt(P.t, 0, "zł")}</div></div>`;
+  const rs = inP.length ? inP : all, xs = rs.map(r => r.d.slice(5));
+  let a1 = 0, a2 = 0;
+  const ch = chart(xs, [{ v: rs.map(r => r.k0 - r.k15), c: C.green, bar: true, name: `${fmt(poj, 0)} kWh vs brak (zł/dzień)` }, { v: rs.map(r => r.k15 - r.k30), c: C.vio, bar: true, name: `${fmt(poj * 2, 0)} kWh vs ${fmt(poj, 0)} kWh (zł/dzień)` },
+    { v: rs.map(r => (a2 += r.k15 - r.k30)), c: C.vio, axis: "r", w: 1.6, name: `narastająco ${fmt(poj * 2, 0)} vs ${fmt(poj, 0)} (zł)` }, { v: rs.map(r => (a1 += r.k0 - r.k15)), c: C.green, axis: "r", w: 1.6, dash: "5 4", name: `narastająco ${fmt(poj, 0)} vs brak (zł)` }], { h: 240, unit: "", unitR: "" });
+  const sum = (k) => rs.reduce((q, r) => q + (r[k] || 0), 0);
+  const row = (a, b, cl = "") => `<tr><td>${a}</td>${b.map(x => `<td style="text-align:right;${cl}">${x}</td>`).join("")}</tr>`;
+  const tab = `<table style="width:100%;font-size:13px;margin-top:6px"><tr><th style="text-align:left">w okresie</th><th style="text-align:right">brak</th><th style="text-align:right">${fmt(poj, 0)} kWh</th><th style="text-align:right">${fmt(poj * 2, 0)} kWh</th></tr>
+    ${row("Zakup z sieci (kWh)", ["0", "15", "30"].map(k => fmt(sum("i" + k), 0)))}${row("Oddane do sieci (kWh)", ["0", "15", "30"].map(k => fmt(sum("e" + k), 0)))}${row("Koszt netto (zł)", ["0", "15", "30"].map(k => fmt(sum("k" + k), 0)), "font-weight:600")}</table>
+    <div class="lab" style="font-size:11px">Koszt netto = zakup × G12 − oddane × RCE × depozyt. Mniej zakupu = mniej drogiej strefy; mniej oddanego = więcej PV zostaje w domu; przy wysokiej RCE większy magazyn więcej sprzedaje.</div>`;
+  return `<div class="box">${H}<div class="g2">${kaf(`🔋 ${fmt(poj, 0)} kWh (wasz) vs brak magazynu`, P1, C.green)}${kaf(`🔋🔋 ${fmt(poj * 2, 0)} kWh vs ${fmt(poj, 0)} kWh`, P2, C.vio)}</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 0"><span class="lab">Cena dokupienia ${fmt(poj, 0)} kWh:</span><div class="inp" style="width:150px">${c.input("number.ems_cena_dokupienia_zl")}<span>zł</span></div>
+      <b style="color:${C.or}">Zwrot: ${zw == null ? "– (brak oszczędności)" : `${fmt(zw, 1)} lat`}</b><span class="lab">(cena ÷ roczna oszczędność ${fmt(poj * 2, 0)} vs ${fmt(poj, 0)} kWh)</span></div>
+    ${ch}${tab}<div class="lab" style="font-size:11px;margin-top:4px">Ten sam algorytm dla każdej pojemności (ładowanie w taniej strefie pod drogi blok, dom z baterii w drogiej, sprzedaż przy RCE ≥ 0,77 zł), SOC min, sprawności, 0,2C, limit przyłącza. Historia: ${all.length} dni (RCE z ${S.rce_dni} dni, brak = 0,35 zł). Rocznie = ostatnie 365 dni (krótsza historia – przeskalowane).</div></div>`;
+}
+
 function pumpBox(d) {
   const p = d.pompa_pkt || [], m = d.pompa; if (!p.length) return "";
   const W = 440, H = 230, L = 40, B = 26, T = 10, R = 10, t0 = Math.min(...p.map(q => q[0])), t1 = Math.max(...p.map(q => q[0])), y1 = Math.max(...p.map(q => q[2]), 0.5) * 1.05, w1 = Math.max(...p.map(q => q[1]), 1);
@@ -257,7 +284,7 @@ export function render(c) {
   return `<style>.nk-svg text.xl{fill:#8fa6bd;font-size:11px}.nk-wrap{position:relative}.nk-svg{touch-action:pan-y}.nk-tip{position:absolute;z-index:6;background:#0b1622f2;border:1px solid #2a4560;border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.6;pointer-events:none;white-space:nowrap;box-shadow:0 0 14px #000b;min-width:180px}
 .nk-tip>div{display:flex;justify-content:space-between;gap:18px}.nk-tip i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}.nk-th{font-weight:700;margin-bottom:2px}.nk-tip .nk-note{display:block;color:#9bb3c6;font-size:11.5px;white-space:normal;max-width:260px}
 .nk-lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#9bb3c6;margin-top:4px}.nk-lg i{display:inline-block;width:16px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}</style>
-    ${bar}${tiles(d, P)}${accBox(d, P)}${tempBox(d)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}${presBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}`;
+    ${bar}${tiles(d, P)}${accBox(d, P)}${tempBox(d)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}${presBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}${batSimBox(d, c)}`;
 }
 
 function nkTip(box, ev) {

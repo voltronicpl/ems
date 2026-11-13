@@ -15,7 +15,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 
-from . import learn, load_forecast, presence, prices, pv_forecast, tariff, weather
+from . import batsim, learn, load_forecast, presence, prices, pv_forecast, tariff, weather
 from .learn import Learn
 from .const import MANUAL, PARAMS
 from .diag import get_logger
@@ -63,6 +63,7 @@ class Engine:
         self._base_hist: dict = {}
         self.pres_m = None
         self._pres_info = None
+        self.sim = None
         self._pv_cal = 1.0
         self._wx_learn: dict = {}
         self.fc_log: dict = {}                       # slot ISO -> {"rano": {...}, "ost": {...}} (14 dni) – prognoza vs fakt
@@ -308,6 +309,10 @@ class Engine:
                                  devs[d["nazwa"]].get("kwh_cykl"), devs[d["nazwa"]].get("co_ile_dni"))
                 self.learn.dev = devs
                 self._pres = await presence.history(self.hass, self.src.obec, 365) if self.src.obec else {}
+                try:
+                    self.sim = await batsim.run(self.hass, self)
+                except Exception as err:  # noqa: BLE001
+                    LOG.warning("Symulacja magazynu: %s", err)
                 self.learn.at = now.isoformat()
                 self._hist_at = now
 

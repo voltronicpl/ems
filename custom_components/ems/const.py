@@ -1,6 +1,6 @@
 """Stale integracji EMS."""
 DOMAIN = "ems"
-VERSION = "0.6.56"
+VERSION = "0.6.57"
 CONF_DEVICE = "device"          # prefiks encji ESPHome, np. "ecobss"
 DEFAULT_DEVICE = "ecobss"
 POLL_NUMBER = "interwal_odczytu"
@@ -130,6 +130,7 @@ PARAMS = {
     "soc_burza": ("SOC przy burzy", 10, 100, 1, "%", 50),
     "soc_max": ("SOC maksymalny", 50, 100, 1, "%", 98),
     "ladowanie_lagodne_c": ("Lagodne ladowanie z sieci (algorytm)", 0.05, 1, 0.05, "C", 0.2),
+    "cena_dokupienia_zl": ("Cena dokupienia drugiego magazynu (symulacja)", 0, 200000, 100, "zl", 15000),
     "ladowanie_zapas_min": ("Ladowanie konczy sie przed koncem taniej strefy", 0, 240, 15, "min", 120),
     "tou_min_blok_min": ("Najkrotszy punkt TOU (autokonsumpcja / trzymanie)", 15, 180, 15, "min", 60),
     "max_pobor_w": ("Max pobor z sieci (przylacze)", 1000, 40000, 100, "W", 10000),
