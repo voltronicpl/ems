@@ -367,7 +367,7 @@ class LearnView(HomeAssistantView):
                 prof[f"rok_temu|{typ}"].append((loc.hour, w / 1000))
         profil = {k: [round(sum(v for h, v in a if h == i) / max(sum(1 for h, _ in a if h == i), 1), 3) for i in range(24)] for k, a in prof.items()}
         from . import presence as _pr
-        _obec = _pr.view(getattr(eng, "pres_m", None), getattr(eng, "_pres", {}), getattr(eng, "_base_hist", {}), d1, d0)
+        _obec = _pr.view(getattr(eng, "pres_m", None), getattr(eng, "_pres", {}), getattr(eng, "_hist", {}), d1, d0)
         return self.json({
             "obecnosc": _obec,
             "dzien": d0.isoformat(), "przeliczono": L.at, "snapshoty": L.snap, "seria": ser, "godziny": [hours[i] for i in range(24)],

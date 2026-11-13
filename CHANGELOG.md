@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.56
+- Nauka → Obecność vs zużycie: wszystkie wykresy i współczynniki dla całego domu (z pompą ciepła). Prognoza bez zmian (koryguje część bez pompy).
+
 ## 0.6.55
 - Obecność domowników: Ustawienia → Historia do nauki → 👪 Obecność (person.* / device_tracker.*, „home” = w domu).
 - Nauka (`presence.py`): liczba osób w domu (0/1/2) per godzina z historii HA; zużycie domu bez pompy ciepła przy 0/1/2 osobach (współczynniki + per godzina), typowa obecność (dzień tyg. × godzina), starty urządzeń na tydzień przy 0/1/2 osobach. Model od 7 dni danych.

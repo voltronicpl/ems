@@ -181,4 +181,11 @@ def view(m: dict | None, pres: dict, base_hist_w: dict, a, b) -> dict | None:
     dzien = [{"d": d.isoformat(), "osoby": round(v[0] / v[1], 2) if v[1] else None, "dom": round(v[2], 2) if v[3] >= 20 else None}
              for d, v in sorted(day.items())]
     okres = {k: [round(sh[(k, hr)] / nh[(k, hr)], 3) if nh[(k, hr)] >= 2 else None for hr in range(24)] for k in (0, 1, 2)}
-    return {**m, "dzien": dzien, "okres_godz": okres}
+    # wspolczynniki dla calego domu (z pompa) – cala historia
+    s0 = defaultdict(float); n0 = defaultdict(int)
+    for h, w in base_hist_w.items():
+        if h in pres:
+            s0[pres[h]] += w / 1000; n0[pres[h]] += 1
+    tot = sum(s0.values()) / max(sum(n0.values()), 1)
+    r = {k: (round(s0[k] / n0[k] / tot, 3) if n0[k] and tot > 0 else None) for k in (0, 1, 2)}
+    return {**m, "r": r, "sr_kwh_h": round(tot, 3), "godzin": {k: n0[k] for k in (0, 1, 2)}, "dzien": dzien, "okres_godz": okres}
