@@ -1,6 +1,6 @@
 """Stale integracji EMS."""
 DOMAIN = "ems"
-VERSION = "0.6.50"
+VERSION = "0.6.51"
 CONF_DEVICE = "device"          # prefiks encji ESPHome, np. "ecobss"
 DEFAULT_DEVICE = "ecobss"
 POLL_NUMBER = "interwal_odczytu"

@@ -137,13 +137,13 @@ export function accuracyModal(c) {
   if (!st.open) return "";
   const dw = dayWindow(new Date(st.day + "T00:00")), meas = range(c, dw.t0, dw.t1).map(disp), sm = slots(c, dw.t0, dw.t1), dd = dayData(c, st.day);
   const H = [];
-  for (let h = 0; h < 24; h++) { const a = dw.t0 + h * 36e5, b = a + 36e5; if (a > Date.now()) break;
+  for (let h = 0; h < 24; h++) { const a = dw.t0 + h * 36e5, b = a + 36e5, fut = a > Date.now();   // przyszle godziny: sama prognoza (plan)
     const ms = meas.filter(r => r.t >= a && r.t < b), done = b <= Date.now(), kwh = k => ms.reduce((s, r) => s + (r[k] || 0), 0) / 60;
     const pos = k => ms.reduce((s, r) => s + Math.max(0, r[k] || 0), 0) / 60;
     const fs = [0, 1, 2, 3].map(i => sm.get(a + i * 9e5)).filter(Boolean), sum = (k, src = "ost") => fs.length ? fs.reduce((s, x) => s + (((src === "rano" ? x.rano : x) || {})[k] || 0), 0) : null;
     const plCh = fs.length ? fs.reduce((s, x) => s + (x.action === "charge" ? x.grid_kwh || 0 : 0), 0) : null, plSl = fs.length ? fs.reduce((s, x) => s + (x.action === "sell" ? x.grid_kwh || 0 : 0), 0) : null;
-    H.push({ h, done, n: ms.length, pv: kwh("pv"), dom: kwh("dom"), ch: pos("bat"), ex: pos("grid"), pvR: sum("pv", "rano"), pvO: sum("pv"), domR: sum("load", "rano"), domO: sum("load"), plCh, plSl, fs, a }); }
-  const tot = k => H.reduce((s, x) => s + (x[k] || 0), 0), err = (f, p) => f == null || p == null ? null : f - p, pct = (f, p) => p ? (f - p) / p * 100 : null;
+    H.push({ h, done, fut, n: ms.length, pv: kwh("pv"), dom: kwh("dom"), ch: pos("bat"), ex: pos("grid"), pvR: sum("pv", "rano"), pvO: sum("pv"), domR: sum("load", "rano"), domO: sum("load"), plCh, plSl, fs, a }); }
+  const tot = k => H.filter(x => !x.fut).reduce((s, x) => s + (x[k] || 0), 0), totAll = k => H.reduce((s, x) => s + (x[k] || 0), 0), err = (f, p) => f == null || p == null ? null : f - p, pct = (f, p) => p ? (f - p) / p * 100 : null;
   const hit = (k, pk) => H.filter(x => x.done && x[pk] != null && x[k] > 0.05).filter(x => Math.abs(x[k] - x[pk]) <= Math.max(0.1 * x[k], 0.05)).length, cnt = pk => H.filter(x => x.done && x[pk] != null && x.n).length;
   const e = v => v == null ? "–" : `<span style="color:${Math.abs(v) < 0.05 ? "#9bb3c6" : v > 0 ? "#3ee07a" : "#ff6b6b"}">${v > 0 ? "+" : ""}${fmt(v, 2)}</span>`;
   // wykres godzinowy: fakt ciagla, prognoza (ostatnia) przerywana
@@ -153,10 +153,10 @@ export function accuracyModal(c) {
   ch += `<text x="34" y="18" text-anchor="end" class="pf-ax">${fmt(mx, 1)}</text><text x="34" y="${CH - 28}" text-anchor="end" class="pf-ax">0</text>` + ln("pv", "#facc15") + ln("pvO", "#facc15", 1) + ln("dom", "#1e9bff") + ln("domO", "#1e9bff", 1);
   const sumRow = (lab, f, pR, pO) => `<tr><td class="hd">${lab}</td><td data-l="Fakt" class="r"><b>${fmt(f, 1, "kWh")}</b></td><td data-l="Prognoza z początku dnia" class="r">${fmt(pR, 1, "kWh")} · ${e(err(f, pR))} (${pR ? fmt(pct(f, pR), 0, "%") : "–"})</td><td data-l="Prognoza ostatnia" class="r">${fmt(pO, 1, "kWh")} · ${e(err(f, pO))} (${pO ? fmt(pct(f, pO), 0, "%") : "–"})</td></tr>`;
   const anyFc = H.some(x => x.pvO != null);
-  const rows = H.map(x => `<tr><td class="hd">${String(x.h).padStart(2, "0")}:00${x.done ? "" : " (trwa)"}</td>
-    <td data-l="PV fakt" class="r">${fmt(x.pv, 2)}</td><td data-l="PV prognoza" class="r">${fmt(x.pvO, 2)} <span class="lab">(pocz. dnia ${fmt(x.pvR, 2)})</span></td><td data-l="PV błąd" class="r">${e(err(x.pv, x.pvO))}</td>
-    <td data-l="Dom fakt" class="r">${fmt(x.dom, 2)}</td><td data-l="Dom prognoza" class="r">${fmt(x.domO, 2)} <span class="lab">(pocz. dnia ${fmt(x.domR, 2)})</span></td><td data-l="Dom błąd" class="r">${e(err(x.dom, x.domO))}</td>
-    <td data-l="Ładowanie plan/fakt" class="r">${fmt(x.plCh, 2)} / ${fmt(x.ch, 2)}</td><td data-l="Sprzedaż plan/fakt" class="r">${fmt(x.plSl, 2)} / ${fmt(x.ex, 2)}</td></tr>`).join("");
+  const rows = H.map(x => `<tr style="${x.fut ? "opacity:.7" : ""}"><td class="hd">${String(x.h).padStart(2, "0")}:00${x.fut ? " (prognoza)" : x.done ? "" : " (trwa)"}</td>
+    <td data-l="PV fakt" class="r">${x.fut ? "–" : fmt(x.pv, 2)}</td><td data-l="PV prognoza" class="r">${fmt(x.pvO, 2)} <span class="lab">(pocz. dnia ${fmt(x.pvR, 2)})</span></td><td data-l="PV błąd" class="r">${x.fut ? "–" : e(err(x.pv, x.pvO))}</td>
+    <td data-l="Dom fakt" class="r">${x.fut ? "–" : fmt(x.dom, 2)}</td><td data-l="Dom prognoza" class="r">${fmt(x.domO, 2)} <span class="lab">(pocz. dnia ${fmt(x.domR, 2)})</span></td><td data-l="Dom błąd" class="r">${x.fut ? "–" : e(err(x.dom, x.domO))}</td>
+    <td data-l="Ładowanie plan/fakt" class="r">${fmt(x.plCh, 2)} / ${x.fut ? "–" : fmt(x.ch, 2)}</td><td data-l="Sprzedaż plan/fakt" class="r">${fmt(x.plSl, 2)} / ${x.fut ? "–" : fmt(x.ex, 2)}</td></tr>`).join("");
   // blad wg wyprzedzenia: kazda zapisana aktualizacja slotu vs fakt slotu
   const BK = [[0, 1, "< 1 h"], [1, 3, "1–3 h"], [3, 6, "3–6 h"], [6, 12, "6–12 h"], [12, 99, "> 12 h"]], acc = BK.map(() => ({ n: 0, ld: 0, pv: 0, bl: 0 }));
   H.filter(x => x.done).forEach(x => (x.fs || []).forEach((sl, i) => { const t = x.a + i * 9e5, ms = meas.filter(r => r.t >= t && r.t < t + 9e5); if (ms.length < 10) return;
@@ -172,6 +172,7 @@ export function accuracyModal(c) {
       <div class="pf-legs" style="margin:4px 0 10px"><span class="pf-lg"><i style="background:#facc15"></i>PV</span><span class="pf-lg"><i style="background:#1e9bff"></i>Dom</span><span class="pf-dash">── fakt · ┄ prognoza (ostatnia przed godziną), kWh/h</span></div>
       <table class="tbl rt" style="margin-bottom:12px"><tr><th>Dzień (do teraz)</th><th class="r">Fakt</th><th class="r">Prognoza z początku dnia · błąd</th><th class="r">Ostatnia prognoza · błąd</th></tr>
         ${sumRow("PV", tot("pv"), tot("pvR"), tot("pvO"))}${sumRow("Zużycie domu", tot("dom"), tot("domR"), tot("domO"))}
+        ${today ? `<tr><td class="hd">Cały dzień – prognoza</td><td colspan="3" data-l="Cały dzień" class="r">PV ${fmt(totAll("pvO"), 1)} kWh · dom ${fmt(totAll("domO"), 1)} kWh <span class="lab">(do teraz fakt + reszta wg ostatniej prognozy: dom ${fmt(tot("dom") + H.filter(x => x.fut).reduce((q, x) => q + (x.domO || 0), 0), 1)} kWh)</span></td></tr>` : ""}
         <tr><td class="hd">Trafione godziny (±10 %)</td><td colspan="3" data-l="Trafione" class="r">PV ${hit("pv", "pvO")}/${cnt("pvO")} · dom ${hit("dom", "domO")}/${cnt("domO")}</td></tr>
         <tr><td class="hd">Ładowanie z sieci</td><td colspan="3" data-l="Plan / fakt" class="r">plan ${fmt(tot("plCh"), 1)} kWh · bateria naładowana ${fmt(tot("ch"), 1)} kWh</td></tr>
         <tr><td class="hd">Sprzedaż</td><td colspan="3" data-l="Plan / fakt" class="r">plan ${fmt(tot("plSl"), 1)} kWh · oddane do sieci ${fmt(tot("ex"), 1)} kWh</td></tr></table>

@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.51
+- „Prognoza vs rzeczywistość”: prognoza na cały dzień – przyszłe godziny na wykresie (przerywana PV / dom do 24:00) i w tabeli („(prognoza)”, fakt „–”); dzisiaj dodatkowy wiersz „Cały dzień – prognoza” (PV, dom, fakt do teraz + reszta wg prognozy). Podsumowanie „do teraz” bez przyszłych godzin.
+
 ## 0.6.50
 - Podświetlanie z „Energia dziś”: w trakcie podświetlenia znikają zwykłe kolumny kupna / sprzedaży (z planu i ręczne) – jasne zostaje tylko to, czego dotyczy wiersz; reszta wykresu mocniej przygaszona.
 
