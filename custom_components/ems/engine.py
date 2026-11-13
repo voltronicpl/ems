@@ -15,7 +15,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 
-from . import learn, load_forecast, prices, pv_forecast, tariff, weather
+from . import learn, load_forecast, presence, prices, pv_forecast, tariff, weather
 from .learn import Learn
 from .const import MANUAL, PARAMS
 from .diag import get_logger
@@ -59,6 +59,10 @@ class Engine:
         self.src = Sources(hass, entry_id)                 # stare encje z HA do nauki
         self.learn = Learn(hass, entry_id)                 # nauka: modele skladnikow, historia wspolczynnikow
         self._pump: dict = {}
+        self._pres: dict = {}
+        self._base_hist: dict = {}
+        self.pres_m = None
+        self._pres_info = None
         self._pv_cal = 1.0
         self._wx_learn: dict = {}
         self.fc_log: dict = {}                       # slot ISO -> {"rano": {...}, "ost": {...}} (14 dni) – prognoza vs fakt
@@ -303,6 +307,7 @@ class Engine:
                         LOG.info("Urzadzenie %s: %s cykli/tydz, %s kWh/cykl, co %s dni", d["nazwa"], devs[d["nazwa"]].get("cykle_tydz"),
                                  devs[d["nazwa"]].get("kwh_cykl"), devs[d["nazwa"]].get("co_ile_dni"))
                 self.learn.dev = devs
+                self._pres = await presence.history(self.hass, self.src.obec, 365) if self.src.obec else {}
                 self.learn.at = now.isoformat()
                 self._hist_at = now
 
@@ -344,6 +349,14 @@ class Engine:
             coeff, c_lab = (self.p["wsp_temp"], "reczny") if self.p["wsp_temp"] else learn.temp_coeff_l(base_hist, wl, self.p["weekend_od_godz"], now.astimezone(WAW).month, load_forecast.temp_coeff)
             LOG.info("Wsp. temperatury %.3f kWh/°C (%s)", coeff, c_lab)
             ldk = load_forecast.forecast(slots, base_hist, {**wl, **self._weather}, self.p, coeff)
+            self._base_hist = base_hist
+            self.pres_m = presence.model(base_hist, self._pres, self.learn.dev_h) if self._pres else None
+            n_now = presence.now_count(self.hass, self.src.obec)
+            pmul = presence.mult(slots, self.pres_m, n_now, now)
+            if pmul:
+                ldk = {k: v * pmul.get(k, 1.0) for k, v in ldk.items()}
+                LOG.info("Obecnosc: %s os. w domu -> zuzycie (bez pompy) teraz x%.2f, wygasa przez 2 h", n_now, pmul.get(slots[0], 1.0))
+            self._pres_info = {"osob": n_now, "proc": round((pmul.get(slots[0], 1.0) - 1) * 100) if pmul else 0, "model": bool(self.pres_m)} if self.src.obec else None
             pump_model = pm["coef"] if pm else None
             if pm:
                 pmp = learn.pump_forecast_l(slots, {**wl, **self._weather}, pm)
@@ -351,6 +364,9 @@ class Engine:
                 LOG.info("Pompa ciepla w prognozie: %.2f kWh w horyzoncie (%s)", sum(pmp.values()), "T + wiatr + slonce" if pm.get("pelny") else "tylko T")
             for n, st in self.learn.dev.items():
                 dv = learn.device_forecast(slots, st)
+                dm = presence.mult(slots, self.pres_m, n_now, now, n)
+                if dm:
+                    dv = {k: v * dm.get(k, 1.0) for k, v in dv.items()}
                 ldk = {k: v + dv.get(k, 0.0) for k, v in ldk.items()}
                 LOG.info("%s w prognozie: %.2f kWh w horyzoncie", n, sum(dv.values()))
 
@@ -367,7 +383,7 @@ class Engine:
                     if datetime.fromisoformat(d["start"]) in self._prices_est:
                         d["est"] = True
             self._log_forecast(now)
-            self.summary = {**summ, "rce_szacowane": bool(self._prices_est), "koszt_baterii": self.bat.info(), "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2), "kalibracja_pv": round(self._pv_cal, 2),
+            self.summary = {**summ, "rce_szacowane": bool(self._prices_est), "obecnosc": self._pres_info, "koszt_baterii": self.bat.info(), "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2), "kalibracja_pv": round(self._pv_cal, 2),
                             "pompa_model": [round(x, 3) for x in pump_model] if pump_model else None,
                             "nauka_bezpiecznik": {"pompa": ("pelny" if pm.get("pelny") else "prosty") if pm else None}}
             self.learn.snapshot(self)

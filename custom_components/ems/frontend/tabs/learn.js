@@ -192,6 +192,27 @@ function devBox(d) {
       <div class="lab" style="font-size:10px;display:flex;justify-content:space-between"><span>0:00</span><span>12:00</span><span>23:00</span></div>${cal(x)}</div>`; }).join("")}</div></div>`;
 }
 
+// v0.6.55: obecność vs zużycie (dom bez pompy ciepła) – 0 / 1 / 2 osoby
+function presBox(d) {
+  const o = d.obecnosc, H = `<div class="h"><span>👪 Obecność vs zużycie <span class="lab" style="font-size:inherit">(dom bez pompy ciepła; 0 / 1 / 2 osoby w domu)</span></span></div>`;
+  if (!o) return `<div class="box">${H}<div class="lab">Wybierz telefony / osoby w Ustawienia → 📚 Historia do nauki → 👪 Obecność.</div></div>`;
+  if (o.brak) return `<div class="box">${H}<div class="lab">Zbieram dane: ${o.godzin_danych || 0} h historii obecności – model ruszy po 7 dniach (do tego czasu prognoza bez zmian).</div></div>`;
+  const PC = [C.grey, C.dom, C.vio], N = ["0 osób", "1 osoba", "2 osoby"], r = o.r || {}, gz = o.godzin || {};
+  const til = [0, 1, 2].map(k => `<div><div class="lab">${N[k]}</div><b style="color:${PC[k]}">${fmt((r[k] ?? 1) * 100, 0)} %</b> <span class="lab">${fmt((r[k] ?? 1) * (o.sr_kwh_h || 0), 2, "kWh/h")} · ${gz[k] || 0} h danych</span></div>`).join("");
+  const og = o.okres_godz || {}, hx = [...Array(24).keys()].map(h => `${h}:00`);
+  const c1 = chart(hx, [0, 1, 2].map(k => ({ v: og[k] || [], c: PC[k], bar: true, name: `${N[k]} (kWh/h)` })), { h: 220, every: 3 });
+  const dz = o.dzien || [], dx = dz.map(x => x.d.slice(5));
+  const c2 = dz.length > 1 ? chart(dx, [{ v: dz.map(x => x.dom), c: C.dom, name: "Dom bez pompy (kWh/dzień)" }, { v: dz.map(x => x.osoby), c: C.or, axis: "r", dash: "5 4", name: "Średnio osób w domu" }], { h: 220, unitR: "" }) : "";
+  const dv = Object.entries(o.dev || {});
+  const dtab = dv.length ? `<table style="width:100%;margin-top:8px;font-size:13px"><tr><th style="text-align:left">Urządzenie</th>${N.map(n => `<th>${n}</th>`).join("")}<th>średnio</th></tr>${dv.map(([n, x]) => `<tr><td>${esc(n)}</td>${[0, 1, 2].map(k => `<td style="text-align:center">${x.tydz?.[k] == null ? "–" : fmt(x.tydz[k], 1)}</td>`).join("")}<td style="text-align:center">${fmt(x.sr, 1)}</td></tr>`).join("")}</table><div class="lab" style="font-size:11px">startów na tydzień przy danej liczbie osób w domu</div>` : `<div class="lab">Brak urządzeń z cyklami.</div>`;
+  const typ = o.typ || {}, cell = (w, h) => { const p = typ[`${w}-${h}`]; if (!p) return `<div style="height:13px;background:#ffffff08"></div>`; const m = p[1] + 2 * p[2];
+    return `<div title="${WD[w]} ${h}:00 – średnio ${fmt(m, 1)} os. (0: ${fmt(p[0] * 100, 0)} %, 1: ${fmt(p[1] * 100, 0)} %, 2: ${fmt(p[2] * 100, 0)} %)" style="height:13px;border-radius:2px;background:${C.or};opacity:${(0.08 + m / 2 * 0.9).toFixed(2)}"></div>`; };
+  const grid = `<div style="display:grid;grid-template-columns:24px repeat(24,1fr);gap:2px;margin-top:6px">${[0, 1, 2, 3, 4, 5, 6].map(w => `<div class="lab" style="font-size:10px">${WD[w]}</div>${[...Array(24).keys()].map(h => cell(w, h)).join("")}`).join("")}</div><div class="lab" style="font-size:10px;display:flex;justify-content:space-between;padding-left:26px"><span>0:00</span><span>12:00</span><span>23:00</span></div>`;
+  return `<div class="box">${H}<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px">${til}</div><div class="lab" style="margin-bottom:6px">% = zużycie względem średniej (${fmt(o.sr_kwh_h, 2, "kWh/h")}). Prognoza: najbliższe 2 h wg tego, ile osób jest teraz; dalej typowa obecność.</div>
+    <div class="g2"><div><div class="lab">Średnie zużycie o danej godzinie przy 0 / 1 / 2 osobach (okres)</div>${c1}</div><div><div class="lab">Dzień po dniu: obecność vs zużycie</div>${c2 || `<div class="lab">Wybierz dłuższy okres.</div>`}</div></div>
+    <div class="g2"><div><div class="lab" style="margin-top:8px">🔌 Urządzenia a obecność</div>${dtab}</div><div><div class="lab" style="margin-top:8px">🗓 Typowy tydzień obecności (90 dni; jaśniej = mniej osób)</div>${grid}</div></div></div>`;
+}
+
 function pumpBox(d) {
   const p = d.pompa_pkt || [], m = d.pompa; if (!p.length) return "";
   const W = 440, H = 230, L = 40, B = 26, T = 10, R = 10, t0 = Math.min(...p.map(q => q[0])), t1 = Math.max(...p.map(q => q[0])), y1 = Math.max(...p.map(q => q[2]), 0.5) * 1.05, w1 = Math.max(...p.map(q => q[1]), 1);
@@ -236,7 +257,7 @@ export function render(c) {
   return `<style>.nk-svg text.xl{fill:#8fa6bd;font-size:11px}.nk-wrap{position:relative}.nk-svg{touch-action:pan-y}.nk-tip{position:absolute;z-index:6;background:#0b1622f2;border:1px solid #2a4560;border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.6;pointer-events:none;white-space:nowrap;box-shadow:0 0 14px #000b;min-width:180px}
 .nk-tip>div{display:flex;justify-content:space-between;gap:18px}.nk-tip i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}.nk-th{font-weight:700;margin-bottom:2px}.nk-tip .nk-note{display:block;color:#9bb3c6;font-size:11.5px;white-space:normal;max-width:260px}
 .nk-lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#9bb3c6;margin-top:4px}.nk-lg i{display:inline-block;width:16px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}</style>
-    ${bar}${tiles(d, P)}${accBox(d, P)}${tempBox(d)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}`;
+    ${bar}${tiles(d, P)}${accBox(d, P)}${tempBox(d)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}${presBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}`;
 }
 
 function nkTip(box, ev) {

@@ -1,5 +1,11 @@
 # Zmiany EMS
 
+## 0.6.55
+- Obecność domowników: Ustawienia → Historia do nauki → 👪 Obecność (person.* / device_tracker.*, „home” = w domu).
+- Nauka (`presence.py`): liczba osób w domu (0/1/2) per godzina z historii HA; zużycie domu bez pompy ciepła przy 0/1/2 osobach (współczynniki + per godzina), typowa obecność (dzień tyg. × godzina), starty urządzeń na tydzień przy 0/1/2 osobach. Model od 7 dni danych.
+- Prognoza: najbliższe 2 h skorygowane wg liczby osób teraz (dom bez pompy i urządzenia), dalej typowa obecność z historii. Pompa ciepła bez zmian.
+- Nauka: nowy kafel „Obecność vs zużycie” (słupki per godzina 0/1/2 os., dzień po dniu osoby vs zużycie, urządzenia vs obecność, typowy tydzień). Przegląd i Plan: plakietka „🏠 w domu: …”.
+
 ## 0.6.54
 - Przegląd: pasek wyboru dnia (◀ data ▶, Dziś). Dzień miniony = podsumowanie całego dnia (scena i kafle w kWh, bateria SOC start→koniec/min/max, szczyty mocy, energia i handel z `/api/ems/energia?dzien=`, Profil mocy i wykresy PV/dom za cały dzień, „Prognoza vs rzeczywistość” otwiera ten dzień). Dzień przyszły (do +2) = prognoza z planu.
 - Po wyjściu na inną zakładkę i powrocie Przegląd zawsze startuje od dziś (na żywo).

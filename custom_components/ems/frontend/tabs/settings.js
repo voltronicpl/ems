@@ -7,7 +7,7 @@ import { tou } from "../tou.js";
 // Stare encje z HA do nauki (/api/ems/zrodla)
 const SRC = { d: null, busy: false, edit: {}, dev: [], msg: "" };
 function srcBox(c) {
-  if (!SRC.d && !SRC.busy) { SRC.busy = true; c.hass.callApi("GET", "ems/zrodla").then(r => { SRC.d = r; SRC.edit = { ...r.encje }; SRC.dev = (r.urzadzenia || []).map(x => ({ ...x })); }).catch(e => { SRC.msg = "Błąd: " + (e.message || e); }).finally(() => { SRC.busy = false; c.render(true); }); }
+  if (!SRC.d && !SRC.busy) { SRC.busy = true; c.hass.callApi("GET", "ems/zrodla").then(r => { SRC.d = r; SRC.edit = { ...r.encje }; SRC.dev = (r.urzadzenia || []).map(x => ({ ...x })); SRC.obec = [...(r.obecnosc || [])]; }).catch(e => { SRC.msg = "Błąd: " + (e.message || e); }).finally(() => { SRC.busy = false; c.render(true); }); }
   const d = SRC.d; if (!d) return `<div class="box" id="s-src"><div class="h"><span>📚 Historia do nauki (stare encje)</span></div><div class="lab">${SRC.msg || "Wczytuję…"}</div></div>`;
   const opts = `<datalist id="src-ents">${d.kandydaci.map(x => `<option value="${esc(x.id)}">${esc(x.nazwa)} [${esc(x.jedn)}]</option>`).join("")}</datalist>`;
   const infoTxt = (ent, inf, saved) => ent ? (inf?.blad ? `<span class="t-r">${esc(inf.blad)}</span>` : inf?.od ? `dane od ${inf.od} (${inf.dni} dni) · ${esc(inf.jednostka || "?")}` : saved ? "brak statystyk w HA" : "zapisz, żeby sprawdzić") : "–";
@@ -24,6 +24,8 @@ function srcBox(c) {
     ${opts}<div class="lab" style="margin:4px 0 6px;font-weight:600">⚡ Główne</div><div class="g3">${rows}</div>
     <div class="lab" style="margin:14px 0 6px;font-weight:600">🔌 Urządzenia${tip({ co: "Duże odbiorniki liczone osobno. EMS uczy się z nich: ile cykli w tygodniu, co ile dni, w jakie dni i o której, ile kWh na cykl – i dokłada to do prognozy zużycia. Reszta domu (dom − urządzenia) liczona jak dotąd.", jak: "Wystarczy licznik kWh; moc (W) pomaga, gdy licznika brak. Liczone od początku statystyk HA.", czytaj: "Wyniki w zakładce Nauka." })}</div>
     <div class="g3">${one("pompa", "♨ Pompa ciepła (kWh lub W)")}${devs}<div style="display:flex;align-items:center"><button class="btn" data-devadd>＋ Dodaj urządzenie</button></div></div>
+    <div class="lab" style="margin:14px 0 6px;font-weight:600">👪 Obecność${tip({ co: "Telefony / osoby z HA (person.* albo device_tracker.*). Stan „home” = w domu. EMS uczy się zużycia domu (bez pompy ciepła) przy 0 / 1 / 2 osobach i tego, jak często chodzą zmywarka, pralka… gdy ktoś jest w domu.", jak: "Zaznacz po jednej encji na osobę (najlepiej person.*). Model rusza po 7 dniach historii.", czytaj: "Wyniki w zakładce Nauka → Obecność vs zużycie." })}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">${(d.kandydaci_obec || []).map(x => `<label class="pill" style="cursor:pointer;display:flex;gap:6px;align-items:center"><input type="checkbox" data-obec="${esc(x.id)}" ${(SRC.obec || []).includes(x.id) ? "checked" : ""}>${esc(x.nazwa)} <span class="lab">${esc(x.id)} · ${x.stan === "home" ? "🏠 w domu" : esc(x.stan)}</span></label>`).join("") || `<span class="lab">Brak encji person.* / device_tracker.* w HA.</span>`}</div>
     <div class="btns"><button class="btn pri" data-srcsave>Zapisz</button></div></div>`;
 }
 
@@ -131,13 +133,15 @@ export function bind(c, r) {
   });
   r.querySelectorAll("[data-src]").forEach(el => { el.onfocus = () => { c._hold = true; }; el.onblur = () => { c._hold = false; }; el.onchange = () => { SRC.edit[el.dataset.src] = el.value.trim(); }; });
   r.querySelectorAll("[data-dev]").forEach(el => { el.onfocus = () => { c._hold = true; }; el.onblur = () => { c._hold = false; }; el.oninput = () => { SRC.dev[+el.dataset.dev][el.dataset.k] = el.value.trim(); }; });
+  r.querySelectorAll("[data-obec]").forEach(el => el.onchange = () => { SRC.obec = [...r.querySelectorAll("[data-obec]")].filter(x => x.checked).map(x => x.dataset.obec); });
   r.querySelector("[data-devadd]")?.addEventListener("click", () => { SRC.dev.push({ nazwa: "", moc: "", kwh: "", ikona: "🔌" }); c.render(true); });
   r.querySelectorAll("[data-devdel]").forEach(b => b.onclick = () => { SRC.dev.splice(+b.dataset.devdel, 1); c.render(true); });
   r.querySelector("[data-srcsave]")?.addEventListener("click", async () => {
     r.querySelectorAll("[data-src]").forEach(el => { SRC.edit[el.dataset.src] = el.value.trim(); });
     r.querySelectorAll("[data-dev]").forEach(el => { SRC.dev[+el.dataset.dev][el.dataset.k] = el.value.trim(); });
+    SRC.obec = [...r.querySelectorAll("[data-obec]")].filter(el => el.checked).map(el => el.dataset.obec);
     SRC.msg = "Zapisuję…"; c.render(true);
-    try { await c.hass.callApi("POST", "ems/zrodla", { encje: SRC.edit, urzadzenia: SRC.dev }); SRC.msg = "✅ Zapisano – EMS przelicza historię"; SRC.d = null; }
+    try { await c.hass.callApi("POST", "ems/zrodla", { encje: SRC.edit, urzadzenia: SRC.dev, obecnosc: SRC.obec }); SRC.msg = "✅ Zapisano – EMS przelicza historię"; SRC.d = null; }
     catch (e) { SRC.msg = "❌ " + (e.message || e); }
     c.render(true);
   });

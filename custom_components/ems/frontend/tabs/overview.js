@@ -184,6 +184,8 @@ function dayView(c) {
   return `${dayBar(c)}${scene}${tiles}${mid}${fcRow(c, w, "cały dzień")}${modal()}${accuracyModal(c)}`;
 }
 
+const presPill = x => { const o = x?.obecnosc; return o && o.osob != null ? `<span class="pill ${o.osob ? "b" : "o"}" title="Obecność z telefonów. Prognoza zużycia domu (bez pompy) na najbliższe 2 h skorygowana wg liczby osób w domu, dalej typowa obecność.">🏠 ${o.osob === 0 ? "nikogo w domu" : o.osob === 1 ? "w domu: 1 osoba" : "w domu: 2 osoby"}${o.model ? (o.proc ? ` – prognoza zużycia ${o.proc > 0 ? "+" : "−"}${Math.abs(o.proc)} %` : "") : " – model się uczy"}</span>` : ""; };
+
 export function render(c) {
   if (c.ovDay && c.ovDay !== isoD(Date.now())) return dayView(c);
   return dayBar(c) + renderLive(c);
@@ -221,7 +223,7 @@ function renderLive(c) {
     ${tile(icR("tower", 32), "r", "Sieć", kw(Math.abs(grid)), grid > 0 ? "Pobór" : grid < 0 ? "Oddawanie" : "–", grid > 0 ? "#ff6b6b" : "#3ee07a", T.siec)}
     ${tile(icR("leaf", 32), "g", "Autokonsumpcja", `${auto} %`, "PV w domu", "", T.autokons)}</div>`;
   const ster = `<div class="ov-box ov-ster" style="margin-bottom:14px"><div class="ov-h">${ic("robot", 20)} Sterowanie${tip(T.algorytm)}</div>
-    <div class="st-row"><div class="sw" data-svc="switch.toggle" data-ent="switch.ems_algorytm" style="cursor:pointer;margin:0"><div class="tg ${on ? "on" : ""}"></div><b style="color:${on ? (man ? "#ffad2e" : "#3ee07a") : "#ff6b6b"};font-size:16px">${on ? (man ? "Czuwa (ręczne ma pierwszeństwo)" : "Włączony") : "Wyłączony"}</b></div><span class="ov-mut">Teraz: ${ACT[plan?.state] || plan?.state || "–"}${nxt ? ` · następnie ${new Date(nxt.start).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })} ${(ACT[nxt.action] || nxt.action).toLowerCase()}` : ""}</span></div>
+    <div class="st-row"><div class="sw" data-svc="switch.toggle" data-ent="switch.ems_algorytm" style="cursor:pointer;margin:0"><div class="tg ${on ? "on" : ""}"></div><b style="color:${on ? (man ? "#ffad2e" : "#3ee07a") : "#ff6b6b"};font-size:16px">${on ? (man ? "Czuwa (ręczne ma pierwszeństwo)" : "Włączony") : "Wyłączony"}</b></div>${presPill(pa.podsumowanie)} <span class="ov-mut">Teraz: ${ACT[plan?.state] || plan?.state || "–"}${nxt ? ` · następnie ${new Date(nxt.start).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })} ${(ACT[nxt.action] || nxt.action).toLowerCase()}` : ""}</span></div>
     ${pa.straznik?.ostrzezenie ? `<div style="color:#ff6b6b;margin:4px 0">🛡 ${esc(pa.straznik.ostrzezenie)}</div>` : ""}${pa.straznik?.interwencje ? `<div class="ov-mut" style="margin:2px 0">🛡 Strażnik: ${pa.straznik.interwencje} interwencji od startu</div>` : ""}
     ${pa.sprzedaz_ostrzezenie ? `<div style="color:#ff6b6b;margin:4px 0">⚠ ${esc(pa.sprzedaz_ostrzezenie)}</div>` : ""}
     <div class="st-row"><div class="ctrl"><div class="inp wbuy">${c.input("number.ems_kup_wh")}<span>Wh</span></div><button class="btn pri" data-svc="button.press" data-ent="button.ems_kup_teraz">Kup</button>

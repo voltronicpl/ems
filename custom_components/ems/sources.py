@@ -30,19 +30,23 @@ class Sources:
         self.store = Store(hass, 1, f"ems_zrodla_{entry_id}")
         self.cfg: dict = {}
         self.dev: list = []
+        self.obec: list = []
 
     async def load(self) -> None:
         d = await self.store.async_load() or {}
         self.cfg = d.get("encje", {})
         self.dev = d.get("urzadzenia", [])
+        self.obec = d.get("obecnosc", [])
         LOG.info("Stare encje do nauki: %s, urzadzenia: %s", self.cfg or "brak", [x.get("nazwa") for x in self.dev] or "brak")
 
-    async def save(self, cfg: dict, dev: list | None = None) -> None:
+    async def save(self, cfg: dict, dev: list | None = None, obec: list | None = None) -> None:
         self.cfg = {k: v for k, v in cfg.items() if k in KEYS and v}
         if dev is not None:
             self.dev = [{"nazwa": str(x.get("nazwa") or "Urządzenie")[:40], "moc": (x.get("moc") or "").strip(), "kwh": (x.get("kwh") or "").strip(),
                          "ikona": x.get("ikona") or "🔌"} for x in dev if (x.get("moc") or x.get("kwh"))]
-        await self.store.async_save({"encje": self.cfg, "urzadzenia": self.dev})
+        if obec is not None:
+            self.obec = [str(x).strip() for x in obec if str(x).strip().split(".")[0] in ("person", "device_tracker")][:6]
+        await self.store.async_save({"encje": self.cfg, "urzadzenia": self.dev, "obecnosc": self.obec})
         LOG.info("Zapisano stare encje do nauki: %s, urzadzenia: %s", self.cfg, self.dev)
 
     def unit(self, entity: str) -> str | None:
@@ -108,7 +112,9 @@ class SourcesView(HomeAssistantView):
             return self.json_message("EMS nie jest skonfigurowany", 404)
         cand = sorted(({"id": s.entity_id, "nazwa": s.attributes.get("friendly_name", s.entity_id), "jedn": s.attributes.get("unit_of_measurement")}
                        for s in hass.states.async_all("sensor") if s.attributes.get("unit_of_measurement") in (*ENERGY, *POWER)), key=lambda x: x["id"])
-        return self.json({"klucze": KEYS, "encje": eng.src.cfg, "urzadzenia": eng.src.dev, "info": await eng.src.info(), "kandydaci": cand})
+        return self.json({"klucze": KEYS, "encje": eng.src.cfg, "urzadzenia": eng.src.dev, "info": await eng.src.info(), "kandydaci": cand,
+                          "obecnosc": eng.src.obec, "kandydaci_obec": sorted(({"id": s.entity_id, "nazwa": s.attributes.get("friendly_name", s.entity_id), "stan": s.state}
+                                                    for s in [*hass.states.async_all("person"), *hass.states.async_all("device_tracker")]), key=lambda x: x["id"])})
 
     async def post(self, request):
         hass = request.app["hass"]
@@ -116,7 +122,7 @@ class SourcesView(HomeAssistantView):
         if not eng:
             return self.json_message("EMS nie jest skonfigurowany", 404)
         body = await request.json()
-        await eng.src.save(body.get("encje", {}), body.get("urzadzenia"))
+        await eng.src.save(body.get("encje", {}), body.get("urzadzenia"), body.get("obecnosc"))
         eng._hist_at = None                     # przelicz historie przy nastepnym planie
         hass.async_create_task(eng.replan("zmiana starych encji"))
         return self.json({"ok": True, "encje": eng.src.cfg})
