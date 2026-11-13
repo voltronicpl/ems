@@ -45,6 +45,7 @@ class Engine:
         self.error: str | None = None
         self._unsubs = []
         self._prices: dict = {}
+        self._prices_est: dict = {}
         self._weather: dict = {}
         self._hist: dict = {}
         self._hist_at: datetime | None = None
@@ -255,8 +256,22 @@ class Engine:
             LOG.info("=== Przeliczanie planu (%s) ===", why)
             now = datetime.now(timezone.utc)
             today = now.astimezone(WAW).date()
-            if not self._prices or now.astimezone(WAW).minute < 15 or not why.startswith("co "):
-                self._prices = await prices.fetch(self.hass, [today, today + timedelta(days=1)])
+            tomorrow = today + timedelta(days=1)
+            has_tm = any(k.astimezone(WAW).date() == tomorrow for k in self._prices)
+            # ceny: co godzine; a od 13:30, gdy jutra jeszcze nie ma – przy kazdym przeliczeniu (PSE publikuje ok. 13:50)
+            if not self._prices or now.astimezone(WAW).minute < 15 or not why.startswith("co ") or (not has_tm and now.astimezone(WAW).hour * 60 + now.astimezone(WAW).minute >= 810):
+                got = await prices.fetch(self.hass, [today, tomorrow])
+                if got:
+                    self._prices = got
+                if any(k.astimezone(WAW).date() == tomorrow for k in self._prices) and not has_tm:
+                    LOG.info("RCE na jutro pobrane z PSE o %s – plan wstepny zastapiony", now.astimezone(WAW).strftime("%H:%M"))
+            self._prices_est = {}
+            if not any(k.astimezone(WAW).date() == tomorrow for k in self._prices):
+                try:
+                    self._prices_est = await prices.estimate(self.hass, self._prices, tomorrow)
+                except Exception as err:  # noqa: BLE001
+                    LOG.warning("RCE szacowane: blad (%s)", err)
+            pr_all = {**self._prices_est, **self._prices}
             lat, lon = self.hass.config.latitude, self.hass.config.longitude
             self._weather = await weather.fetch(self.hass, lat, lon, self.p["pv_nachylenie"], self.p["pv_azymut"]) or self._weather
             if not self._hist_at or now - self._hist_at > timedelta(hours=1):
@@ -292,7 +307,7 @@ class Engine:
                 self._hist_at = now
 
             start = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
-            last = max((s for s in self._prices), default=start + timedelta(hours=24))
+            last = max((s for s in pr_all), default=start + timedelta(hours=24))
             last = max(last, start + timedelta(hours=12))
             slots, t = [], start
             while t <= last:
@@ -344,11 +359,15 @@ class Engine:
             LOG.info("SOC %.0f%%, max ladowanie %.0f W, max sprzedaz %.0f W, ceny do %s",
                      soc, ch_w, sell_w, last.astimezone(WAW).strftime("%d.%m %H:%M"))
             bc = self.bat.avg()
-            res, summ = plan(slots, self._prices, pvk, ldk, self._weather, soc, {**self.p, "koszt_baterii_zl": bc},
+            res, summ = plan(slots, pr_all, pvk, ldk, self._weather, soc, {**self.p, "koszt_baterii_zl": bc},
                              self.p["pojemnosc_wh"] / 1000, ch_w, sell_w)
             self.plan = as_dicts(res)
+            if self._prices_est:                                   # plan wstepny: sloty na szacowanej RCE
+                for d in self.plan:
+                    if datetime.fromisoformat(d["start"]) in self._prices_est:
+                        d["est"] = True
             self._log_forecast(now)
-            self.summary = {**summ, "koszt_baterii": self.bat.info(), "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2), "kalibracja_pv": round(self._pv_cal, 2),
+            self.summary = {**summ, "rce_szacowane": bool(self._prices_est), "koszt_baterii": self.bat.info(), "wsp_temp": round(coeff, 3), "korekta_pv": round(fact, 2), "kalibracja_pv": round(self._pv_cal, 2),
                             "pompa_model": [round(x, 3) for x in pump_model] if pump_model else None,
                             "nauka_bezpiecznik": {"pompa": ("pelny" if pm.get("pelny") else "prosty") if pm else None}}
             self.learn.snapshot(self)

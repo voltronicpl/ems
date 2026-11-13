@@ -154,6 +154,8 @@ class Executor:
             t = datetime.fromisoformat(s["start"]).astimezone(WAW)
             if t + timedelta(minutes=15) <= now or t >= horizon:
                 continue
+            if s.get("est") and s.get("action") == "sell":       # sprzedaz na SZACOWANEJ RCE nie idzie do falownika
+                s = {**s, "action": "self"}
             m = self.mode(s, p, max_charge_w, max_sell_w)
             t = max(t, now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 15))
             if segs and segs[-1][1] == m:

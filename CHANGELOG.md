@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## 0.6.52
+- Plan na jutro od razu (wstępny): gdy PSE nie opublikowało jeszcze RCE na jutro, EMS szacuje ją na każdy kwadrans (40 % wczoraj + 30 % ten sam dzień tydzień temu + 30 % średnia dni tego samego typu z 7 dni) i liczy plan do końca jutra. W Planie plakietka „⏳ jutro: plan wstępny – RCE szacowana”, w dymku „RCE – szacowana”.
+- Bezpiecznik: sprzedaż zaplanowana na szacowanej RCE NIE trafia do falownika (w TOU jako autokonsumpcja).
+- Od 13:30, dopóki brak cen na jutro, EMS pyta PSE przy każdym przeliczeniu (co 15 min); po pobraniu wpis w logu i plan przeliczony na prawdziwe ceny.
+
 ## 0.6.51
 - „Prognoza vs rzeczywistość”: prognoza na cały dzień – przyszłe godziny na wykresie (przerywana PV / dom do 24:00) i w tabeli („(prognoza)”, fakt „–”); dzisiaj dodatkowy wiersz „Cały dzień – prognoza” (PV, dom, fakt do teraz + reszta wg prognozy). Podsumowanie „do teraz” bez przyszłych godzin.
 

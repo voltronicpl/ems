@@ -80,3 +80,31 @@ async def fetch_days(hass, start: date, end: date) -> dict[datetime, float]:
     if end >= date.today():
         out.update(await fetch(hass, [d for d in (date.today(), date.today() + timedelta(days=1)) if start <= d <= end]))
     return out
+
+
+async def estimate(hass, known: dict, day: date) -> dict[datetime, float]:
+    """Szacowane RCE na dzien `day` (gdy PSE jeszcze nie opublikowalo): dla kazdego kwadransa
+    40 % wczoraj + 30 % ten sam dzien tydzien temu + 30 % srednia dni tego samego typu (roboczy / weekend) z 7 dni."""
+    from zoneinfo import ZoneInfo
+    waw = ZoneInfo("Europe/Warsaw")
+    hist = await fetch_days(hass, day - timedelta(days=8), day - timedelta(days=1))
+    hist.update({k: v for k, v in known.items() if k.astimezone(waw).date() < day})
+    by: dict = {}
+    for s, v in hist.items():
+        loc = s.astimezone(waw)
+        by.setdefault(loc.date(), {})[(loc.hour, loc.minute)] = v
+    we = lambda d: d.weekday() >= 5      # noqa: E731
+    out: dict = {}
+    t = datetime(day.year, day.month, day.day, tzinfo=waw)
+    while t.date() == day:
+        q = (t.hour, t.minute)
+        y = by.get(day - timedelta(days=1), {}).get(q)
+        w = by.get(day - timedelta(days=7), {}).get(q)
+        same = [by[d][q] for d in by if we(d) == we(day) and q in by[d]]
+        parts = [(y, 0.4), (w, 0.3), (sum(same) / len(same) if same else None, 0.3)]
+        parts = [(v, k) for v, k in parts if v is not None]
+        if parts:
+            out[t.astimezone(timezone.utc)] = round(sum(v * k for v, k in parts) / sum(k for _, k in parts), 4)
+        t += SLOT
+    LOG.info("RCE %s: brak w PSE – szacowane %d slotow (wczoraj / tydzien temu / dni %s)", day, len(out), "weekendowe" if we(day) else "robocze")
+    return out
