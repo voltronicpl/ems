@@ -40,7 +40,7 @@ ${FLOW_CSS}`;
 class EmsCard extends HTMLElement {
   setConfig(c) { this._c = { device: "ecobss", navigate: "/ems", ...(c || {}) }; this._root || this._init(); this._draw(); }
   getCardSize() { return 4; }
-  static getStubConfig() { return { device: "ecobss" }; }
+  static getStubConfig() { return { device: "ecobss", navigate: "/ems" }; }
   _init() {
     this._root = this.attachShadow({ mode: "open" });
     this._root.innerHTML = `<style>${CSS}</style><ha-card><div class="c"><img src="${BG}" alt="EMS"><div id="f"></div><div id="t"></div></div><div id="pge"></div></ha-card>`;
@@ -70,6 +70,27 @@ class EmsCard extends HTMLElement {
     this._root.getElementById("pge").innerHTML = pid("invoice_forecast") ? `<div class="pge"><div>Rachunek PGE – ${mies}<b class="${inv > 0 ? "rd" : "gr"}">${fmt(inv, 2, "zł")}</b></div><div>Depozyt<b class="gr">${fmt(dep, 2, "zł")}</b></div></div>` : "";
   }
 }
+// v0.6.62: edytor ustawien karty (urzadzenie, przejscie po kliknieciu)
+class EmsCardEditor extends HTMLElement {
+  setConfig(c) { this._c = { device: "ecobss", navigate: "/ems", ...(c || {}) }; this._draw(); }
+  set hass(h) { this._h = h; }
+  _draw() {
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    const c = this._c;
+    this.shadowRoot.innerHTML = `<style>label{display:block;margin:8px 0 4px;font-size:14px}input{width:100%;box-sizing:border-box;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#555);background:var(--card-background-color,#1c1c1c);color:var(--primary-text-color,#fff)}.h{font-size:12px;opacity:.7}</style>
+      <label>Urządzenie (datalogger)</label><input data-k="device" value="${c.device || ""}"><div class="h">nazwa z encji sensor.&lt;urządzenie&gt;_pv_moc_suma, domyślnie ecobss</div>
+      <label>Po kliknięciu przejdź do</label><input data-k="navigate" value="${c.navigate || ""}"><div class="h">domyślnie /ems (panel EMS)</div>`;
+    this.shadowRoot.querySelectorAll("input").forEach(el => el.onchange = () => {
+      this._c = { ...this._c, [el.dataset.k]: el.value.trim() };
+      this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._c }, bubbles: true, composed: true }));
+    });
+  }
+}
+if (!customElements.get("ems-card-editor")) customElements.define("ems-card-editor", EmsCardEditor);
+EmsCard.getConfigElement = () => document.createElement("ems-card-editor");
 if (!customElements.get("ems-card")) customElements.define("ems-card", EmsCard);
+window.customCards = window.customCards || [];
+if (!window.customCards.some(x => x.type === "ems-card"))
+  window.customCards.push({ type: "ems-card", name: "EMS – przepływ energii", description: "Dom, PV, bateria i sieć na żywo + rachunek PGE (integracja EMS).", preview: true, documentationURL: "https://github.com/voltronicpl/ems" });
 window.customCards = window.customCards || [];
 if (!window.customCards.some(c => c.type === "ems-card")) window.customCards.push({ type: "ems-card", name: "EMS – kafelek", description: "PV, bateria, dom i sieć z animowanymi liniami przesyłu", preview: true });

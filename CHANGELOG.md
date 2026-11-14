@@ -1,5 +1,9 @@
 # Zmiany EMS
 
+## 0.6.62
+- Karta `custom:ems-card` widoczna w wyborze „Dodaj kartę” (window.customCards: „EMS – przepływ energii”, podgląd na żywo).
+- Edytor karty w oknie ustawień: urządzenie (datalogger) i przejście po kliknięciu (domyślnie /ems).
+
 ## 0.6.61
 - Karta `custom:ems-card`: dopisywanie do Zasobów Lovelace przeniesione do startu EMS (każdy start i przeładowanie integracji), próby od razu / po 1 min / po 5 min; `lovelace` w zależnościach. Każda próba w logu: „Karta EMS: …” (jest / dodano / podmieniono / błąd z przyczyną). Panel dalej jako zapas.
 
