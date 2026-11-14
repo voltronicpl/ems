@@ -30,34 +30,40 @@ async def _card_resource(hass: HomeAssistant) -> None:
     """v0.6.59: karta jako zasob Lovelace (HA czeka na zasoby przed narysowaniem pulpitu -> brak 'Custom element doesn't exist')."""
     log = diag.get_logger("start")
     url = f"{STATIC}/ems-card.js"
+    log.info("Karta EMS: sprawdzam zasoby Lovelace…")
     try:
         ll = hass.data.get("lovelace")
         res = getattr(ll, "resources", None) if ll is not None and not isinstance(ll, dict) else (ll or {}).get("resources")
         if res is None or not hasattr(res, "async_create_item"):
-            log.info("Karta EMS: zasoby Lovelace w trybie YAML – zostaje ladowanie przez extra_js_url")
-            return
+            log.warning("Karta EMS: brak kolekcji zasobow Lovelace (tryb YAML albo pulpity jeszcze nie gotowe: %s) – dodaj recznie %s jako modul", type(ll).__name__, url)
+            return False
         if hasattr(res, "loaded") and not res.loaded:
             await res.async_load()
             res.loaded = True
         mine = [r for r in res.async_items() if "/ems_static/" in str(r.get("url", "")) and "ems-card.js" in str(r.get("url", ""))]
         if mine and mine[0].get("url") == url:
-            return
+            log.info("Karta EMS: zasob jest (%s)", url)
+            return True
         if mine:
             await res.async_update_item(mine[0]["id"], {"res_type": "module", "url": url})
             for r in mine[1:]:
                 await res.async_delete_item(r["id"])
         else:
             await res.async_create_item({"res_type": "module", "url": url})
-        log.info("Karta EMS zarejestrowana jako zasob Lovelace: %s", url)
+        log.info("Karta EMS: %s zasob Lovelace %s", "podmieniono" if mine else "dodano", url)
+        return True
     except Exception as err:  # noqa: BLE001
-        log.warning("Karta EMS: nie udalo sie zarejestrowac zasobu Lovelace (%s)", err)
+        log.warning("Karta EMS: blad rejestracji zasobu Lovelace: %s: %s", type(err).__name__, err)
+        return False
 
 
 async def _card_resource_retry(hass: HomeAssistant) -> None:
     import asyncio
-    await _card_resource(hass)
-    await asyncio.sleep(60)                      # Lovelace mogl nie byc gotowy przy starcie
-    await _card_resource(hass)
+    for wait in (0, 60, 240):                    # od razu, po 1 min i po 5 min (Lovelace mogl nie byc gotowy)
+        if wait:
+            await asyncio.sleep(wait)
+        if await _card_resource(hass):
+            return
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -65,9 +71,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         [StaticPathConfig(STATIC, str(Path(__file__).parent / "frontend"), False)]
     )
     frontend.add_extra_js_url(hass, f"{STATIC}/ems-card.js")   # karta Lovelace custom:ems-card (zapas)
-    hass.bus.async_listen_once("homeassistant_started", lambda _e: hass.async_create_task(_card_resource_retry(hass)))
-    if hass.is_running:
-        hass.async_create_task(_card_resource_retry(hass))
     diag.setup(hass)
     dump.setup(hass)
     hass.http.register_view(BacktestView)
@@ -93,6 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     engine.start()
     entry.async_on_unload(engine.stop)
     diag.get_logger("start").info("EMS %s uruchomiony (datalogger: %s)", VERSION, entry.data[CONF_DEVICE])
+    entry.async_create_background_task(hass, _card_resource_retry(hass), "ems_karta_zasob")
     if not data.get("_panel"):
         await panel_custom.async_register_panel(
             hass,

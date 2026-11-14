@@ -1,7 +1,7 @@
 {
   "domain": "ems",
   "name": "EMS",
-  "version": "0.6.60",
+  "version": "0.6.61",
   "config_flow": true,
   "documentation": "https://github.com/voltronicpl/ems",
   "issue_tracker": "https://github.com/voltronicpl/ems/issues",
@@ -12,6 +12,7 @@
   "dependencies": [
     "frontend",
     "http",
+    "lovelace",
     "panel_custom",
     "recorder"
   ],

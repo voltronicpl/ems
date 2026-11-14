@@ -1,5 +1,8 @@
 # Zmiany EMS
 
+## 0.6.61
+- Karta `custom:ems-card`: dopisywanie do Zasobów Lovelace przeniesione do startu EMS (każdy start i przeładowanie integracji), próby od razu / po 1 min / po 5 min; `lovelace` w zależnościach. Każda próba w logu: „Karta EMS: …” (jest / dodano / podmieniono / błąd z przyczyną). Panel dalej jako zapas.
+
 ## 0.6.60
 - Karta `custom:ems-card`: panel EMS (zalogowany admin) przy otwarciu sam sprawdza Zasoby Lovelace i dodaje / podmienia wpis `ems-card.js` na aktualną wersję (WS `lovelace/resources`), duplikaty usuwa.
 - Backend: ponowna próba rejestracji zasobu 60 s po starcie HA.
