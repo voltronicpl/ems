@@ -1,5 +1,9 @@
 # Zmiany EMS
 
+## 0.6.59
+- Karta `custom:ems-card` rejestrowana automatycznie jako zasób Lovelace z wersją w adresie (HA czeka na nią przed narysowaniem pulpitu – koniec z „Custom element doesn't exist: ems-card” w aplikacji na telefonie). Stare wpisy EMS w zasobach aktualizowane. Ładowanie przez extra_js_url zostaje jako zapas (tryb YAML).
+- Karta na telefonie: kafelek Dom nieprzezroczysty (bez podwójnego „Dom”), Import/Eksport w kafelku Sieć mniejszą czcionką, kafelki przycinają nadmiar.
+
 ## 0.6.58
 - Panel nie zawiesza się przy wczytywaniu: bez top-level await, element rejestrowany od razu („Ładuję EMS…”), zakładki doładowywane osobno (Przegląd pierwszy) z 2 ponownymi próbami i komunikatem błędu zamiast pustej strony.
 - Pierwsze rysowanie panelu i karty `ems-card` od razu po otrzymaniu `hass` (bez dławienia 2 s), przerysowanie po konfiguracji panelu.

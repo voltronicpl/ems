@@ -23,7 +23,7 @@ ha-card{overflow:hidden;background:#05080e;border-radius:var(--ha-card-border-ra
 .c{position:relative;container-type:inline-size;font-family:var(--paper-font-body1_-_font-family,Roboto,system-ui,sans-serif);color:#e8eef5}
 .c img{display:block;width:100%;height:auto}
 .t{position:absolute;box-sizing:border-box;display:flex;align-items:center;gap:2.2cqw;padding:1.6cqw 2cqw;background:#0b1622f2;border:1px solid #2a4560;border-radius:2.4cqw;box-shadow:0 0 2cqw #000c}
-.t.dom{flex-direction:column;justify-content:center;gap:.4cqw;text-align:center;background:#0b1622e6}
+.t{overflow:hidden}.t.dom{flex-direction:column;justify-content:center;gap:.4cqw;text-align:center;background:#0b1622}.sub.ie{font-size:2.3cqw;white-space:nowrap}
 .ic{flex:none;width:7cqw;height:7cqw;display:grid;place-items:center}.ic svg{width:100%;height:100%}
 .tx{min-width:0;line-height:1.12}
 .lab{font-size:2.9cqw;font-weight:700;color:#f1f5f9;display:flex;align-items:center;gap:1cqw}.lab svg{width:3.4cqw;height:3.4cqw}
@@ -63,7 +63,7 @@ class EmsCard extends HTMLElement {
         <div class="sub b">${fmt(v("energia_bateria_ladowanie_dzisiaj"), 1)} / ${fmt(v("energia_bateria_rozladowanie_dzisiaj"), 1, "kWh")}</div><div class="sub b">${fmt(v("bateria_napiecie"), 1, "V")} • ${fmt(v("temperatura_baterii"), 1, "°C")}</div></div>`) +
       box("dom", `<div class="lab"><span style="color:#60c8ff;display:flex">${icR("home", 24)}</span>Dom</div><div class="val">${W(dom)}</div><div class="sub">Dziś: ${fmt(v("energia_zuzycie_dom_dzisiaj"), 1, "kWh")}</div>`, "dom") +
       box("grid", `<div class="ic">${icR("tower", 40)}</div><div class="tx"><div class="lab">Sieć</div><div class="val">${W(grid)}</div><div class="sub ${grid > 20 ? "rd" : grid < -20 ? "bl" : ""}">${grid > 20 ? "Pobór" : grid < -20 ? "Oddawanie" : "–"}</div>
-        <div class="sub">Import <span class="rd">${fmt(v("energia_siec_import_dzisiaj"), 1, "kWh")}</span></div><div class="sub">Eksport <span class="bl">${fmt(v("energia_siec_export_dzisiaj"), 1, "kWh")}</span></div></div>`);
+        <div class="sub ie">Import <span class="rd">${fmt(v("energia_siec_import_dzisiaj"), 1, "kWh")}</span></div><div class="sub ie">Eksport <span class="bl">${fmt(v("energia_siec_export_dzisiaj"), 1, "kWh")}</span></div></div>`);
     // wiersz rozliczenia PGE (encje EMS z translation_key pge_*)
     const reg = Object.values(h.entities || {}), pid = k => reg.find(x => x.platform === "ems" && x.translation_key === "pge_" + k)?.entity_id;
     const inv = num(h, pid("invoice_forecast")), dep = num(h, pid("deposit_estimate")), mies = new Date().toLocaleDateString("pl-PL", { month: "long" });
