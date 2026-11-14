@@ -16,6 +16,23 @@ function loadTab(i, tries = 0) {
       PANELS.forEach(p => p._hass && p.tab === i && p.render(true)); });
   return LOADING[i];
 }
+// v0.6.60: karta custom:ems-card jako zasob Lovelace – panel (admin) sam dopisuje / podmienia wpis na aktualna wersje
+window.__emsCardRes = window.__emsCardRes || "nie sprawdzono";
+let resDone = false;
+async function ensureCardRes(h) {
+  if (resDone || !h?.user?.is_admin) return; resDone = true;
+  const url = new URL("./ems-card.js", import.meta.url).pathname;
+  try {
+    const list = await h.callWS({ type: "lovelace/resources" });
+    const mine = (list || []).filter(r => String(r.url || "").includes("ems-card.js"));
+    const ok = mine.find(r => r.url === url);
+    if (ok) { window.__emsCardRes = `✅ jest (${url})`; }
+    else if (mine.length) { await h.callWS({ type: "lovelace/resources/update", resource_id: mine[0].id, res_type: "module", url }); window.__emsCardRes = `✅ podmieniono na ${url}`; }
+    else { await h.callWS({ type: "lovelace/resources/create", res_type: "module", url }); window.__emsCardRes = `✅ dodano ${url}`; }
+    for (const r of mine.slice(1)) if (r.url !== url) await h.callWS({ type: "lovelace/resources/delete", resource_id: r.id }).catch(() => {});
+  } catch (e) { window.__emsCardRes = `⚠ nie udało się (${e.message || e.code || e}) – pulpit w trybie YAML? Dodaj ręcznie ${url} jako moduł`; }
+  console.info("[EMS] karta – zasób Lovelace:", window.__emsCardRes);
+}
 loadTab(0).finally(() => NAMES.forEach((_, i) => i && loadTab(i)));
 
 class EmsDashboard extends HTMLElement {
@@ -30,7 +47,7 @@ class EmsDashboard extends HTMLElement {
     this._ro.observe(this);
   }
   disconnectedCallback() { PANELS.delete(this); this._ro?.disconnect(); this._ro = null; }
-  set hass(h) { const first = !this._hass; this._hass = h; if (!this.dev) this.dev = "ecobss"; if (first) { this.render(true); return; } if (!this._hold && (!this._t || Date.now() - this._t > 2000)) this.render(); }
+  set hass(h) { ensureCardRes(h); const first = !this._hass; this._hass = h; if (!this.dev) this.dev = "ecobss"; if (first) { this.render(true); return; } if (!this._hold && (!this._t || Date.now() - this._t > 2000)) this.render(); }
   get hass() { return this._hass; }
   get zone() { return g12(); }
   e(k, dom = "sensor") { return `${dom}.${this.dev}_${k}`; }

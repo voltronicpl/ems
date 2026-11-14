@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## 0.6.60
+- Karta `custom:ems-card`: panel EMS (zalogowany admin) przy otwarciu sam sprawdza Zasoby Lovelace i dodaje / podmienia wpis `ems-card.js` na aktualną wersję (WS `lovelace/resources`), duplikaty usuwa.
+- Backend: ponowna próba rejestracji zasobu 60 s po starcie HA.
+- Diagnostyka: wiersz „Karta EMS – zasób Lovelace” (jest / dodano / podmieniono / błąd – tryb YAML).
+
 ## 0.6.59
 - Karta `custom:ems-card` rejestrowana automatycznie jako zasób Lovelace z wersją w adresie (HA czeka na nią przed narysowaniem pulpitu – koniec z „Custom element doesn't exist: ems-card” w aplikacji na telefonie). Stare wpisy EMS w zasobach aktualizowane. Ładowanie przez extra_js_url zostaje jako zapas (tryb YAML).
 - Karta na telefonie: kafelek Dom nieprzezroczysty (bez podwójnego „Dom”), Import/Eksport w kafelku Sieć mniejszą czcionką, kafelki przycinają nadmiar.

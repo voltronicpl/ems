@@ -53,14 +53,21 @@ async def _card_resource(hass: HomeAssistant) -> None:
         log.warning("Karta EMS: nie udalo sie zarejestrowac zasobu Lovelace (%s)", err)
 
 
+async def _card_resource_retry(hass: HomeAssistant) -> None:
+    import asyncio
+    await _card_resource(hass)
+    await asyncio.sleep(60)                      # Lovelace mogl nie byc gotowy przy starcie
+    await _card_resource(hass)
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(STATIC, str(Path(__file__).parent / "frontend"), False)]
     )
     frontend.add_extra_js_url(hass, f"{STATIC}/ems-card.js")   # karta Lovelace custom:ems-card (zapas)
-    hass.bus.async_listen_once("homeassistant_started", lambda _e: hass.async_create_task(_card_resource(hass)))
+    hass.bus.async_listen_once("homeassistant_started", lambda _e: hass.async_create_task(_card_resource_retry(hass)))
     if hass.is_running:
-        hass.async_create_task(_card_resource(hass))
+        hass.async_create_task(_card_resource_retry(hass))
     diag.setup(hass)
     dump.setup(hass)
     hass.http.register_view(BacktestView)

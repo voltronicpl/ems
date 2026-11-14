@@ -22,7 +22,7 @@ export function render(c) {
   if (!timer) { load(c); timer = setInterval(() => { if (c.tab === 5) load(c); }, 5000); }
   const lines = cache.lines.filter(l => !filter || l.toLowerCase().includes(filter));
   const col = l => / ERROR /.test(l) ? "#ff8c97" : / WARNING /.test(l) ? "#ffd58a" : /ZAPIS|SUROWY/.test(l) ? "#7fb3ff" : "";
-  return `<div class="box"><div class="h"><span>🩺 Logi na żywo${tip(TIP)}</span>
+  return `<div class="box"><b>Karta EMS – zasób Lovelace:</b> ${esc(String(window.__emsCardRes || "–"))}</div><div class="box"><div class="h"><span>🩺 Logi na żywo${tip(TIP)}</span>
       <span class="ctrl"><div class="inp wflt"><input placeholder="filtr: plan, pv, ZAPIS, blad…" data-filter value="${esc(filter)}"></div><button class="btn" data-copy title="Kopiuje widoczne linie (z filtrem) do schowka">📋 Kopiuj</button><button class="btn" data-reload>↻ Odśwież</button></span></div>
       <div class="log" id="log">${lines.map(l => `<span style="color:${col(l)}">${esc(l)}</span>`).join("\n") || "Brak logów."}</div></div>
     ${dumpBox(c)}
