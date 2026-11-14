@@ -104,7 +104,7 @@ async def run(hass, eng) -> dict | None:
     load = [hist[h] / 1000 for h in hours]
     pv = [pv_act.get(h, 0.0) for h in hours]
     cap_now = P.get("pojemnosc_wh", 15000) / 1000
-    res = {k: _sim(hours, load, pv, rce_h, c, p) for k, c in (("0", 0.0), ("15", cap_now), ("30", cap_now * 2))}
+    res = await hass.async_add_executor_job(lambda: {k: _sim(hours, load, pv, rce_h, c, p) for k, c in (("0", 0.0), ("15", cap_now), ("30", cap_now * 2))})
     days: dict = defaultdict(lambda: {"0": [0, 0, 0], "15": [0, 0, 0], "30": [0, 0, 0]})
     for k, m in res.items():
         for h, (c, i, e) in m.items():

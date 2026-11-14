@@ -46,7 +46,8 @@ class EmsCard extends HTMLElement {
     this._root.innerHTML = `<style>${CSS}</style><ha-card><div class="c"><img src="${BG}" alt="EMS"><div id="f"></div><div id="t"></div></div><div id="pge"></div></ha-card>`;
     this._root.querySelector("ha-card").onclick = () => { history.pushState(null, "", this._c.navigate); window.dispatchEvent(new CustomEvent("location-changed")); };
   }
-  set hass(h) { this._h = h; const n = Date.now(); if (!this._t || n - this._t > 2000) { this._t = n; this._draw(); } }
+  set hass(h) { const first = !this._h; this._h = h; const n = Date.now(); if (first || !this._t || n - this._t > 2000) { this._t = n; if (!this._root && this._c) this._init(); this._draw(); } }
+  connectedCallback() { if (this._h && this._root) this._draw(); }
   _draw() {
     const h = this._h; if (!h || !this._root) return;
     const e = k => `sensor.${this._c.device}_${k}`, v = k => num(h, e(k));

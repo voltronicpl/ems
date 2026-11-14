@@ -3,20 +3,34 @@ import { S, num, g12, CSS, esc, bindCharts, ui } from "./core.js";
 const V = new URL(import.meta.url).search;
 const LOGO = new URL("./logo.png", import.meta.url).href, BG = new URL("./bg.jpg", import.meta.url).href;   // logo w naglowku (sciezka z wersja -> bez starego cache)             // ?v=wersja -> takze dla modulow zakladek
 const NAMES = ["overview", "pge", "plan", "learn", "settings", "diag"];
-const TABS = await Promise.all(NAMES.map(n => import(`./tabs/${n}.js${V}`)));
+// v0.6.58: bez top-level await – panel rejestruje sie od razu, zakladki doladowywane osobno (Przeglad pierwszy), z ponowna proba
+const TITLES = ["Przegląd", "PGE", "Plan", "🧠 Nauka", "Ustawienia", "Diagnostyka"];
+const TABS = NAMES.map((n, i) => ({ title: TITLES[i], _pending: true, render: () => `<div class="box" style="text-align:center;padding:40px">Ładuję EMS – ${TITLES[i]}…</div>` }));
+const LOADING = {}, PANELS = new Set();
+function loadTab(i, tries = 0) {
+  if (LOADING[i]) return LOADING[i];
+  LOADING[i] = import(`./tabs/${NAMES[i]}.js${V}${tries ? "&r=" + tries : ""}`).then(m => { TABS[i] = m; PANELS.forEach(p => p._hass && p.tab === i && p.render(true)); })
+    .catch(e => { console.error("[EMS] zakładka", NAMES[i], e); delete LOADING[i];
+      if (tries < 2) return new Promise(r => setTimeout(r, 1500)).then(() => loadTab(i, tries + 1));
+      TABS[i] = { title: TITLES[i], render: () => `<div class="box err">Nie udało się wczytać zakładki „${TITLES[i]}”: ${esc(e.message || e)}. Odśwież stronę (Ctrl+F5).</div>` };
+      PANELS.forEach(p => p._hass && p.tab === i && p.render(true)); });
+  return LOADING[i];
+}
+loadTab(0).finally(() => NAMES.forEach((_, i) => i && loadTab(i)));
 
 class EmsDashboard extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this.tab = 0; this.dirty = {}; this.pend = {}; this.rd = {}; this.bad = {}; this.toasts = []; }
-  set panel(p) { this.dev = (p && p.config && p.config.device) || "ecobss"; }
+  set panel(p) { const d = (p && p.config && p.config.device) || "ecobss", ch = d !== this.dev; this.dev = d; if (ch && this._hass) this.render(true); }
   set narrow(n) { const ch = this._narrow !== n; this._narrow = n; if (ch && this._hass) this.render(true); }
   // Telefon / Fold: przerysuj, gdy szerokosc zmieni sie wyraznie (zlozenie, obrot) – wykresy licza viewBox z szerokosci.
   connectedCallback() {
+    PANELS.add(this); if (this._hass) setTimeout(() => this.render(true), 0);
     if (this._ro) return;
     this._ro = new ResizeObserver(() => { const w = this.clientWidth; if (w && Math.abs(w - (this._w || 0)) > 40) { this._w = w; if (this._hass && !this._hold) this.render(true); } });
     this._ro.observe(this);
   }
-  disconnectedCallback() { this._ro?.disconnect(); this._ro = null; }
-  set hass(h) { this._hass = h; if (!this._hold && (!this._t || Date.now() - this._t > 2000)) this.render(); }
+  disconnectedCallback() { PANELS.delete(this); this._ro?.disconnect(); this._ro = null; }
+  set hass(h) { const first = !this._hass; this._hass = h; if (!this.dev) this.dev = "ecobss"; if (first) { this.render(true); return; } if (!this._hold && (!this._t || Date.now() - this._t > 2000)) this.render(); }
   get hass() { return this._hass; }
   get zone() { return g12(); }
   e(k, dom = "sensor") { return `${dom}.${this.dev}_${k}`; }
@@ -109,6 +123,7 @@ class EmsDashboard extends HTMLElement {
   render(force) {
     if (!this._hass) return;
     this._t = Date.now();
+    if (TABS[this.tab]._pending) loadTab(this.tab);
     const T = TABS[this.tab], ver = new URLSearchParams(V).get("v") || "";
     ui.w = this.clientWidth || window.innerWidth; ui.mob = ui.w <= 700; this._w = ui.w;
     let body;

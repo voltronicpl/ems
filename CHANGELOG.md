@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## 0.6.58
+- Panel nie zawiesza się przy wczytywaniu: bez top-level await, element rejestrowany od razu („Ładuję EMS…”), zakładki doładowywane osobno (Przegląd pierwszy) z 2 ponownymi próbami i komunikatem błędu zamiast pustej strony.
+- Pierwsze rysowanie panelu i karty `ems-card` od razu po otrzymaniu `hass` (bez dławienia 2 s), przerysowanie po konfiguracji panelu.
+- Backend: model obecności i symulacja magazynu liczone w wątku (executor); obecność tylko po przeładowaniu historii; symulacja w tle, start ≥ 5 min po uruchomieniu EMS.
+
 ## 0.6.57
 - Nauka (na dole): 🔋 Symulacja magazynu (`batsim.py`) – brak / obecny (15 kWh) / 2× (30 kWh) na historii godzinowej (dom, PV, G12, RCE × depozyt), ten sam algorytm, SOC min, sprawności, 0,2C, limit przyłącza. Kafelki oszczędności dziennie / miesięcznie / rocznie (15 vs brak, 30 vs 15), wykres dzień po dniu + narastająco, tabela zakup / oddane / koszt.
 - Nowy parametr `cena_dokupienia_zl` (number.ems_cena_dokupienia_zl) i zwrot w latach.

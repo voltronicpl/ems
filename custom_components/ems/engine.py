@@ -94,6 +94,20 @@ class Engine:
         return a_ch * v, sell_w
 
     # --- historia recznych ----------------------------------------------------------------------
+    async def _run_sim(self) -> None:
+        """Symulacja magazynu w tle: start min. 5 min po uruchomieniu EMS, liczenie w watku (nie blokuje HA)."""
+        import asyncio
+        st = getattr(self, "_t_start", None)
+        if st is None:
+            self._t_start = st = datetime.now(timezone.utc)
+        wait = 300 - (datetime.now(timezone.utc) - st).total_seconds()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        try:
+            self.sim = await batsim.run(self.hass, self)
+        except Exception as err:  # noqa: BLE001
+            LOG.warning("Symulacja magazynu: %s", err)
+
     async def _load_log(self) -> None:
         self.manual_log = (await self._mstore.async_load() or {}).get("wpisy", [])
         self.fc_log = (await self._fstore.async_load() or {}).get("sloty", {})
@@ -172,6 +186,7 @@ class Engine:
         new._notify()
 
     def start(self) -> None:
+        self._t_start = datetime.now(timezone.utc)
         self.hass.async_create_task(self._load_log())
         self._unsubs.append(async_track_time_interval(self.hass, self._tick, timedelta(seconds=10)))
         self.hass.async_create_task(self.replan("start"))
@@ -309,10 +324,9 @@ class Engine:
                                  devs[d["nazwa"]].get("kwh_cykl"), devs[d["nazwa"]].get("co_ile_dni"))
                 self.learn.dev = devs
                 self._pres = await presence.history(self.hass, self.src.obec, 365) if self.src.obec else {}
-                try:
-                    self.sim = await batsim.run(self.hass, self)
-                except Exception as err:  # noqa: BLE001
-                    LOG.warning("Symulacja magazynu: %s", err)
+                self._pres_dirty = True
+                if not getattr(self, "_sim_task", None) or self._sim_task.done():
+                    self._sim_task = self.hass.async_create_background_task(self._run_sim(), "ems_symulacja")
                 self.learn.at = now.isoformat()
                 self._hist_at = now
 
@@ -355,7 +369,9 @@ class Engine:
             LOG.info("Wsp. temperatury %.3f kWh/°C (%s)", coeff, c_lab)
             ldk = load_forecast.forecast(slots, base_hist, {**wl, **self._weather}, self.p, coeff)
             self._base_hist = base_hist
-            self.pres_m = presence.model(base_hist, self._pres, self.learn.dev_h) if self._pres else None
+            if getattr(self, "_pres_dirty", True):
+                self.pres_m = await self.hass.async_add_executor_job(presence.model, base_hist, self._pres, self.learn.dev_h) if self._pres else None
+                self._pres_dirty = False
             n_now = presence.now_count(self.hass, self.src.obec)
             pmul = presence.mult(slots, self.pres_m, n_now, now)
             if pmul:
