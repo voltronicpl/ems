@@ -172,8 +172,6 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
         z = season(slots[a])
         thr_t = p[f"prog_tania_{z}"]
         arb = arb_price(p, z) if bi > 0 and blocks[bi - 1][2] else None
-        if arb is not None and arb < thr_t:
-            thr_t = arb
         # energia, ktora JUZ jest w baterii (okno biezace): nie sprzedawaj ponizej jej kosztu (koszt kWh / sprawnosc + cykl + min. zysk)
         kb = p.get("koszt_baterii_zl")
         if bi == 0 and kb is not None:
@@ -238,6 +236,7 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
         arb = arb_price(p, z, "arbitraz_noc")
         if arb is None:
             continue
+        arb = max(arb, p[f"prog_tania_{z}"])          # nigdy ponizej progu sprzedazy „tania”
         hour = lambda k: slots[k].astimezone(WAW).replace(minute=0, second=0, microsecond=0)   # noqa: E731
         hours: dict = {}
         for k in range(a, b):
