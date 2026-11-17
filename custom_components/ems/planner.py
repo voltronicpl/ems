@@ -6,16 +6,16 @@ Zasady (spec 7 / 7a):
    nastepnej taniej strefy, z miejscem na nadwyzke PV (max 98%).
 3. Sprzedaz w najdrozszych slotach RCE, rozbita na wiele okienek:
    - energia kupiona tanio: RCE >= prog_tania,
-   - nadwyzka PV: najdrozsze wolne okienka, nigdy ponizej progu "za bezcen",
+   - NIGDY ponizej prog_tania (twarde minimum, kazda sciezka); limit dzienny idzie do najdrozszych slotow doby,
    - powyzej prog_droga sprzedaje nawet energie potrzebna domowi (dom dobierze z sieci).
 4. Limit sprzedazy dziennie: limit_sprzedazy_<sezon> x prognoza PV; dzien bez PV -> losowo los_min..los_max Wh.
    Wszystko (nadwyzka PV + dokupienie pod sprzedaz) miesci sie w tym limicie.
 4a. Dokupienie pod sprzedaz (arbitraz_<sezon>): w taniej strefie laduje ponad potrzeby domu, jesli w nastepnym
    drogim oknie RCE x depozyt - (cena taniej G12 / (spr. ladowania x rozladowania) + koszt cyklu) >= arbitraz_zysk_<sezon>.
 4c. Koszt energii w baterii (batcost.py): w biezacym oknie prog „tania” >= (koszt kWh w baterii / spr. rozl. + koszt cyklu + min. zysk) / depozyt.
-4b. Sprzedaz w taniej strefie (arbitraz_noc_<sezon>): w taniej strefie sprzedaje z baterii w godzinach z najwyzszym
-   RCE (ten sam warunek), a laduje w INNYCH godzinach zegarowych (bilansowanie godzinowe: pobor i oddanie
-   w tej samej godzinie sie znosza). Na koniec strefy bateria i tak dochodzi do celu.
+4b. Cykl w taniej strefie: laduje pelna moca, sprzedaje w najdrozszych godzinach (RCE >= prog_tania) tyle, ile da sie
+   doladowac pelna moca do soc_max przed koncem TEJ SAMEJ strefy; sprzedaz i ladowanie w innych godzinach zegarowych
+   (bilansowanie godzinowe). Na koniec strefy zawsze soc_max.
 5. Burza: zapas 50% od N godzin przed burza do konca burzy.
 6. RCE ponizej progu "za bezcen" -> blokada eksportu.
 7. Straty baterii: do baterii trafia energia x sprawnosc_ladowania, z baterii ubywa energia / sprawnosc_rozladowania
@@ -157,9 +157,23 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
         d = s.astimezone(WAW).date()
         pv_day[d] = pv_day.get(d, 0) + v
     cap_left = {d: daily_cap(d, v, p) for d, v in pv_day.items()}
+    # cena odciecia na dzien: limit dzienny trafia do NAJDROZSZYCH slotow doby (RCE >= prog tania), nie do pierwszego okna
+    sell_slot0 = max_sell_w / 1000 * SLOT_H
+    cut: dict = {}
+    for d, c in cap_left.items():
+        cs = sorted((price[k] for k in range(n) if price[k] is not None and slots[k].astimezone(WAW).date() == d
+                     and price[k] >= p[f"prog_tania_{season(slots[k])}"]), reverse=True)
+        acc, cut[d] = 0.0, None
+        for v in cs:
+            cut[d] = v
+            acc += sell_slot0
+            if acc >= c + 1e-6:
+                break
 
     sell = [0.0] * n
     why_sell = [""] * n
+    left_w: list = []
+    use_w: dict = {}                                 # okno drogie -> zuzycie z baterii [kWh]                                # okna drogie: (bi, a, b, zostalo energii ponad potrzeby domu, prog)
     target = {}                                      # indeks bloku taniego -> docelowy SOC [%]
     soc_start = soc_now
     for bi, (a, b, is_ch) in enumerate(blocks):
@@ -198,6 +212,8 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
             d = slots[k].astimezone(WAW).date()
             if cap_left.get(d, 0) <= 0:
                 continue
+            if price[k] < p[f"prog_tania_{z}"] or (cut.get(d) is not None and price[k] < cut[d]):
+                continue                                                # NIGDY ponizej progu; tylko najdrozsze sloty doby
             if price[k] >= thr_d:
                 amt = min(sell_slot, cap_left[d])                       # drogo: sprzedaj nawet energie domu
                 thr_of[k] = f"RCE {price[k]:.2f} >= prog droga {thr_d:.2f}"
@@ -208,10 +224,6 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                     thr_of[k] = f"dokupione tanio pod sprzedaz: RCE {price[k]:.2f} x {p['depozyt_mnoznik']:.2f}, zysk ~{gain:.2f} zl/kWh"
                 else:
                     thr_of[k] = f"RCE {price[k]:.2f} >= prog tania {thr_t:.2f}, nadwyzka ponad potrzeby domu"
-            elif price[k] >= bezcen and k >= first_pv and spare_pv - planned_pv > 0.01:
-                amt = min(sell_slot, cap_left[d], spare_pv - planned_pv, spare - planned)
-                planned_pv += max(amt, 0)
-                thr_of[k] = f"nadwyzka PV w jednym z najdrozszych okienek (RCE {price[k]:.2f})"
             else:
                 continue
             if amt <= 0.01:
@@ -220,29 +232,33 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
             why_sell[k] = thr_of.get(k, "")
             planned += amt
             cap_left[d] -= amt
+        left_w.append((bi, a, b, spare - planned, p[f"prog_tania_{z}"], thr_d))
         _sell_blocks(sell, why_sell, price, a, b, int(p.get("tou_min_blok_min", 60) // 15))
         # docelowy SOC na koniec poprzedniej taniej strefy
         if bi > 0 and blocks[bi - 1][2]:
-            want = kwh(res_w) + (need + planned) / ed - pv_in * ec      # w baterii, po stratach
-            target[bi - 1] = min(soc_max, max(res_w, pct(want)))
+            target[bi - 1] = soc_max                                   # priorytet: dom z baterii -> koniec taniej strefy zawsze soc_max
+        use_w[bi] = (need + planned) / ed - pv_in * ec                 # ile ubedzie z baterii w tym oknie [kWh]
         soc_start = res_w
 
-    # --- sprzedaz w taniej strefie (w innych godzinach niz ladowanie) ------------------------------
+    # --- cykl w taniej strefie: laduj pelna moca -> sprzedaj w najdrozszych godzinach -> doladuj do soc_max -------
+    # (bilansowanie godzinowe: sprzedaz i ladowanie w INNYCH godzinach; na koniec strefy ZAWSZE soc_max)
     sell_h: dict[int, set] = {}                       # blok tani -> godziny zegarowe sprzedazy
     for bi, (a, b, is_ch) in enumerate(blocks):
         if not is_ch or b - a < 8:
             continue
         z = season(slots[a])
+        thr = p[f"prog_tania_{z}"]                       # NIGDY ponizej progu sprzedazy
         arb = arb_price(p, z, "arbitraz_noc")
-        if arb is None:
-            continue
-        arb = max(arb, p[f"prog_tania_{z}"])          # nigdy ponizej progu sprzedazy „tania”
+        thr = max(thr, arb) if arb is not None else thr
         hour = lambda k: slots[k].astimezone(WAW).replace(minute=0, second=0, microsecond=0)   # noqa: E731
         hours: dict = {}
         for k in range(a, b):
             hours.setdefault(hour(k), []).append(k)
-        e0 = kwh(soc_now) if bi == 0 else kwh(res_min)
-        tgt = target.get(bi, soc_max if bi == len(blocks) - 1 else res_min)
+        if bi == 0:
+            e0 = kwh(soc_now)
+        else:                                         # start strefy = poczatek poprzedniego okna drogiego - zuzycie domu w nim
+            top = kwh(soc_max) if bi >= 2 else kwh(soc_now)
+            e0 = max(kwh(res_min), min(kwh(soc_max), top - max(use_w.get(bi - 1, 0.0), 0.0)))
 
         def feasible(sel: set, amt: dict) -> bool:
             e = e0
@@ -254,27 +270,50 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                             return False
                     else:
                         e = min(kwh(soc_max), e + ch_slot + max(pvk[k] - ld[k], 0) * ec)
-            return e >= kwh(tgt) - 1e-6
-        ranked = sorted((hh for hh, ks in hours.items() if len(ks) == 4 and all(price[k] is not None and price[k] >= arb for k in ks)),
+            return e >= kwh(soc_max) - 1e-6
+        ranked = sorted((hh for hh, ks in hours.items() if len(ks) == 4 and all(price[k] is not None and price[k] >= thr for k in ks)),
                         key=lambda hh: -sum(price[k] for k in hours[hh]))
         sel, amt = set(), {}
         for hh in ranked:
             d = hh.date()
-            new = {k: min(sell_slot, max(cap_left.get(d, 0), 0) / 4) for k in hours[hh]}
-            if sum(new.values()) < 0.05:
-                continue
-            if feasible(sel | {hh}, {**amt, **new}):
-                sel.add(hh)
-                amt.update(new)
-                cap_left[d] -= sum(new.values())
+            full = min(sell_slot * 4, max(cap_left.get(d, 0), 0))
+            for f in (1.0, 0.75, 0.5, 0.25):              # tyle, ile da sie jeszcze doladowac do soc_max przed koncem strefy
+                new = {k: full * f / 4 for k in hours[hh]}
+                if sum(new.values()) < 0.05:
+                    break
+                if feasible(sel | {hh}, {**amt, **new}):
+                    sel.add(hh)
+                    amt.update(new)
+                    cap_left[d] -= sum(new.values())
+                    break
         for k, v in amt.items():
             sell[k] = v
-            gain = price[k] * p["depozyt_mnoznik"] - (arb * p["depozyt_mnoznik"] - p[f"arbitraz_zysk_{z}"])
-            why_sell[k] = f"tania strefa: sprzedaz z baterii (RCE {price[k]:.2f}), laduje w innych godzinach, zysk ~{gain:.2f} zl/kWh"
+            why_sell[k] = (f"tania strefa: cykl laduj -> sprzedaj {hour(k):%H:%M} (RCE {price[k]:.2f} >= prog {thr:.2f}, "
+                           f"zysk ~{price[k] * p['depozyt_mnoznik'] - PRICE['cheap'] / (ec * ed):.2f} zl/kWh) -> doladuj do {soc_max:.0f}%")
         if sel:
             sell_h[bi] = sel
-            LOG.info("Tania strefa od %s: sprzedaz w godzinach %s (%.2f kWh)", slots[a].astimezone(WAW).strftime("%d.%m %H:%M"),
-                     ", ".join(h.astimezone(WAW).strftime("%H:00") for h in sorted(sel)), sum(amt.values()))
+            LOG.info("Tania strefa od %s: cykl laduj/sprzedaj/doladuj, sprzedaz w godzinach %s (%.2f kWh, prog %.2f)",
+                     slots[a].astimezone(WAW).strftime("%d.%m %H:%M"),
+                     ", ".join(h.astimezone(WAW).strftime("%H:00") for h in sorted(sel)), sum(amt.values()), thr)
+
+    # --- dosprzedaz: limit dnia niewykorzystany -> tansze sloty (dalej >= prog tania), tylko energia ponad potrzeby domu ---
+    room_w = {bi: room for bi, a, b, room, thr_t, thr_d in left_w if bi + 1 not in sell_h}   # nastepna tania strefa z cyklem – nie zjadaj
+    win = {bi: (a, b, thr_t) for bi, a, b, room, thr_t, thr_d in left_w}
+    cand = sorted(((k, bi) for bi in room_w for k in range(win[bi][0], win[bi][1])
+                   if price[k] is not None and price[k] >= win[bi][2] and sell[k] <= 0), key=lambda x: -price[x[0]])
+    touched = set()
+    for k, bi in cand:                                # od najdrozszego slotu w calej dobie
+        d = slots[k].astimezone(WAW).date()
+        amt = min(sell_slot, cap_left.get(d, 0), room_w[bi])
+        if amt <= 0.01:
+            continue
+        sell[k] = amt
+        why_sell[k] = f"dosprzedaz (limit dnia niewykorzystany): RCE {price[k]:.2f} >= prog tania {win[bi][2]:.2f}, energia ponad potrzeby domu"
+        room_w[bi] -= amt
+        cap_left[d] -= amt
+        touched.add(bi)
+    for bi in touched:
+        _sell_blocks(sell, why_sell, price, win[bi][0], win[bi][1], int(p.get("tou_min_blok_min", 60) // 15))
 
     # --- symulacja slot po slocie (z przeplywami sieci) ---------------------------------------------
     out: list[Slot] = []
@@ -307,18 +346,16 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
             elif is_ch and sh:                                         # pozostale godziny: laduj pelna moca pod cel + sprzedaz
                 imp += max(-net, 0)
                 e, over = store(e, max(net, 0))
-                ahead = sum(sell[j] + max(ld[j] - pvk[j], 0) for j in range(k + 1, b) if in_sh(j)) / ed
-                want = min(kwh(soc_max), kwh(tgt if tgt is not None else res_min) + ahead)
+                want = kwh(soc_max)                                    # cykl: zawsze do soc_max (przed i po sprzedazy)
                 act, why = "hold", "tania strefa G12: bateria trzyma, dom z sieci (sprzedaz w innej godzinie)"
                 if want - e > 0.005:
-                    left = max(sum(1 for j in range(k, b) if not in_sh(j)), 1)
-                    need = (want - e) / left
-                    put = min(ch_slot, max(soft, need), want - e)      # do baterii: lagodnie, szybciej gdy nie zdazy
+                    put = min(ch_slot, want - e)                       # pelna moca – jak najszybciej
                     grid = put / ec                                    # z sieci (ze stratami)
                     e += put
                     imp += grid
                     act = "charge"
-                    why = f"tania strefa G12: laduje pod cel {tgt or res_min:.0f}% + sprzedaz w innej godzinie" + (f"; szybciej niz {p.get('ladowanie_lagodne_c', 0.2):.2g}C – inaczej nie zdazy" if need > soft + 1e-6 else "")
+                    after = any(in_sh(j) for j in range(a, k))
+                    why = f"tania strefa G12: cykl – {'doladowanie po sprzedazy' if after else 'ladowanie pelna moca pod sprzedaz'} do {soc_max:.0f}%"
             elif is_ch:
                 imp += max(-net, 0)                                    # dom z sieci w taniej strefie (bateria trzyma)
                 e, over = store(e, max(net, 0))

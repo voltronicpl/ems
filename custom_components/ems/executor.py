@@ -37,6 +37,7 @@ class Executor:
         self._exp_rej = 0                                # ile razy falownik sam cofnal tryb sprzedazy w biezacej sprzedazy
         self._exp_set = False
         self.sell_warn: str | None = None
+        self.sell_block: dict | None = None             # falownik odrzucil sprzedaz -> sprzedaz wstrzymana (stan parametrow)
         self.peak = PeakShave(hass, dev, entry_id)      # "Pmax zakupu": sprzedaz odznaczony, kupno zaznaczony
 
     # --- encje -------------------------------------------------------------------------------
@@ -141,6 +142,9 @@ class Executor:
             # sprzedaj do = SOC punktu = rezerwa + 1 (musi byc co najmniej 1 % wyzej niz autokonsumpcja)
             auto = min(res, 99)
             return ("sell", True, auto + 1, int(max_sell_w // 100 * 100), auto, auto + 1)
+        if slot["action"] == "hold_now":                                 # sprzedaz wstrzymana: bateria trzyma biezacy SOC, dom z sieci
+            cur = int(max(round(slot.get("soc_now") or p["soc_max"]), res))
+            return ("hold", False, cur, int(max_sell_w // 100 * 100), cur, 100)
         if slot["action"] == "hold":                                     # tania strefa: bateria trzyma (SOC punktu = soc_max), dom z sieci
             smax = round(p["soc_max"])
             return ("hold", False, smax, int(max_sell_w // 100 * 100), smax, 100)
@@ -156,6 +160,12 @@ class Executor:
                 continue
             if s.get("est") and s.get("action") == "sell":       # sprzedaz na SZACOWANEJ RCE nie idzie do falownika
                 s = {**s, "action": "self"}
+            if s.get("action") == "sell" and not s.get("manual"):
+                thr = p.get("prog_tania_lato" if 4 <= t.month <= 9 else "prog_tania_zima")
+                if s.get("price") is None or (thr is not None and s["price"] < thr):
+                    s = {**s, "action": "self"}                  # NIGDY ponizej progu sprzedazy
+                elif self.sell_block is not None:
+                    s = {**s, "action": "hold_now", "soc_now": self._soc_hold}              # falownik odrzuca sprzedaz -> trzymaj biezacy SOC
             m = self.mode(s, p, max_charge_w, max_sell_w)
             t = max(t, now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 15))
             if segs and segs[-1][1] == m:
@@ -185,13 +195,14 @@ class Executor:
                 del segs[i]
                 continue
             i += 1
-        # doba falownika = 00:00–23:59: punkt NIE MOZE przechodzic przez polnoc -> zawsze punkt o 00:00
-        # (segment trwajacy przez polnoc dzielony: ten sam tryb od 00:00)
+        # doba falownika: ostatni punkt trwa do 23:59, pierwszy punkt nowej doby startuje o 00:01 (nic przez polnoc)
         midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        if not any(t == midnight for t, _ in segs):
+        if not any(t == midnight or (t.hour == 0 and t.minute < 15) for t, _ in segs):
             k = max((i for i, (t, _) in enumerate(segs) if t < midnight), default=None)
             if k is not None:
                 segs.insert(k + 1, (midnight, segs[k][1]))
+            else:                                                     # biezacy punkt zdjety (doba w kolko) -> jego tryb od 00:01
+                segs.insert(0, (midnight, segs[-1][1]))
         is_mid = lambda k: segs[k][0] == midnight                    # noqa: E731
         soft = lambda k: segs[k][1][0] not in ("charge", "sell")   # noqa: E731
         end = segs[0][0] + timedelta(days=1)
@@ -236,8 +247,32 @@ class Executor:
                     for i in range(len(segs))]
             d, i = max(gaps)
             segs.insert(i + 1, (segs[i][0] + d / 2, segs[i][1]))
-        pts = sorted(((t.hour * 100 + (t.minute // 5) * 5, m) for t, m in segs), key=lambda x: x[0])
-        return pts
+        hhmm = lambda t: 1 if t.hour == 0 and t.minute < 5 else t.hour * 100 + (t.minute // 5) * 5   # noqa: E731  00:00 -> 00:01
+        pts, seen = [], set()
+        for t, m in sorted(segs, key=lambda x: x[0]):          # ten sam start = jeden punkt (wczesniejszy w czasie wygrywa)
+            h = hhmm(t)
+            if h in seen:
+                continue
+            seen.add(h)
+            pts.append((h, m))
+        while len(pts) < 6:                                     # po usunieciu duplikatu dopelnij (ostatni punkt dzielony)
+            h0 = pts[-1][0]
+            mid = (h0 // 100 * 60 + h0 % 100 + 24 * 60 - 1) // 2
+            h = mid // 60 * 100 + mid % 60 // 5 * 5
+            if h in seen or h <= h0:
+                break
+            seen.add(h)
+            pts.append((h, pts[-1][1]))
+        return sorted(pts, key=lambda x: x[0])
+
+    async def _read_all(self) -> None:
+        """⟳ odczyt wszystkich ustawien dataloggera (YAML v5.8: odczytaj_wszystko)."""
+        try:
+            if self.hass.services.has_service("esphome", f"{self.dev}_odczytaj_wszystko"):
+                await self.hass.services.async_call("esphome", f"{self.dev}_odczytaj_wszystko", {}, blocking=False)
+                LOG.info("Sprzedaz odrzucona: zlecono odczyt wszystkich ustawien falownika")
+        except Exception as err:  # noqa: BLE001
+            LOG.warning("Odczyt wszystkiego nie wyszedl (%s)", err)
 
     def _grid_cap(self, p: dict) -> float | None:
         """Max pobor z sieci: moc ladowania baterii = limit - aktualny dom - 300 W zapasu (straty), w krokach 500 W.
@@ -255,7 +290,50 @@ class Executor:
             self._cap_w, self._cap_at = new, now
         return self._cap_w
 
+    def _sell_params(self) -> dict:
+        """Parametry, ktore moga blokowac eksport (do wykrycia, ktory jest zly)."""
+        from .verify import dev_entity
+        out = {"Pmax zakupu (278 bit 4)": self.val(dev_entity(self.hass, self.dev, "switch", "pmax_zakupu") or self.eid("switch", "pmax_zakupu")),
+               "Tryb limitu eksportu": self.val(self.eid("select", "tryb_limitu_eksportu")),
+               "Sprzedaj nadwyzke PV": self.val(self.eid("switch", "sprzedaj_nadwyzke_pv")),
+               "Pmax sprzedazy (eksport)": self.val(self.eid("number", "max_moc_sprzedazy_z_pv")),
+               "Moc szczytowa sieci (291)": self.val(self.eid("number", "moc_szczytowa_sieci")),
+               "SOC baterii": self.val(self.eid("sensor", "bateria_soc"))}
+        for i in range(1, 7):
+            out[f"TOU {i}: start/SOC/sprzedaj do"] = f"{self.val(self.eid('number', f'tou_{i}_start_hhmm'))}/{self.val(self.eid('number', f'tou_{i}_soc'))}/{self.val(self.eid('number', f'tou_{i}_sprzedaj_do'))}"
+        return out
+
+    def _block_key(self) -> dict:
+        """Wstrzymanie sprzedazy trwa do zmiany parametru, ktorego EMS sam nie przestawia (291 / sprzedaj nadwyzke PV
+        poza sprzedaza), albo do nowej doby. Pmax zakupu / tryb eksportu / Pmax sprzedazy przestawia EMS – nie licza sie."""
+        return {"Moc szczytowa sieci (291)": self.val(self.eid("number", "moc_szczytowa_sieci")),
+                "doba": datetime.now(WAW).date().isoformat()}
+
+    def _sell_bad(self, prm: dict) -> list[str]:
+        bad = []
+        if prm["Pmax zakupu (278 bit 4)"] == "on":
+            bad.append("Pmax zakupu = ZAZNACZONY (blokuje sprzedaz)")
+        if prm["Sprzedaj nadwyzke PV"] == "off":
+            bad.append("Sprzedaj nadwyzke PV = OFF")
+        try:
+            if prm["Pmax sprzedazy (eksport)"] is not None and float(prm["Pmax sprzedazy (eksport)"]) < 100:
+                bad.append(f"Pmax sprzedazy = {prm['Pmax sprzedazy (eksport)']} W")
+            if prm["Moc szczytowa sieci (291)"] is not None and float(prm["Moc szczytowa sieci (291)"]) < 100:
+                bad.append(f"Moc szczytowa sieci (291) = {prm['Moc szczytowa sieci (291)']} W")
+        except ValueError:
+            pass
+        return bad
+
     async def apply(self, plan: list[dict], p: dict, max_charge_w: float, max_sell_w: float, current: dict | None) -> None:
+        if self.sell_block is not None:                    # wstrzymana sprzedaz: wznow, gdy zmieniles ktorys parametr
+            now_prm = self._block_key()
+            if now_prm != self.sell_block:
+                LOG.info("Sprzedaz: parametry eksportu zmienione %s -> %s – wznawiam sprzedaz", self.sell_block, now_prm)
+                self.sell_block, self._exp_rej, self._exp_set, self.sell_warn = None, 0, False, None
+        if self.sell_block is not None and current and current.get("action") == "sell" and not current.get("manual"):
+            current = {**current, "action": "hold"}
+        soc_v = self.val(self.eid("sensor", "bateria_soc"))
+        self._soc_hold = float(soc_v) if soc_v is not None else None
         pts = self.points(plan, p, max_charge_w, max_sell_w)
         if not pts:
             LOG.warning("Brak planu na najblizsze 24 h - nic nie zapisuje")
@@ -302,8 +380,19 @@ class Executor:
             LOG.warning("Falownik sam cofnal tryb eksportu na '%s' (%d. raz w tej sprzedazy)", self.val(mode_e), self._exp_rej)
         if act == "sell" and self._exp_rej >= 2:
             if not self.sell_warn:
-                self.sell_warn = "Falownik odrzuca sprzedaż (sam wraca na „Limit wbudowany”). EMS przestał go przestawiać – sprawdź na LCD Tryb pracy (Pmax zakupu i inne blokady)."
-                LOG.error("%s", self.sell_warn)
+                prm = self._sell_params()
+                bad = self._sell_bad(prm)
+                self.sell_warn = ("Falownik odrzuca sprzedaż – zły parametr: " + "; ".join(bad) if bad else
+                                  "Falownik odrzuca sprzedaż – nie wykryto, który parametr (sprawdź na LCD Tryb pracy). Odczyt: "
+                                  + ", ".join(f"{k} = {v}" for k, v in prm.items())) + ". Sprzedaż wstrzymana (bateria trzyma SOC) do zmiany parametru."
+                LOG.error("[wykonanie] %s", self.sell_warn)
+                for k, v in prm.items():
+                    LOG.error("[wykonanie] Sprzedaz odrzucona – parametr %s = %s", k, v)
+                self.sell_block = self._block_key()
+                await self._read_all()
+                self.last_points = None                         # przelicz punkty TOU od razu (hold zamiast sell)
+                await self.apply(plan, p, max_charge_w, max_sell_w, current)
+                return
         elif opt:
             await self.set(mode_e, opt, f"biezacy slot: {act}")
             self._exp_set = act == "sell"

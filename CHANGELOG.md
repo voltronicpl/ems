@@ -1,5 +1,14 @@
 # Zmiany EMS
 
+## 0.6.63
+- TOU: ostatni punkt doby trwa do 23:59, pierwszy punkt nowej doby startuje o **00:01**. Nigdy dwa punkty z tym samym startem (koniec z podwójnym 0000).
+- Sprzedaż **nigdy poniżej progu „tania”** (1,10 zł): planer (okna drogie, tania strefa, dosprzedaż – usunięta sprzedaż nadwyżki PV poniżej progu), executor (slot sell z RCE < progu → autokonsumpcja) i ręczna sprzedaż (odrzucona z wpisem w logu).
+- Limit dzienny sprzedaży idzie najpierw do **najdroższych slotów doby**; jeśli nie zostanie wykorzystany – **dosprzedaż** w tańszych slotach (od najdroższego, dalej ≥ próg, tylko energia ponad potrzeby domu).
+- **Cykl w taniej strefie**: ładowanie pełną mocą → sprzedaż w najdroższych godzinach (≥ próg) tyle, ile da się doładować pełną mocą do 98 % przed końcem tej samej strefy → doładowanie. Sprzedaż i ładowanie w osobnych godzinach (bilansowanie godzinowe).
+- Koniec każdej taniej strefy: **zawsze soc_max (98 %)** – priorytet: dom z baterii.
+- Falownik odrzuca sprzedaż → sprzedaż wstrzymana (punkt `hold` z bieżącym SOC, Pmax zakupu zaznaczony), ⟳ odczyt wszystkiego, w logu i ostrzeżeniu **który parametr jest zły** (Pmax zakupu, sprzedaj nadwyżkę PV, Pmax sprzedaży, 291, punkty TOU). Wznowienie: zmiana 291, nowa doba, włączenie algorytmu albo ręczna sprzedaż.
+- Powód każdej sprzedaży / ładowania w planie (RCE, próg, zysk/kWh, „cykl: ładuj → sprzedaj → doładuj”).
+
 ## 0.6.62
 - Karta `custom:ems-card` widoczna w wyborze „Dodaj kartę” (window.customCards: „EMS – przepływ energii”, podgląd na żywo).
 - Edytor karty w oknie ustawień: urządzenie (datalogger) i przejście po kliknięciu (domyślnie /ems).

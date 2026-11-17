@@ -504,6 +504,7 @@ class Engine:
         LOG.info("ALGORYTM %s", "WLACZONY" if on else "WYLACZONY")
         if on:
             self.guard_warn, self._g_fix, self._g_bad = None, 0, 0
+            self.exec.sell_block, self.exec.sell_warn, self.exec._exp_rej = None, None, 0
             await self.exec.snapshot()
             await self.replan("wlaczenie algorytmu")
         elif not self.manual:
@@ -515,13 +516,20 @@ class Engine:
         if kwh <= 0:
             LOG.warning("Reczne %s: ilosc 0 kWh - pomijam", kind)
             return
+        if kind == "sell":                                   # NIGDY ponizej progu sprzedazy (prog tania)
+            now = datetime.now(timezone.utc)
+            rce = self._prices.get(now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0))
+            thr = self.p[f"prog_tania_{tariff.season(now)}"]
+            if rce is None or rce < thr:
+                LOG.warning("[reczne] Sprzedaz odrzucona: RCE %s < prog tania %.2f zl", "brak" if rce is None else f"{rce:.2f}", thr)
+                return
         if self.manual:
             self._finish_manual("zastapione")
         elif not self.enabled:
             await self.exec.snapshot()
         key = "energia_bateria_ladowanie_dzisiaj" if kind == "buy" else "energia_siec_export_dzisiaj"
         self.manual = ManualJob(kind, kwh, self.r(key, 0.0))
-        self.exec._exp_rej, self.exec._exp_set, self.exec.sell_warn = 0, False, None     # nowe zlecenie = nowa proba sprzedazy
+        self.exec._exp_rej, self.exec._exp_set, self.exec.sell_warn, self.exec.sell_block = 0, False, None, None     # nowe zlecenie = nowa proba sprzedazy
         if self.enabled:
             LOG.info("Algorytm w czuwaniu (standby) do konca recznego zlecenia – reczne ma pierwszenstwo")
         await self.execute()
