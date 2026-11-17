@@ -1,5 +1,10 @@
 # Zmiany EMS
 
+## 0.6.65
+- Nauka: nowy wykres **„🏠 Zużycie domu – prognoza vs realne”**: realne zużycie + prognoza poranna (z początku dnia) + prognoza ostatnia (przed godziną). Dzień = godzinowo, Tydzień / Miesiąc = dziennie, Rok = tygodniowo. Pod wykresem sumy, różnica kWh / %, zaniża / zawyża.
+- Archiwum prognoz zużycia godzinowo na 400 dni (`ems_prognozy_arch`) – historia do sprawdzania wstecz (wcześniej prognozy tylko 15 dni).
+- Nauka: ◀ / kalendarz / ▶ / Dziś przesunięte na lewo (za Dzień–Rok), data w kalendarzu biała.
+
 ## 0.6.64
 - Sprzedaż z baterii tylko w cyklu w taniej strefie: ładuj pełną mocą → sprzedaj w najdroższej godzinie → doładuj do 98 % przed końcem tej samej strefy (sprzeda tyle, ile zdąży doładować; jak nie zdąży – nie sprzedaje).
 - W drogiej strefie G12 brak sprzedaży z baterii (wyjątek: RCE ≥ próg „droga”); usunięta dosprzedaż (koniec z poranną sprzedażą po ~1,25 i braniem z sieci przed 13:00).

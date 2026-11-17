@@ -368,7 +368,24 @@ class LearnView(HomeAssistantView):
         profil = {k: [round(sum(v for h, v in a if h == i) / max(sum(1 for h, _ in a if h == i), 1), 3) for i in range(24)] for k, a in prof.items()}
         from . import presence as _pr
         _obec = _pr.view(getattr(eng, "pres_m", None), getattr(eng, "_pres", {}), getattr(eng, "_hist", {}), d1, d0)
+        # zuzycie domu: realne + prognoza poranna + ostatnia (archiwum 400 dni); Dzien = godzinowo, reszta = dobowo
+        zz: dict = {}
+        def _zk(h):
+            loc = h.astimezone(WAW)
+            return loc.strftime("%Y-%m-%d %H") if n_d == 1 else loc.date().isoformat()
+        for h, w in eng._hist.items():
+            if inr(h):
+                zz.setdefault(_zk(h), [None, None, None])
+                zz[_zk(h)][0] = (zz[_zk(h)][0] or 0) + w / 1000
+        for k, (pr, os_) in getattr(eng, "fc_arch", {}).items():
+            h = datetime.fromisoformat(k)
+            if inr(h):
+                e_ = zz.setdefault(_zk(h), [None, None, None])
+                e_[1] = (e_[1] or 0) + pr
+                e_[2] = (e_[2] or 0) + os_
+        zuzycie = [[k] + [round(x, 3) if x is not None else None for x in v] for k, v in sorted(zz.items())]
         return self.json({
+            "zuzycie": zuzycie,
             "obecnosc": _obec, "symulacja": getattr(eng, "sim", None),
             "dzien": d0.isoformat(), "przeliczono": L.at, "snapshoty": L.snap, "seria": ser, "godziny": [hours[i] for i in range(24)],
             "pompa": {k: v for k, v in (L.pump or {}).items() if k not in ("mies", "sez")} if L.pump else None, "pompa_pkt": [[round(a, 1), round(b, 1), round(c, 3)] for a, b, c in pts[::step]],

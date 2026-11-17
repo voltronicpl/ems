@@ -68,6 +68,8 @@ class Engine:
         self._wx_learn: dict = {}
         self.fc_log: dict = {}                       # slot ISO -> {"rano": {...}, "ost": {...}} (14 dni) – prognoza vs fakt
         self._fstore = Store(hass, 1, f"ems_prognozy_{entry_id}")
+        self.fc_arch: dict = {}                      # godzina UTC ISO -> [prognoza poranna kWh, ostatnia kWh] (archiwum 400 dni, Nauka)
+        self._astore = Store(hass, 1, f"ems_prognozy_arch_{entry_id}")
 
     # --- odczyty z dataloggera -----------------------------------------------------------------
     def r(self, key: str, default=None):
@@ -111,6 +113,8 @@ class Engine:
     async def _load_log(self) -> None:
         self.manual_log = (await self._mstore.async_load() or {}).get("wpisy", [])
         self.fc_log = (await self._fstore.async_load() or {}).get("sloty", {})
+        self.fc_arch = (await self._astore.async_load() or {}).get("godziny", {})
+        self._arch_update()
         await self.src.load()
         await self.learn.load()
         await self.bat.load()
@@ -157,6 +161,22 @@ class Engine:
         cut = (now - timedelta(days=15)).isoformat()
         self.fc_log = {k: v for k, v in self.fc_log.items() if k >= cut}
         self._fstore.async_delay_save(lambda: {"sloty": self.fc_log}, 30)
+        self._arch_update()
+
+    def _arch_update(self) -> None:
+        """Godzinowe sumy prognozy zuzycia domu (poranna = z poczatku dnia, ostatnia = przed slotem) do archiwum 400 dni."""
+        acc: dict = {}
+        for k, v in self.fc_log.items():
+            h = datetime.fromisoformat(k).astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0).isoformat()
+            r, o = v.get("dzien") or v.get("rano") or {}, v.get("ost") or {}
+            a = acc.setdefault(h, [0.0, 0.0])
+            a[0] += r.get("load") or 0
+            a[1] += o.get("load") or 0
+        for h, a in acc.items():
+            self.fc_arch[h] = [round(a[0], 4), round(a[1], 4)]
+        cut = (datetime.now(timezone.utc) - timedelta(days=400)).isoformat()
+        self.fc_arch = {k: v for k, v in self.fc_arch.items() if k >= cut}
+        self._astore.async_delay_save(lambda: {"godziny": self.fc_arch}, 60)
 
     def manual_today(self) -> dict:
         """Suma recznych dzis (z zadaniem w toku): {kup: {kwh, zl, n}, sprzedaj: {...}, wpisy: [...]}."""

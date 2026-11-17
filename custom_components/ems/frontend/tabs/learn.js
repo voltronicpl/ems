@@ -100,6 +100,27 @@ function accBox(d, P) {
   return `<div class="box"><div class="h"><span>📉 Prognoza vs fakt${tip({ co: "Ile się pomylił: prognoza z początku dnia (to, czym planował) vs to, co faktycznie było.", jak: "Dzień = godzinowo, Tydzień / Miesiąc = dziennie, Rok = tygodniowo. Czerwona linia = błąd dobowy domu w %.", czytaj: "Błąd spada z czasem = się uczy." })}</span></div>${body}</div>`;
 }
 
+// Zuzycie domu: realne + prognoza poranna (z poczatku dnia) + ostatnia przed godzina; archiwum prognoz 400 dni
+function zuzBox(d) {
+  let rows = (d.zuzycie || []).map(r => ({ k: r[0], f: r[1], p: r[2], o: r[3] }));
+  if (st.okres === "rok") {   // tygodniowo
+    const wk = {}; rows.forEach(r => { const dt = new Date(r.k + "T12:00"); dt.setDate(dt.getDate() - (dt.getDay() + 6) % 7); const k = iso(dt); (wk[k] = wk[k] || []).push(r); });
+    const sm = (a, x) => a.some(r => r[x] != null) ? a.reduce((s, r) => s + (r[x] || 0), 0) : null;
+    rows = Object.entries(wk).sort().map(([k, a]) => ({ k, f: sm(a, "f"), p: sm(a, "p"), o: sm(a, "o") }));
+  }
+  if (!rows.length) return `<div class="box"><div class="h"><span>🏠 Zużycie domu – prognoza vs realne</span></div><div class="lab">Brak danych w tym okresie.</div></div>`;
+  const xs = rows.map(r => st.okres === "dzien" ? `${+r.k.slice(11)}:00` : r.k.slice(5, 10).split("-").reverse().join("."));
+  const u = st.okres === "dzien" ? "kWh/h" : st.okres === "rok" ? "kWh/tydz." : "kWh/dzień";
+  const body = chart(xs, [{ v: rows.map(r => r.f), c: C.dom, name: `Realne zużycie (${u})` }, { v: rows.map(r => r.p), c: C.or, dash: "6 5", name: "Prognoza poranna (z początku dnia)" },
+    { v: rows.map(r => r.o), c: C.vio, dash: "2 4", name: "Prognoza ostatnia (przed godziną)" }], { every: st.okres === "dzien" ? 3 : undefined });
+  const both = rows.filter(r => r.f != null && r.p != null), bo = rows.filter(r => r.f != null && r.o != null);
+  const sum = (a, x) => a.reduce((s, r) => s + (r[x] || 0), 0);
+  const line = (a, x, nm) => { if (!a.length) return `${nm}: brak zapisanej prognozy`; const F = sum(a, "f"), P = sum(a, x), dd = F - P;
+    return `${nm}: ${fmt(P, 1, "kWh")} vs realne ${fmt(F, 1, "kWh")} → <b style="color:${Math.abs(dd) / Math.max(F, 0.1) < 0.1 ? C.green : C.red}">${dd >= 0 ? "+" : "−"}${fmt(Math.abs(dd), 1, "kWh")} (${dd >= 0 ? "+" : "−"}${fmt(Math.abs(dd) / Math.max(P, 0.1) * 100, 0)} %)</b> – ${dd > 0 ? "zaniża" : "zawyża"}`; };
+  return `<div class="box"><div class="h"><span>🏠 Zużycie domu – prognoza vs realne${tip({ co: "Realne zużycie całego domu (z pompą) i dwie prognozy EMS: poranna = z pierwszego przeliczenia w danym dniu (na niej planował), ostatnia = ostatnia przed daną godziną.", jak: "Dzień = godzinowo, Tydzień / Miesiąc = dziennie, Rok = tygodniowo. Prognozy archiwizowane od v0.6.65 (400 dni); wcześniej – tylko 15 dni wstecz.", czytaj: "Zaniża = dom zjadł więcej niż przewidział (ryzyko braku energii w baterii)." })}</span></div>${body}
+    <div class="lab">${line(both, "p", "Poranna")}<br>${line(bo, "o", "Ostatnia")}<br><span style="opacity:.7">Liczone tylko dla godzin / dni, gdzie jest i prognoza, i pomiar.</span></div></div>`;
+}
+
 // Temperatura zewnetrzna (Open-Meteo): Dzien / Tydzien – godzinowo, Miesiac / Rok – dziennie min / sr / max
 function tempBox(d) {
   const th = d.temp_h || []; if (!th.length) return `<div class="box"><div class="h"><span>🌡 Temperatura zewnętrzna</span></div><div class="lab">Brak danych pogodowych w tym okresie.</div></div>`;
@@ -277,14 +298,14 @@ export function render(c) {
   const d = st.d;
   const bar = `<div class="box nk-bar" style="padding:10px 14px;position:sticky;top:${st.top || 0}px;z-index:20;background:#081826f2;backdrop-filter:blur(8px)"><div class="ctrl" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
     ${Object.entries(OKR).map(([k, [n]]) => `<button class="btn ${st.okres === k ? "pri" : ""}" data-okr="${k}">${n}</button>`).join("")}
-    <span style="flex:1"></span><button class="btn" data-mv="-1">◀</button><input type="date" class="date" data-end value="${st.end || today()}" max="${today()}"><button class="btn" data-mv="1">▶</button><button class="btn" data-mv="0">Dziś</button></div></div>`;
+    <span style="width:10px"></span><button class="btn" data-mv="-1">◀</button><input type="date" class="date" data-end value="${st.end || today()}" max="${today()}" style="color:#fff;color-scheme:dark"><button class="btn" data-mv="1">▶</button><button class="btn" data-mv="0">Dziś</button></div></div>`;
   if (!d) return bar + `<div class="box"><div class="lab">Wczytuję naukę…</div></div>`;
   if (d.err) return bar + `<div class="box err">Błąd: ${esc(d.err)}</div>`;
   const P = period(d);
   return `<style>.nk-svg text.xl{fill:#8fa6bd;font-size:11px}.nk-wrap{position:relative}.nk-svg{touch-action:pan-y}.nk-tip{position:absolute;z-index:6;background:#0b1622f2;border:1px solid #2a4560;border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.6;pointer-events:none;white-space:nowrap;box-shadow:0 0 14px #000b;min-width:180px}
 .nk-tip>div{display:flex;justify-content:space-between;gap:18px}.nk-tip i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}.nk-th{font-weight:700;margin-bottom:2px}.nk-tip .nk-note{display:block;color:#9bb3c6;font-size:11.5px;white-space:normal;max-width:260px}
 .nk-lg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#9bb3c6;margin-top:4px}.nk-lg i{display:inline-block;width:16px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}</style>
-    ${bar}${tiles(d, P)}${accBox(d, P)}${tempBox(d)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}${presBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}${batSimBox(d, c)}`;
+    ${bar}${tiles(d, P)}${zuzBox(d)}${accBox(d, P)}${tempBox(d)}${st.okres !== "dzien" ? wxBox(P) : ""}${st.okres !== "dzien" ? dayCoefBox(P) : ""}${coefBox(d, P)}${simBox(d)}${devBox(d)}${presBox(d)}<div class="g2">${pumpBox(d)}${pvBox(d)}</div>${profBox(d)}${batSimBox(d, c)}`;
 }
 
 function nkTip(box, ev) {
