@@ -1,5 +1,13 @@
 # Zmiany EMS
 
+## 0.6.64
+- Sprzedaż z baterii tylko w cyklu w taniej strefie: ładuj pełną mocą → sprzedaj w najdroższej godzinie → doładuj do 98 % przed końcem tej samej strefy (sprzeda tyle, ile zdąży doładować; jak nie zdąży – nie sprzedaje).
+- W drogiej strefie G12 brak sprzedaży z baterii (wyjątek: RCE ≥ próg „droga”); usunięta dosprzedaż (koniec z poranną sprzedażą po ~1,25 i braniem z sieci przed 13:00).
+- Zysk liczony z 1 kWh kupionej: (spr. ład. × spr. rozł.)² × RCE × depozyt − tania G12 − zużycie baterii ≥ nowy parametr „Min. zysk ze sprzedaży” (0,20 zł); zawsze RCE ≥ próg „tania”.
+- **Progi sprzedaży liczone automatycznie** (encje tylko do podglądu, „(auto)”): RCE ≥ (cena G12 brutto z dystrybucją + zużycie baterii × 0,93⁴ + min. zysk) / (0,93⁴ × depozyt). Przy 0,20 zł zysku: **tania 1,00 zł** (zakup po 0,61), **droga 1,70 zł** (dom dobierze z sieci po 1,25). Powyżej progu „droga” sprzedaje w drogiej strefie także energię domu.
+- Moc ładowania w planie slot po slocie: limity prądowe / BMS i przyłącze (`max_pobor_w` − prognoza domu − 300 W).
+- Powód w planie: „kup → sprzedaj HH:MM po RCE … → doładuj do 98 %, zysk … zł z 1 kWh, ładowanie … kW”.
+
 ## 0.6.63
 - TOU: ostatni punkt doby trwa do 23:59, pierwszy punkt nowej doby startuje o **00:01**. Nigdy dwa punkty z tym samym startem (koniec z podwójnym 0000).
 - Sprzedaż **nigdy poniżej progu „tania”** (1,10 zł): planer (okna drogie, tania strefa, dosprzedaż – usunięta sprzedaż nadwyżki PV poniżej progu), executor (slot sell z RCE < progu → autokonsumpcja) i ręczna sprzedaż (odrzucona z wpisem w logu).

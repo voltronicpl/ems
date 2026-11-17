@@ -49,7 +49,7 @@ function pgeBox(c) {
     <div class="btns"><button class="btn pri" data-pgesave>Zapisz</button></div></div>`;
 }
 export const title = "Ustawienia";
-const PAIRS = [["Próg sprzedaży – tania", "prog_tania", "zł"], ["Próg sprzedaży – droga", "prog_droga", "zł"], ["Próg „za bezcen”", "prog_bezcen", "zł"],
+const PAIRS = [["Próg sprzedaży – tania (auto)", "prog_tania", "zł"], ["Próg sprzedaży – droga (auto)", "prog_droga", "zł"], ["Próg „za bezcen”", "prog_bezcen", "zł"],
   ["Mnożnik PV – słonecznie", "mn_slonecznie", "×"], ["Mnożnik PV – pochmurno", "mn_pochmurno", "×"], ["Mnożnik PV – deszcz", "mn_deszcz", "×"], ["Mnożnik PV – śnieg", "mn_snieg", "×"]];
 // Rubryka „Planowanie energii – dokupienie pod sprzedaż”: [nazwa, klucz, jednostka, przelacznik?]
 const ARB = [["Limit sprzedaży (z PV)", "limit_sprzedazy", "× PV"], ["Dzień bez PV – sprzedaż od", "los_min_wh", "Wh"], ["Dzień bez PV – sprzedaż do", "los_max_wh", "Wh"],

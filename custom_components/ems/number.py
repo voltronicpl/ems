@@ -7,6 +7,7 @@ from homeassistant.const import EntityCategory
 from .const import DEFAULT_POLL, DOMAIN, MANUAL, PARAMS, POLL_NUMBER
 from .diag import get_logger
 from .entity import EmsEntity
+from .planner import AUTO_THR
 
 LOG = get_logger("parametry")
 
@@ -34,16 +35,23 @@ class EmsParam(EmsEntity, RestoreNumber):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         last = await self.async_get_last_number_data()
-        if last and last.native_value is not None:
+        if last and last.native_value is not None and self.key not in AUTO_THR:
             self.engine.p[self.key] = last.native_value
+        if self.key in AUTO_THR:
+            self.engine.auto_thr()
 
     @property
     def native_value(self) -> float:
         return self.engine.p[self.key]
 
     async def async_set_native_value(self, value: float) -> None:
+        if self.key in AUTO_THR:
+            LOG.warning("Parametr %s liczony automatycznie (%.2f) – zmiana recznie zignorowana", self.key, self.engine.p[self.key])
+            self.async_write_ha_state()
+            return
         LOG.info("Parametr %s: %s -> %s", self.key, self.engine.p[self.key], value)
         self.engine.p[self.key] = value
+        self.engine.auto_thr()
         self.async_write_ha_state()
 
 

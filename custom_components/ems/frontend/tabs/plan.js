@@ -70,7 +70,7 @@ function fwd(c) {
       pv_m: m?.pv ?? null, dom_m: m?.dom ?? null, bat_m: m?.bat == null ? null : -m.bat, grid_m: m?.grid ?? null,
       soc_m: m ? (m.soc ?? null) : null, soc_p: x.soc ?? null, soc: m ? (m.soc ?? null) : (x.soc ?? null), grid_p: x.imp != null ? (x.imp || 0) - (x.exp || 0) : null });
   }
-  const thr = [["prog_tania", "#facc15", "tania"], ["prog_droga", "#ff4757", "droga"], ["prog_bezcen", "#cbd5e1", "za bezcen"]].map(([k, col, nm]) => ({ v: num(c.hass, `number.ems_${k}_${sez}`, 0), c: col, name: `${nm} ${fmt(num(c.hass, `number.ems_${k}_${sez}`), 2)}` }));
+  const thr = [["prog_tania", "#facc15", "tania"], ["prog_droga", "#ff4757", "droga"], ["prog_bezcen", "#cbd5e1", "za bezcen"]].map(([k, col, nm]) => ({ v: num(c.hass, `number.ems_${k}_${sez}`, 0), c: col, name: `${nm} ${fmt(num(c.hass, `number.ems_${k}_${sez}`), 2)}${k === "prog_bezcen" ? "" : " (auto)"}` }));
   setSocMin(num(c.hass, "number.ems_soc_min", null));
   // kolumny: przeszlosc z POMIARU (faktyczna sprzedaz do sieci / ladowanie baterii z sieci), przyszlosc z planu EMS
   const actOf = r => {

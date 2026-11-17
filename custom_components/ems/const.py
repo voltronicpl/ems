@@ -1,6 +1,6 @@
 """Stale integracji EMS."""
 DOMAIN = "ems"
-VERSION = "0.6.63"
+VERSION = "0.6.64"
 CONF_DEVICE = "device"          # prefiks encji ESPHome, np. "ecobss"
 DEFAULT_DEVICE = "ecobss"
 POLL_NUMBER = "interwal_odczytu"
@@ -96,10 +96,10 @@ READINGS = {
 
 # Parametry EMS: klucz -> (nazwa, min, max, krok, jednostka, domyslna). Edytowalne w panelu (Parametry EMS).
 PARAMS = {
-    "prog_tania_lato": ("Prog sprzedazy tania lato", 0, 5, 0.01, "zl", 1.10),
-    "prog_tania_zima": ("Prog sprzedazy tania zima", 0, 5, 0.01, "zl", 1.10),
-    "prog_droga_lato": ("Prog sprzedazy droga lato", 0, 5, 0.01, "zl", 2.40),
-    "prog_droga_zima": ("Prog sprzedazy droga zima", 0, 5, 0.01, "zl", 2.40),
+    "prog_tania_lato": ("Prog sprzedazy tania lato (auto)", 0, 5, 0.01, "zl", 1.00),
+    "prog_tania_zima": ("Prog sprzedazy tania zima (auto)", 0, 5, 0.01, "zl", 1.00),
+    "prog_droga_lato": ("Prog sprzedazy droga lato (auto)", 0, 5, 0.01, "zl", 1.70),
+    "prog_droga_zima": ("Prog sprzedazy droga zima (auto)", 0, 5, 0.01, "zl", 1.70),
     "prog_bezcen_lato": ("Prog za bezcen lato", -1, 2, 0.01, "zl", 0.10),
     "prog_bezcen_zima": ("Prog za bezcen zima", -1, 2, 0.01, "zl", 0.10),
     "limit_sprzedazy_lato": ("Limit sprzedazy lato", 0, 5, 0.1, "x PV", 1.5),
@@ -116,6 +116,7 @@ PARAMS = {
     "arbitraz_zysk_zima": ("Min. zysk z dokupienia zima", 0, 2, 0.01, "zl/kWh", 0.10),
     "sprawnosc_ladowania": ("Sprawnosc ladowania baterii", 50, 100, 1, "%", 93),
     "sprawnosc_rozladowania": ("Sprawnosc rozladowania baterii", 50, 100, 1, "%", 93),
+    "min_zysk_sprzedazy": ("Min. zysk ze sprzedazy (z 1 kWh kupionej)", 0, 2, 0.01, "zl/kWh", 0.20),
     "koszt_cyklu_zl": ("Koszt zuzycia baterii", 0, 2, 0.01, "zl/kWh", 0.15),
     "mn_slonecznie_lato": ("Mnoznik PV slonecznie lato", 0, 2, 0.01, "x", 1.0),
     "mn_slonecznie_zima": ("Mnoznik PV slonecznie zima", 0, 2, 0.01, "x", 1.0),

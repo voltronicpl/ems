@@ -271,7 +271,16 @@ class Engine:
     def push(self) -> None:
         async_dispatcher_send(self.hass, SIGNAL)
 
+    def auto_thr(self) -> None:
+        """Progi sprzedazy tania / droga liczone automatycznie (encje tylko do podgladu)."""
+        from .planner import auto_thresholds
+        new = auto_thresholds(self.p)
+        if any(self.p.get(k) != v for k, v in new.items()):
+            LOG.info("Progi sprzedazy (auto): tania %.2f zl, droga %.2f zl", new["prog_tania_zima"], new["prog_droga_zima"])
+            self.p.update(new)
+
     async def replan(self, why: str) -> None:
+        self.auto_thr()
         try:
             LOG.info("=== Przeliczanie planu (%s) ===", why)
             now = datetime.now(timezone.utc)
@@ -418,6 +427,7 @@ class Engine:
         await self.execute()
 
     async def execute(self) -> None:
+        self.auto_thr()
         self._last_exec = datetime.now(timezone.utc)
         try:
             ch_w, sell_w = self.limits()
