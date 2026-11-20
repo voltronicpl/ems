@@ -1,5 +1,15 @@
 # Zmiany EMS
 
+## 0.6.66
+- **Nocna tania strefa (22–6) w trzech fazach** (bez cyklu sprzedaży):
+  1. od 22:00 wolne ładowanie 0,2C (~3 kW) do **60 %**, potem trzyma (dom z sieci),
+  2. start liczony wstecz tak, żeby o **04:50** było **80 %** (wolno 0,2C),
+  3. od 04:50 wolne dobicie do **98 %** przed 06:00 (moc wyliczana z czasu, z zapasem).
+- Jak na wolnym ładowaniu nie zdąży – moc rośnie tylko tyle, ile trzeba (z zapasem czasu), nie od razu pełna.
+- Noc ze sprzedażą: zostaje szybkie ładowanie pełną mocą (cykl ładuj → sprzedaj → doładuj).
+- Nowe parametry: `ladowanie_noc_c` (0,2 C), `ladowanie_noc_soc_1` (60 %), `ladowanie_noc_soc_2` (80 %), `ladowanie_noc_soc_2_godz` (450 = 04:50), `ladowanie_noc_zapas_proc` (10 %) + pola w Ustawieniach.
+- TOU: sąsiednie ładowania z innym celem SOC (np. 80 → 98 %) zostają osobnymi punktami.
+
 ## 0.6.65
 - Nauka: nowy wykres **„🏠 Zużycie domu – prognoza vs realne”**: realne zużycie + prognoza poranna (z początku dnia) + prognoza ostatnia (przed godziną). Dzień = godzinowo, Tydzień / Miesiąc = dziennie, Rok = tygodniowo. Pod wykresem sumy, różnica kWh / %, zaniża / zawyża.
 - Archiwum prognoz zużycia godzinowo na 400 dni (`ems_prognozy_arch`) – historia do sprawdzania wstecz (wcześniej prognozy tylko 15 dni).

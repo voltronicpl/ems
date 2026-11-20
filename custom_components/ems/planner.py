@@ -313,6 +313,10 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
     # --- symulacja slot po slocie (z przeplywami sieci) ---------------------------------------------
     out: list[Slot] = []
     soc = soc_now
+    noc_on: dict = {}
+    def night(a: int) -> bool:                                         # nocna tania strefa (22–6), bez cyklu sprzedazy
+        h = slots[a].astimezone(WAW).hour
+        return h >= 21 or h < 6
     for bi, (a, b, is_ch) in enumerate(blocks):
         tgt = target.get(bi, soc_max if is_ch and bi == len(blocks) - 1 else None)
         sh = sell_h.get(bi, set())
@@ -351,6 +355,48 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                     act = "charge"
                     after = any(in_sh(j) for j in range(a, k))
                     why = f"tania strefa G12: cykl – {'doladowanie po sprzedazy' if after else 'ladowanie pelna moca pod sprzedaz'} do {soc_max:.0f}%"
+            elif is_ch and night(a):                                   # noc 22–6: wolno do soc_1 -> trzymaj -> soc_2 na godz. -> soc_max na koniec
+                imp += max(-net, 0)
+                e, over = store(e, max(net, 0))
+                t = slots[k].astimezone(WAW)
+                t_end = (t + timedelta(hours=8)).replace(hour=6, minute=0, second=0, microsecond=0)
+                if t_end - t > timedelta(hours=12):
+                    t_end -= timedelta(days=1)
+                hh2 = int(p.get("ladowanie_noc_soc_2_godz", 450))
+                t2 = t_end.replace(hour=hh2 // 100, minute=hh2 % 100)
+                zf = min(max(p.get("ladowanie_noc_zapas_proc", 10), 0), 50) / 100   # zapas czasu: koniec przed terminem
+                s1, s2 = min(p.get("ladowanie_noc_soc_1", 60), soc_max), min(p.get("ladowanie_noc_soc_2", 80), soc_max)
+                slow = min(ch_slot, p.get("ladowanie_noc_c", 0.2) * cap_kwh * SLOT_H)
+                left = lambda tt: max((tt - t) / timedelta(minutes=15), 0.0)   # noqa: E731  slotow do godziny tt
+                if t < t2:
+                    need, r = kwh(s2) - e, left(t2)
+                    res2 = 4 * zf                                       # zapas: ulamek godziny przed t2
+                    req = need / max(r - res2, 0.25)
+                    if e < kwh(s1) - 0.005:
+                        rate, why = max(slow, req), f"noc: wolne ladowanie {p.get('ladowanie_noc_c', 0.2):.2g}C do {s1:.0f}%"
+                    elif need > 0.005 and (noc_on.get(a) or need >= slow * (r - res2) - 1e-6):
+                        noc_on[a] = True                                 # raz ruszylo -> laduje do soc_2 bez przerwy
+                        rate, why = max(slow, req), f"noc: ladowanie do {s2:.0f}% na {t2:%H:%M}"
+                    else:
+                        rate, why = 0.0, f"noc: trzymam {pct(e):.0f}%, dom z sieci"
+                    cap = kwh(s2) - e if e >= kwh(s1) - 0.005 else max(kwh(s1), kwh(s2) if req > slow else 0) - e
+                else:
+                    need, r = kwh(soc_max) - e, left(t_end)
+                    rate = need / max(r - (t_end - t2) / timedelta(minutes=15) * zf, 0.25) if need > 0.005 else 0.0
+                    why = f"noc: dobicie do {soc_max:.0f}% do {t_end:%H:%M}" if rate else f"noc: trzymam {soc_max:.0f}%, dom z sieci"
+                    cap = need
+                put = min(ch_k(k), rate, max(cap, 0.0))
+                if put > 0.005:
+                    if put > slow + 1e-6 and "dobicie" not in why:
+                        why += f" (przyspieszone do {put / SLOT_H / ec:.1f} kW – inaczej nie zdazy)"
+                    grid = put / ec
+                    e += put
+                    imp += grid
+                    act = "charge"
+                else:
+                    act = "hold"
+                    if "trzymam" not in why:
+                        why = f"noc: trzymam {pct(e):.0f}%, dom z sieci"
             elif is_ch:
                 imp += max(-net, 0)                                    # dom z sieci w taniej strefie (bateria trzyma)
                 e, over = store(e, max(net, 0))

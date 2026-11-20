@@ -189,7 +189,7 @@ class Executor:
         # sasiednie ladowania (inna moc / SOC) -> jeden punkt (moc pierwszego, SOC najwyzszy)
         i = 1
         while i < len(segs):
-            if segs[i][1][0] == "charge" == segs[i - 1][1][0]:
+            if segs[i][1][0] == "charge" == segs[i - 1][1][0] and abs(segs[i][1][2] - segs[i - 1][1][2]) < 5:   # inny cel SOC (noc 80 -> 98) = osobny punkt
                 m0, m1 = segs[i - 1][1], segs[i][1]
                 segs[i - 1] = (segs[i - 1][0], m0[:2] + (max(m0[2], m1[2]),) + m0[3:4] + (max(m0[4], m1[4]), max(m0[5], m1[5])))
                 del segs[i]
