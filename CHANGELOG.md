@@ -1,5 +1,11 @@
 # Zmiany EMS
 
+## 0.6.67
+- **Poprawka v0.6.66**: nocne dobicie 05:00–06:00 nie trafiało do falownika (noc potrzebuje 7 punktów, a 7. był ucinany na autokonsumpcję) i punkty 80 % / 98 % sklejały się w jeden (ładował od 03:45 od razu do 98 %).
+- **TOU jako lista przesuwana**: w falowniku punkt bieżący + 4 następne + 6. jako autokonsumpcja (bezpiecznik, gdyby EMS padł). Minie punkt → jego miejsce dostaje kolejny z planu (zapis tylko różnic). Dalej: 00:01, nic przez północ, zawsze 6 punktów.
+- Slot planu ma `tgt` – cel SOC fazy nocnej (60 / 80 / 98 %); punkt TOU bierze ten cel.
+- Test `tests/test_noc.py` (plan nocy → punkty TOU o 23:40 i 03:00).
+
 ## 0.6.66
 - **Nocna tania strefa (22–6) w trzech fazach** (bez cyklu sprzedaży):
   1. od 22:00 wolne ładowanie 0,2C (~3 kW) do **60 %**, potem trzyma (dom z sieci),

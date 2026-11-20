@@ -132,7 +132,7 @@ class Executor:
         """(nazwa, Z sieci, SOC, moc W, autokonsumpcja do %, sprzedaj do %)"""
         res = round(slot["reserve"])
         if slot["action"] == "charge":
-            tgt = round(p["soc_max"])
+            tgt = round(slot.get("tgt") or p["soc_max"])         # noc: cel fazy (60 / 80 / 98), inaczej soc_max
             w = max_charge_w
             if not slot.get("manual") and slot.get("grid_kwh"):          # algorytm: moc z planu (lagodne 0,2C), w krokach 500 W
                 w = min(max_charge_w, max(500.0, -(-slot["grid_kwh"] * 4000 // 500) * 500))
@@ -228,21 +228,13 @@ class Executor:
             if soft(i) and i + 1 < len(segs) and ln(i) < mn and drop(i):
                 continue
             i += 1
-        while len(segs) > 6:                   # falownik ma 6 punktow: najpierw najkrotsze miekkie (bez wydluzania twardych)
-            cand = sorted((ln(k), k) for k in range(1, len(segs)) if soft(k) and ((soft(k - 1)) or (k + 1 < len(segs) and soft(k + 1))))
-            if cand and drop(cand[0][1]):
-                continue
-            LOG.debug("Plan ma %d punktow w 24 h – reszta doby jako autokonsumpcja", len(segs))
+        if len(segs) > 6:                      # lista przesuwana: punkt biezacy + 4 nastepne + 6. jako autokonsumpcja (bezpiecznik).
+            # Minie punkt -> przy nastepnym execute() jego miejsce dostaje kolejny z planu (zapis tylko roznic).
+            LOG.debug("Plan ma %d punktow w 24 h – w falowniku biezacy + 5 nastepnych (lista przesuwana)", len(segs))
             selfm = ("self", False, round(p["soc_min"]), int(max_sell_w // 100 * 100), round(p["soc_min"]), 100)
-            m = next((k for k in range(len(segs)) if is_mid(k)), None)
-            if m is not None and m < 5:
-                segs = segs[:5] + [(segs[5][0], selfm)]               # 00:00 jest w pierwszych 5
-            elif m == 5:
-                segs = segs[:5] + [(midnight, selfm)]
-            else:
-                segs = segs[:4] + [(segs[4][0], selfm)] + ([(midnight, selfm)] if m is not None else [])
+            segs = segs[:5] + [(segs[5][0], selfm)]
         # bezpiecznik: ostatni punkt doby nie moze byc ladowaniem / sprzedaza ciagnietym do pierwszego punktu
-        while len(segs) < 6:                   # dopelnij: podziel najdluzszy segment na pol
+        while len(segs) < 6:                   # falownik ma zawsze 6 punktow: dopelnij dzielac najdluzszy segment (ten sam tryb)
             gaps = [((segs[(i + 1) % len(segs)][0] if i + 1 < len(segs) else segs[0][0] + timedelta(days=1)) - segs[i][0], i)
                     for i in range(len(segs))]
             d, i = max(gaps)

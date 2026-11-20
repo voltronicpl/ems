@@ -51,6 +51,7 @@ class Slot:
     imp: float = 0.0     # pobor z sieci w slocie [kWh]
     exp: float = 0.0     # oddanie do sieci w slocie [kWh]
     why: str = ""        # powod decyzji (dla panelu)
+    tgt: float | None = None   # cel SOC punktu ladowania (noc: 60 / 80 / 98) – osobne punkty TOU
 
 
 def _sez(day) -> str:
@@ -324,6 +325,7 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
         for k in range(a, b):
             e = kwh(soc)                                               # energia W baterii [kWh]
             act, grid, imp, exp, why = "self", 0.0, 0.0, 0.0, ""
+            ntgt = None
             bezcen = p[f"prog_bezcen_{season(slots[k])}"]
             net = pvk[k] - ld[k]
             over = 0.0                                                 # nadwyzka PV, ktora nie weszla do baterii [kWh AC]
@@ -380,11 +382,13 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
                     else:
                         rate, why = 0.0, f"noc: trzymam {pct(e):.0f}%, dom z sieci"
                     cap = kwh(s2) - e if e >= kwh(s1) - 0.005 else max(kwh(s1), kwh(s2) if req > slow else 0) - e
+                    ntgt = pct(e + cap)
                 else:
                     need, r = kwh(soc_max) - e, left(t_end)
                     rate = need / max(r - (t_end - t2) / timedelta(minutes=15) * zf, 0.25) if need > 0.005 else 0.0
                     why = f"noc: dobicie do {soc_max:.0f}% do {t_end:%H:%M}" if rate else f"noc: trzymam {soc_max:.0f}%, dom z sieci"
                     cap = need
+                    ntgt = soc_max
                 put = min(ch_k(k), rate, max(cap, 0.0))
                 if put > 0.005:
                     if put > slow + 1e-6 and "dobicie" not in why:
@@ -448,7 +452,8 @@ def plan(slots: list[datetime], prices: dict, pv: dict, load: dict, weather: dic
             soc = pct(e)
             out.append(Slot(slots[k].isoformat(), act, round(grid, 3), price[k], round(soc, 1),
                             round(pvk[k], 3), round(ld[k], 3), cheap[k], reserve[k] > res_min, reserve[k],
-                            round(imp, 3), round(exp, 3), why))
+                            round(imp, 3), round(exp, 3), why,
+                            round(ntgt) if act == "charge" and is_ch and not sh and night(a) and ntgt else None))
 
     summ = {
         "ladowanie_kwh": round(sum(s.grid_kwh for s in out if s.action == "charge"), 2),
