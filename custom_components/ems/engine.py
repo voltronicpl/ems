@@ -344,7 +344,8 @@ class Engine:
                 wxh = learn.hour_wx(self._wx_learn)
                 self.learn.pump = learn.pump_layers({h: v / 1000 for h, v in self._pump.items()}, wxh) if self._pump else None
                 devs = {}
-                for d in self.src.dev:
+                reku = self.src.cfg.get("reku")                                       # v0.6.68: rekuperator = urzadzenie stale
+                for d in [*self.src.dev, *([{"nazwa": "Rekuperacja", "kwh": reku, "ikona": "🌀"}] if reku else [])]:
                     hh = await self.src.hourly_ent(d.get("kwh") or d.get("moc"), now - timedelta(days=365), now)
                     if hh:
                         self.learn.dev_h[d["nazwa"]] = hh

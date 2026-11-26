@@ -3,6 +3,7 @@
 Uzytkownik wybiera encje w panelu (Ustawienia -> EMS -> Historia do nauki). Uzywane:
 - dom   : konsumpcja domu laczna -> historia zuzycia (prognoza zuzycia, do 365 dni),
 - pompa : pompa ciepla -> osobny model zuzycia wg temperatury zewnetrznej,
+- reku  : rekuperator (v0.6.68) -> liczony jak urzadzenie: profil dzien tygodnia x godzina, odejmowany od bazy domu,
 - pv    : produkcja PV laczna -> kalibracja prognozy PV (fakt / prognoza z ostatnich 28 dni),
 - imp, exp, bat_in, bat_out : zapamietane do kolejnych analiz (rachunek, symulacja wstecz).
 """
@@ -19,7 +20,7 @@ from .diag import get_logger
 
 LOG = get_logger("zrodla")
 KEYS = {"dom": "Konsumpcja domu (łączna)", "pv": "Produkcja PV (łączna)", "imp": "Import z sieci", "exp": "Eksport do sieci",
-        "bat_in": "Bateria – ładowanie", "bat_out": "Bateria – rozładowanie", "pompa": "Pompa ciepła"}
+        "bat_in": "Bateria – ładowanie", "bat_out": "Bateria – rozładowanie", "pompa": "Pompa ciepła", "reku": "Rekuperacja"}
 ENERGY = {"kWh": 1.0, "Wh": 0.001, "MWh": 1000.0}
 POWER = {"W": 0.001, "kW": 1.0}
 

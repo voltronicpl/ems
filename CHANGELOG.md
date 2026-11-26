@@ -1,5 +1,9 @@
 # Zmiany EMS
 
+## 0.6.68
+- **Nowa encja `binary_sensor.ems_g12_tania_strefa`**: tania strefa PGE G12 liczona tak samo jak w planie EMS (czas licznika CET, lato 15–17 / zima 13–15, noc 22–6). Atrybuty: `minut_do_taniej`, `minut_do_konca`, `nastepna_zmiana`, `cena_zl_kwh`, `sezon`. Z niej bierze strefę pakiet pompy ciepła (`ha-karta-pompa-ciepla` v1.51).
+- **Rekuperacja jako źródło zużycia**: Ustawienia → Historia do nauki → pole „🌀 Rekuperacja (kWh lub W)”. EMS liczy ją jak urządzenie (profil dzień tygodnia × godzina), odejmuje od bazy domu i dokłada do prognozy. Pole puste = bez zmian.
+
 ## 0.6.67
 - **Poprawka v0.6.66**: nocne dobicie 05:00–06:00 nie trafiało do falownika (noc potrzebuje 7 punktów, a 7. był ucinany na autokonsumpcję) i punkty 80 % / 98 % sklejały się w jeden (ładował od 03:45 od razu do 98 %).
 - **TOU jako lista przesuwana**: w falowniku punkt bieżący + 4 następne + 6. jako autokonsumpcja (bezpiecznik, gdyby EMS padł). Minie punkt → jego miejsce dostaje kolejny z planu (zapis tylko różnic). Dalej: 00:01, nic przez północ, zawsze 6 punktów.

@@ -43,3 +43,8 @@ Własny EMS dla falownika **ECOBSS FLEX 3L** (Modbus RTU) i domu: prognoza zuży
 - **Interwał odczytu** (5–600 s) – steruje, jak często datalogger czyta falownik
 
 Algorytm planowania, harmonogram i karta Lovelace – kolejne wersje. Specyfikacja: dokument „EMS HA – specyfikacja”.
+
+## Powiązane repo
+
+- [ha-karta-pompa-ciepla](https://github.com/voltronicpl/ha-karta-pompa-ciepla) – karta pompy MHI Hydrolution. Jej pakiet bierze strefę G12 z `binary_sensor.ems_g12_tania_strefa` (od v1.51).
+- [compit-nano-one-ha](https://github.com/voltronicpl/compit-nano-one-ha) – karta rekuperacji Compit Nano One. Moc albo energię reku można podać w EMS jako źródło „Rekuperacja” (od v0.6.68).
